@@ -1,13 +1,15 @@
 /* ============================================================
-   快问快答 v3（"+"菜单 → 快问快答）—— 问卷/选择题形式
-   - 玩法：ta 把一道选择题卡片发进聊天（10 秒倒计时），你点选项即作答
-   - 答完卡片上直接对比"你的选择 vs ta 的选择"：一致 → 心有灵犀 ✨，
-     不一致 → ta 会嘀咕两句；超时 → 被嘲笑
+   快问快答 v4（"+"菜单 → 快问快答）—— 双向问答
+   - 模式一「开始挑战」：ta 出题 → 你 10 秒内点选项作答 → 对比双方选择
+   - 模式二「让ta出题」：ta 亲自出题（出过就存进"我们的题库"）
+   - 模式三「我来提问」（新增）：你出题 → ta 限时 10 秒作答（约 2.5~7.5 秒
+     内就答，10% 概率被你问住超时）→ ta 答完轮到你选 → 双方答案对比
    - 题库 = 内置 4 分类 × 10 题（全选择题）+ 自定义题（你加的 + ta 加的）
    - 自定义题存 localforage: cx_qa_custom [{q, opts, cat, by:'me'|'ta'}]
-     · 弹窗"我们的题库"里可以加题（1 题 + 2~4 个选项）/删题
-     · "让ta出题"：ta 亲自出一道（出自 ta 的题库，出一道存一道）
-   - 作答状态存 localforage: cx_qa_states {state, pick, taPick}
+   - 作答状态存 localforage: cx_qa_states
+     · 'answered' {pick:用户选择, taPick:ta选择} 双方都已作答
+     · 'waiting'  {taPick} ta 答了、等你选（你提问的卡片）
+     · 'timeout'  超时
    ============================================================ */
 (function () {
     'use strict';
@@ -92,6 +94,10 @@
     var TIMEOUT_TEASES = [
         '10秒都选不出来？这题就那么难吗😏', '超时啦！就当你弃权了~', '哈哈哈选不出来了吧，我先记一笔！',
         '时间到~你欠我一个答案，下次见面还！', '就这？随便一道题就把你问住了'
+    ];
+    var TA_TIMEOUT_LINES = [
+        '这题太难了，容我再想想…', '你出的题也太难了吧！我弃权', '等等，这题我需要好好想想',
+        '被你问住了…这题不算！', '好家伙，直接把我干沉默了'
     ];
     var MATCH_LINES = ['心有灵犀 ✨', '果然是一个人', '太默契了吧', '答案一致，加一分'];
     var DIFF_LINES = ['答案不一样，罚你想我十分钟', '选得不一样？说说为什么', '哼，答案不同（但差不多）', '不一致，记小本本了'];
@@ -246,6 +252,58 @@
         if (typeof window._sendPartnerNotification === 'function') {
             window._sendPartnerNotification(name, (item.by === 'ta' ? '亲自给你出了道选择题：' : '快问快答来啦，10秒作答：') + item.q);
         }
+    }
+
+    // ── 模式三：我来提问（你出题，ta 限时 10 秒作答） ────────
+    function askMyQuestion(item) {
+        var qaId = nowId();
+        if (typeof addMessage === 'function') {
+            addMessage({
+                id: qaId,
+                sender: 'user',
+                text: '',
+                timestamp: new Date(),
+                status: 'sent',
+                type: 'qa-question',
+                qaId: qaId,
+                qa: { q: item.q, opts: item.opts, cat: item.cat, by: 'me' },
+                favorited: false,
+                note: null
+            });
+        }
+        if (typeof playSound === 'function') playSound('send');
+
+        // ta 在 2.5~7.5 秒内作答；10% 概率想太久直接超时（被你问住）
+        var qaIdCapture = qaId;
+        var optsCapture = item.opts.slice();
+        if (Math.random() < 0.1) return; // 超时由倒计时兜底
+        var delay = 2500 + Math.floor(Math.random() * 5000);
+        setTimeout(function () { answerTa(qaIdCapture, optsCapture); }, delay);
+    }
+
+    // ta 作答（你提问的卡片）：记录 ta 的选择，轮到用户选
+    function answerTa(qaId, opts) {
+        if (stateMap[qaId]) return; // 已超时或已作答
+        stateMap[qaId] = { state: 'waiting', taPick: Math.floor(Math.random() * opts.length) };
+        persistStates();
+        redrawCard(qaId);
+
+        var mine = opts[stateMap[qaId].taPick];
+        var name = partnerName();
+        if (typeof addMessage === 'function') {
+            addMessage({
+                id: Date.now() + Math.random(),
+                sender: name,
+                text: '我的答案是：' + mine,
+                timestamp: new Date(),
+                status: 'received',
+                type: 'normal',
+                favorited: false,
+                note: null,
+                replyTo: { id: qaId, text: '', sender: 'user' }
+            });
+        }
+        if (typeof playSound === 'function') playSound('message');
     }
 
     // ── 卡片渲染（core.js 调用） ────────────────────────────
