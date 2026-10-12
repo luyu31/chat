@@ -21,12 +21,14 @@
 
     function partnerName() { return (typeof settings !== 'undefined' && settings.partnerName) || '对方'; }
 
-    // ── 虚拟距离：一次生成，双方共用 ─────────────────────────
+    // ── 虚拟距离：数字随机 + 单位也随机（整蛊向：可能近到 3.5cm，也可能远到 88 千米）
+    // 一次生成，双方卡片共用同一个距离
     function randomDistance() {
         var r = Math.random();
-        if (r < 0.35) return Math.round(20 + Math.random() * 800) + 'm';        // 20~820米
-        if (r < 0.75) return (Math.random() * 9 + 1).toFixed(1) + 'km';         // 1.0~10.0km
-        return Math.round(10 + Math.random() * 40) + 'km';                      // 10~50km
+        if (r < 0.25) return (1 + Math.floor(Math.random() * 99)) + 'cm';               // 厘米：1~99
+        if (r < 0.5)  return (1 + Math.floor(Math.random() * 999)) + 'mm';              // 毫米：1~999
+        if (r < 0.8)  return (1 + Math.floor(Math.random() * 999)) + 'm';               // 米：1~999
+        return (Math.random() * 88 + 0.5).toFixed(1) + 'km';                            // 千米：0.5~88.5
     }
     function footLine(id) {
         return FOOT_LINES[Math.abs(String(id).split('').reduce(function (a, c) { return a + c.charCodeAt(0); }, 0)) % FOOT_LINES.length];
