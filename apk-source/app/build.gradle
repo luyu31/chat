@@ -10,8 +10,8 @@ android {
         applicationId "chat.milk"
         minSdk 26
         targetSdk 34
-        versionCode 20261019
-        versionName "1.8"
+        versionCode 20261020
+        versionName "1.9"
     }
 
     buildTypes {
