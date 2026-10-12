@@ -1,9 +1,10 @@
 /* ============================================================
-   快问快答 v4（"+"菜单 → 快问快答）—— 双向问答
+   快问快答 v5（"+"菜单 → 快问快答）—— 双向问答
    - 模式一「开始挑战」：ta 出题 → 你 10 秒内点选项作答 → 对比双方选择
    - 模式二「让ta出题」：ta 亲自出题（出过就存进"我们的题库"）
-   - 模式三「我来提问」（新增）：你出题 → ta 限时 10 秒作答（约 2.5~7.5 秒
-     内就答，10% 概率被你问住超时）→ ta 答完轮到你选 → 双方答案对比
+   - 模式三「我来提问」：你出题 → ta 限时 10 秒作答 → 轮到你选 → 对比
+   - 选项点击用事件委托（document 级），新插入的卡片也能直接点
+   - 超时反应：随机字卡/表情包（引用题目），不再是出戏的吐槽旁白
    - 题库 = 内置 4 分类 × 10 题（全选择题）+ 自定义题（你加的 + ta 加的）
    - 自定义题存 localforage: cx_qa_custom [{q, opts, cat, by:'me'|'ta'}]
    - 作答状态存 localforage: cx_qa_states
@@ -91,14 +92,7 @@
         { q: '如果画我，先画哪里？', opts: ['眼睛', '笑起来的嘴', '整体轮廓', '乱画一通'] }
     ];
 
-    var TIMEOUT_TEASES = [
-        '10秒都选不出来？这题就那么难吗😏', '超时啦！就当你弃权了~', '哈哈哈选不出来了吧，我先记一笔！',
-        '时间到~你欠我一个答案，下次见面还！', '就这？随便一道题就把你问住了'
-    ];
-    var TA_TIMEOUT_LINES = [
-        '这题太难了，容我再想想…', '你出的题也太难了吧！我弃权', '等等，这题我需要好好想想',
-        '被你问住了…这题不算！', '好家伙，直接把我干沉默了'
-    ];
+    // 超时反应不再用固定吐槽文案（太出戏），改为随机字卡/表情包，见 partnerTimeoutReaction
     var MATCH_LINES = ['心有灵犀 ✨', '果然是一个人', '太默契了吧', '答案一致，加一分'];
     var DIFF_LINES = ['答案不一样，罚你想我十分钟', '选得不一样？说说为什么', '哼，答案不同（但差不多）', '不一致，记小本本了'];
 
@@ -397,11 +391,20 @@
         bindOptions();
     }
 
+    // 事件委托：点击只绑一次在 document 上，之后新插入的题卡选项也能直接点
+    // （旧做法绑在每个按钮元素上，新消息渲染时没人补绑，导致选项点不了）
     function bindOptions() {
-        document.querySelectorAll('.cx-qa-opt').forEach(function (btn) {
-            if (btn.__qaBound) return;
-            btn.__qaBound = true;
-            btn.addEventListener('click', function () { submitPick(btn.getAttribute('data-qa-id'), Number(btn.getAttribute('data-i'))); });
+        if (bindOptions._delegated) return;
+        bindOptions._delegated = true;
+        document.addEventListener('click', function (e) {
+            var el = e.target;
+            while (el && el !== document) {
+                if (el.classList && el.classList.contains('cx-qa-opt')) {
+                    submitPick(el.getAttribute('data-qa-id'), Number(el.getAttribute('data-i')));
+                    return;
+                }
+                el = el.parentNode;
+            }
         });
     }
 
@@ -444,30 +447,87 @@
         if (typeof window._triggerDelayedReply === 'function') window._triggerDelayedReply(true);
     }
 
+    // ── ta 的反应素材池（和主聊天回复引擎同一套来源） ─────────
+    // 字卡池：window._customReplies 减去被屏蔽/被分组禁用的，过滤逻辑和 core.js 一致
+    function buildReplyPool() {
+        var src = (window._customReplies && window._customReplies.length) ? window._customReplies : [];
+        var disabled = new Set();
+        try {
+            var raw = localStorage.getItem('disabledReplyItems');
+            if (raw) JSON.parse(raw).forEach(function (x) { disabled.add(x); });
+        } catch (e) {}
+        var disabledGroup = new Set();
+        (window.customReplyGroups || []).forEach(function (g) {
+            if (g.disabled && Array.isArray(g.items)) g.items.forEach(function (item) { disabledGroup.add(item); });
+        });
+        return src.filter(function (r) { return !disabled.has(r) && !disabledGroup.has(r); })
+            .map(function (r) { return String(r || '').trim(); })
+            .filter(Boolean);
+    }
+
+    // 表情包池：ta 的表情库减去被屏蔽的
+    function buildStickerPool() {
+        var lib = (typeof stickerLibrary !== 'undefined' && stickerLibrary && stickerLibrary.length) ? stickerLibrary : [];
+        var disabled = new Set();
+        try {
+            var raw = localStorage.getItem('disabledStickerItems');
+            if (raw) JSON.parse(raw).forEach(function (x) { disabled.add(x); });
+        } catch (e) {}
+        return lib.filter(function (s) { return !disabled.has(s); });
+    }
+
+    // 超时后 ta 的反应：像平时聊天一样，随机回一张字卡（60%）或一张表情包（40%），
+    // 引用着你没答的那道题；两个库都空就保持安静，不硬凑
+    function partnerTimeoutReaction(qaId, qText) {
+        if (typeof addMessage !== 'function') return;
+        var name = partnerName();
+        var replies = buildReplyPool();
+        var stickers = buildStickerPool();
+        var useSticker = stickers.length > 0 && (replies.length === 0 || Math.random() < 0.4);
+        var line = null;
+        var replyTo = qText ? { id: qaId, text: qText, sender: 'user' } : null;
+        if (useSticker) {
+            addMessage({
+                id: Date.now() + Math.random(),
+                sender: name,
+                text: '',
+                timestamp: new Date(),
+                image: stickers[Math.floor(Math.random() * stickers.length)],
+                isSticker: true,
+                status: 'received',
+                type: 'normal',
+                favorited: false,
+                note: null,
+                replyTo: replyTo
+            });
+        } else if (replies.length > 0) {
+            line = replies[Math.floor(Math.random() * replies.length)];
+            addMessage({
+                id: Date.now() + Math.random(),
+                sender: name,
+                text: line,
+                timestamp: new Date(),
+                status: 'received',
+                type: 'normal',
+                favorited: false,
+                note: null,
+                replyTo: replyTo
+            });
+        } else {
+            return;
+        }
+        if (typeof playSound === 'function') playSound('message');
+        if (typeof window._sendPartnerNotification === 'function') window._sendPartnerNotification(name, line || '[表情]');
+    }
+
     function markTimeout(qaId) {
         if (stateMap[qaId]) return;
         stateMap[qaId] = { state: 'timeout' };
         persistStates();
         redrawCard(qaId);
-        var name = partnerName();
         var card = document.querySelector('.cx-qa-card[data-qa-id="' + qaId + '"]');
-        // ta 提问超时 → 嘲笑你；你提问 ta 超时 → ta 支吾
-        var pool = (card && card.getAttribute('data-sender') === 'user') ? TA_TIMEOUT_LINES : TIMEOUT_TEASES;
-        var tease = pool[Math.floor(Math.random() * pool.length)];
-        if (typeof addMessage === 'function') {
-            addMessage({
-                id: Date.now() + Math.random(),
-                sender: name,
-                text: tease,
-                timestamp: new Date(),
-                status: 'received',
-                type: 'normal',
-                favorited: false,
-                note: null
-            });
-        }
-        if (typeof playSound === 'function') playSound('message');
-        if (typeof window._sendPartnerNotification === 'function') window._sendPartnerNotification(name, tease);
+        var qText = card ? (card.getAttribute('data-q') || '') : '';
+        partnerTimeoutReaction(qaId, qText);
     }
 
     // ── 全局计时器：每 300ms 扫一遍倒计时 ───────────────────
