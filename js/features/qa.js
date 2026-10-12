@@ -1,11 +1,13 @@
 /* ============================================================
-   快问快答（"+"菜单 → 快问快答）
+   快问快答 v2（"+"菜单 → 快问快答）
    - 玩法：梦角向你发起快问快答挑战——抽一道题发进聊天（限时15秒的
      问题卡片），你在卡片输入框里作答；答完梦角自然接话，超时会被嘲笑
-   - 题库内置 4 个分类 × 16 题；近期抽过的题 20 题内不重复
-   - 卡片状态（待答/已答/超时）存 localforage: cx_qa_states，
-     消息对象本身不改动，重进 app 后卡片状态照常恢复
-   - 渲染由 core.js 的 qa-question 分支调用 renderCardHTML
+   - 题库 = 内置 4 分类 × 16 题 + 自定义题目（你加的 + ta 加的）
+   - 自定义题库存 localforage: cx_qa_custom [{q, cat, by:'me'|'ta'}]
+     · 弹窗里可以自己加题/删题
+     · 点"让ta出题"，ta 会亲自出一道（出自 ta 的题库，出一道存一道）
+     · 随机抽题时 ta 的题有 25% 优先被抽中
+   - 卡片状态（待答/已答/超时）存 localforage: cx_qa_states
    ============================================================ */
 (function () {
     'use strict';
@@ -13,10 +15,12 @@
     var STATE_KEY = 'cx_qa_states';
     var STATS_KEY = 'cx_qa_stats';
     var RECENT_KEY = 'cx_qa_recent';
+    var CUSTOM_KEY = 'cx_qa_custom';
     var LIMIT_MS = 15000;
 
     var stateMap = {};  // qaId -> {state:'answered'|'timeout', answer:''}
     var stats = { total: 0, byCat: {} };
+    var customList = []; // 自定义题目 [{q, cat, by:'me'|'ta', ts}]
     var hydrated = false;
 
     var BANK = [
@@ -52,6 +56,15 @@
             '你最近一次哭是因为什么？', '如果我们一直没有结果，你会后悔吗？', '被爱重要还是爱人重要？',
             '你对我的第一印象和现在差多少？'
         ]}
+    ];
+
+    // ta 亲自出题的题库（"让ta出题"会从这里抽，抽过就存进自定义题库，越玩越多）
+    var TA_BANK = [
+        '刚才有没有想我？说实话。', '如果我现在突然出现在你身后，你会干嘛？', '你觉得我们下次约会应该去哪？',
+        '我最近哪里进步了？要夸得具体一点。', '用一句话形容你现在的心情。', '只能带一样东西去荒岛，你带我还是带手机？',
+        '你今天笑得最开心的一刻是什么？', '我最让你无语的一个瞬间是什么？', '如果给我们的关系起个歌名，会是哪首？',
+        '你猜我现在在干什么？猜错有惩罚。', '我最喜欢吃的菜是什么？答错就去做饭。', '下次见面，你想第一件事先干嘛？',
+        '你觉得我会因为什么小事感动？', '如果给我画一幅画像，你会先画哪里？'
     ];
 
     var TIMEOUT_TEASES = [
@@ -108,13 +121,30 @@
             });
         } catch (e) {}
     }
+    function persistCustom() { try { localforage.setItem(CUSTOM_KEY, customList); } catch (e) {} }
+
+    function addCustomQuestion(q, cat, by) {
+        q = String(q || '').trim();
+        if (!q) return false;
+        if (customList.some(function (c) { return c.q === q; })) return 'dup';
+        if (customList.length >= 100) return 'full';
+        customList.unshift({ q: q, cat: cat || '自定义', by: by || 'me', ts: Date.now() });
+        persistCustom();
+        return true;
+    }
+    function removeCustomQuestion(idx) {
+        customList.splice(idx, 1);
+        persistCustom();
+    }
+
     function hydrate(cb) {
         if (hydrated) { if (cb) cb(); return; }
         Promise.all([
-            localforage.getItem(STATE_KEY), localforage.getItem(STATS_KEY)
+            localforage.getItem(STATE_KEY), localforage.getItem(STATS_KEY), localforage.getItem(CUSTOM_KEY)
         ]).then(function (res) {
             stateMap = res[0] || {};
             if (res[1]) stats = res[1];
+            customList = Array.isArray(res[2]) ? res[2] : [];
             hydrated = true;
             refreshCards();
             if (cb) cb();
@@ -123,20 +153,47 @@
 
     // ── 出题 ────────────────────────────────────────────────
     function pickQuestion(cat) {
+        var isAll = !cat || cat === '全部';
         var pool = [];
-        BANK.forEach(function (g) { if (!cat || cat === '全部' || g.cat === cat) pool = pool.concat(g.qs.map(function (q) { return { q: q, cat: g.cat }; })); });
-        if (!pool.length) pool = BANK[0].qs.map(function (q) { return { q: q, cat: BANK[0].cat }; });
+        BANK.forEach(function (g) { if (isAll || g.cat === cat) pool = pool.concat(g.qs.map(function (q) { return { q: q, cat: g.cat, by: null }; })); });
+        // 自定义题（你加的 + ta 加的）也进抽题池；"ta 出的题"不在指定分类时也算进来
+        customList.forEach(function (c) {
+            if (isAll || c.cat === cat || c.by === 'ta') pool.push({ q: c.q, cat: c.cat, by: c.by });
+        });
+        if (!pool.length) pool = BANK[0].qs.map(function (q) { return { q: q, cat: BANK[0].cat, by: null }; });
         var recent = (window.__qaRecent || []);
         var fresh = pool.filter(function (p) { return recent.indexOf(p.q) === -1; });
         var finalPool = fresh.length ? fresh : pool;
-        return finalPool[Math.floor(Math.random() * finalPool.length)];
+        // ta 的题有 25% 优先权重：把 ta 的题复制几份进池子，提高命中概率
+        var weighted = [];
+        finalPool.forEach(function (p) {
+            weighted.push(p);
+            if (p.by === 'ta') { weighted.push(p); weighted.push(p); weighted.push(p); } // 额外3份 ≈ 25%概率优先
+        });
+        return weighted[Math.floor(Math.random() * weighted.length)];
     }
 
-    function askQuestion(cat) {
-        var item = pickQuestion(cat);
+    function askQuestion(cat, forceByTa) {
+        var name = partnerName();
+        var item;
+
+        if (forceByTa) {
+            // ta 亲自出题：优先从"ta 已经出过的题"里抽，否则从 ta 的原生题库抽一道并存档
+            var taPool = customList.filter(function (c) { return c.by === 'ta'; });
+            if (taPool.length) {
+                var pick = taPool[Math.floor(Math.random() * taPool.length)];
+                item = { q: pick.q, cat: pick.cat, by: 'ta' };
+            } else {
+                var q = TA_BANK[Math.floor(Math.random() * TA_BANK.length)];
+                addCustomQuestion(q, 'ta 的题', 'ta');
+                item = { q: q, cat: 'ta 的题', by: 'ta' };
+            }
+        } else {
+            item = pickQuestion(cat);
+        }
+
         rememberQuestion(item.q);
         var qaId = nowId();
-        var name = partnerName();
         if (typeof addMessage === 'function') {
             addMessage({
                 id: qaId,
@@ -146,14 +203,14 @@
                 status: 'received',
                 type: 'qa-question',
                 qaId: qaId,
-                qa: { q: item.q, cat: item.cat },
+                qa: { q: item.q, cat: item.cat, by: item.by || null },
                 favorited: false,
                 note: null
             });
         }
         if (typeof playSound === 'function') playSound('message');
         if (typeof window._sendPartnerNotification === 'function') {
-            window._sendPartnerNotification(name, '向你发起快问快答：' + item.q);
+            window._sendPartnerNotification(name, (item.by === 'ta' ? '亲自给你出了一道题：' : '向你发起快问快答：') + item.q);
         }
     }
 
@@ -164,7 +221,8 @@
         var ts = new Date(msg.timestamp).getTime();
         if (isNaN(ts)) ts = Date.now();
         var st = stateMap[qaId];
-        var head = '<div class="cx-qa-head"><span class="cx-qa-badge"><i class="fas fa-microphone"></i> 快问快答</span><span class="cx-qa-cat">' + esc(qa.cat || '') + '</span></div>' +
+        var byTa = !!(qa.by === 'ta');
+        var head = '<div class="cx-qa-head"><span class="cx-qa-badge"><i class="fas fa-microphone"></i> 快问快答</span><span class="cx-qa-cat">' + (byTa ? '<i class="fas fa-heart" style="font-size:9px;color:#ff5b6a;"></i> ta 亲自出题 · ' : '') + esc(qa.cat || '') + '</span></div>' +
                    '<div class="cx-qa-q">' + esc(qa.q || '') + '</div>';
 
         var inner;
@@ -189,7 +247,7 @@
         }
 
         // 外层卡片带数据属性：全局计时器/refreshCards/提交时都靠这些属性找回题目内容
-        var html = '<div class="cx-qa-card" data-qa-id="' + esc(qaId) + '" data-q="' + esc(qa.q || '') + '" data-cat="' + esc(qa.cat || '') + '" data-ts="' + ts + '">' +
+        var html = '<div class="cx-qa-card" data-qa-id="' + esc(qaId) + '" data-q="' + esc(qa.q || '') + '" data-cat="' + esc(qa.cat || '') + '" data-by="' + (byTa ? 'ta' : '') + '" data-ts="' + ts + '">' +
                        '<div class="cx-qa-body">' + inner + '</div></div>';
         // 渲染完成后绑一次输入事件（绑定有幂等保护，不会重复）
         setTimeout(function () { bindInput(document); }, 60);
@@ -207,7 +265,8 @@
             if (!body) return;
             var q = card.getAttribute('data-q') || '';
             var cat = card.getAttribute('data-cat') || '';
-            body.innerHTML = renderCardHTML({ qaId: qaId, qa: { q: q, cat: cat }, timestamp: card.getAttribute('data-ts') || Date.now() });
+            var by = card.getAttribute('data-by') || null;
+            body.innerHTML = renderCardHTML({ qaId: qaId, qa: { q: q, cat: cat, by: by }, timestamp: card.getAttribute('data-ts') || Date.now() });
             bindInput(body);
         });
     }
@@ -244,7 +303,7 @@
         if (card) {
             var body = card.querySelector('.cx-qa-body');
             if (body) {
-                body.innerHTML = renderCardHTML({ qaId: qaId, qa: { q: card.getAttribute('data-q') || '', cat: card.getAttribute('data-cat') || '' }, timestamp: card.getAttribute('data-ts') || Date.now() });
+                body.innerHTML = renderCardHTML({ qaId: qaId, qa: { q: card.getAttribute('data-q') || '', cat: card.getAttribute('data-cat') || '', by: card.getAttribute('data-by') || null }, timestamp: card.getAttribute('data-ts') || Date.now() });
                 bindInput(body);
             }
         }
@@ -318,23 +377,38 @@
         injectStyles();
         hydrate();
         var curCat = '全部';
+        var listOpen = false;
         var overlay = document.createElement('div');
         overlay.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:99999;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:cxFadeIn .2s ease;';
         overlay.innerHTML =
-            '<div style="background:var(--secondary-bg);border-radius:20px;padding:22px;width:88%;max-width:350px;box-shadow:0 20px 60px rgba(0,0,0,0.4);animation:cxSlideIn .25s ease forwards;">' +
-                '<div style="text-align:center;margin-bottom:16px;">' +
+            '<div style="background:var(--secondary-bg);border-radius:20px;padding:22px;width:88%;max-width:350px;box-shadow:0 20px 60px rgba(0,0,0,0.4);animation:cxSlideIn .25s ease forwards;max-height:84vh;overflow-y:auto;">' +
+                '<div style="text-align:center;margin-bottom:14px;">' +
                     '<div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,rgba(255,91,106,.15),rgba(255,143,91,.15));display:flex;align-items:center;justify-content:center;margin:0 auto 10px;"><i class="fas fa-microphone" style="color:#ff5b6a;font-size:19px;"></i></div>' +
                     '<div style="font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:4px;">快问快答</div>' +
                     '<div style="font-size:12px;color:var(--text-secondary);">15秒限时作答，超时会被ta嘲笑哦</div>' +
                 '</div>' +
-                '<div id="cx-qa-cats" style="display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-bottom:14px;"></div>' +
-                '<button id="cx-qa-start" class="cx-qa-start"><i class="fas fa-bolt"></i> 开始挑战</button>' +
-                '<div id="cx-qa-stat" style="text-align:center;font-size:11px;color:var(--text-secondary);margin-top:10px;"></div>' +
+                '<div id="cx-qa-cats" style="display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-bottom:12px;"></div>' +
+                // 自定义题库区
+                '<div id="cx-qa-custom-sec" style="border:1.5px dashed var(--border-color,rgba(128,128,128,.3));border-radius:14px;padding:11px 12px;margin-bottom:12px;">' +
+                    '<div id="cx-qa-custom-toggle" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;">' +
+                        '<span style="font-size:12.5px;font-weight:700;color:var(--text-primary);"><i class="fas fa-pen-to-square" style="color:#ff5b6a;font-size:11px;"></i> 我们的题库</span>' +
+                        '<span id="cx-qa-custom-count" style="font-size:11px;color:var(--text-secondary);"></span>' +
+                    '</div>' +
+                    '<div id="cx-qa-custom-body" style="display:none;margin-top:10px;"></div>' +
+                '</div>' +
+                '<div style="display:flex;gap:8px;margin-bottom:8px;">' +
+                    '<button id="cx-qa-start" class="cx-qa-start" style="flex:1.7;"><i class="fas fa-bolt"></i> 开始挑战</button>' +
+                    '<button id="cx-qa-ta" class="cx-qa-start" style="flex:1;background:linear-gradient(135deg,#8f5bff,#5b8fff);"><i class="fas fa-heart"></i> 让ta出题</button>' +
+                '</div>' +
+                '<div id="cx-qa-stat" style="text-align:center;font-size:11px;color:var(--text-secondary);margin-top:6px;"></div>' +
             '</div>';
         document.body.appendChild(overlay);
 
         var catsBox = overlay.querySelector('#cx-qa-cats');
         var statEl = overlay.querySelector('#cx-qa-stat');
+        var toggleEl = overlay.querySelector('#cx-qa-custom-toggle');
+        var countEl = overlay.querySelector('#cx-qa-custom-count');
+        var bodyEl = overlay.querySelector('#cx-qa-custom-body');
 
         function renderCats() {
             catsBox.innerHTML = ['全部'].concat(BANK.map(function (g) { return g.cat; })).map(function (c) {
@@ -344,17 +418,67 @@
                 chip.addEventListener('click', function () { curCat = chip.dataset.cat; renderCats(); });
             });
         }
-        function renderStat() {
-            hydrate(function () {
-                statEl.textContent = (stats.total || 0) > 0 ? ('你已经累计回答了 ' + stats.total + ' 题') : '还没有答题记录，来试试吧';
+
+        function renderCustomBody() {
+            var meCnt = customList.filter(function (c) { return c.by !== 'ta'; }).length;
+            var taCnt = customList.filter(function (c) { return c.by === 'ta'; }).length;
+            countEl.textContent = meCnt ? (meCnt + ' 道你的' + (taCnt ? ' · ' + taCnt + ' 道ta的' : '')) : (taCnt ? taCnt + ' 道ta的' : '还没有自定义题');
+            if (!listOpen) { bodyEl.style.display = 'none'; return; }
+            bodyEl.style.display = 'block';
+            var rows = customList.map(function (c, i) {
+                return '<div style="display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px dashed var(--border-color,rgba(128,128,128,.18));">' +
+                    '<span style="font-size:10px;flex-shrink:0;padding:2px 7px;border-radius:999px;' + (c.by === 'ta' ? 'background:linear-gradient(135deg,#8f5bff,#5b8fff);color:#fff;' : 'background:rgba(255,91,106,.12);color:#ff5b6a;') + 'font-weight:700;">' + (c.by === 'ta' ? 'ta' : '我') + '</span>' +
+                    '<span style="flex:1;min-width:0;font-size:12px;color:var(--text-primary);word-break:break-all;">' + esc(c.q) + '</span>' +
+                    '<button class="cx-qa-del" data-i="' + i + '" style="border:none;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:12px;flex-shrink:0;padding:2px 4px;"><i class="fas fa-trash-alt"></i></button>' +
+                '</div>';
+            }).join('');
+            bodyEl.innerHTML =
+                (customList.length
+                    ? '<div style="max-height:150px;overflow-y:auto;">' + rows + '</div>'
+                    : '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;">还没有自定义题目，在下面添加吧</div>') +
+                '<div style="display:flex;gap:6px;margin-top:9px;">' +
+                    '<input id="cx-qa-add-input" placeholder="写一道只有你们俩才懂的题…" maxlength="60" style="flex:1;min-width:0;border:1.5px solid var(--border-color,rgba(128,128,128,.3));border-radius:10px;padding:8px 10px;font-size:12px;background:var(--primary-bg);color:var(--text-primary);outline:none;">' +
+                    '<select id="cx-qa-add-cat" style="flex-shrink:0;border:1.5px solid var(--border-color,rgba(128,128,128,.3));border-radius:10px;padding:0 6px;font-size:11px;background:var(--primary-bg);color:var(--text-primary);outline:none;">' +
+                        ['自定义'].concat(BANK.map(function (g) { return g.cat; })).map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') +
+                    '</select>' +
+                    '<button id="cx-qa-add-btn" style="flex-shrink:0;border:none;border-radius:10px;padding:0 12px;background:#ff5b6a;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">添加</button>' +
+                '</div>';
+
+            bodyEl.querySelectorAll('.cx-qa-del').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    removeCustomQuestion(Number(btn.dataset.i));
+                    renderCustomBody();
+                });
+            });
+            bodyEl.querySelector('#cx-qa-add-btn').addEventListener('click', function () {
+                var input = bodyEl.querySelector('#cx-qa-add-input');
+                var cat = bodyEl.querySelector('#cx-qa-add-cat').value;
+                var r = addCustomQuestion(input.value, cat, 'me');
+                if (r === 'dup') { if (typeof showNotification === 'function') showNotification('这道题已经在题库里啦', 'info'); return; }
+                if (r === 'full') { if (typeof showNotification === 'function') showNotification('题库已满（100 道），先删一点吧', 'error'); return; }
+                if (typeof showNotification === 'function') showNotification('✦ 已加入题库，开始挑战就有机会抽到', 'info', 2000);
+                renderCustomBody();
+            });
+            bodyEl.querySelector('#cx-qa-add-input').addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') bodyEl.querySelector('#cx-qa-add-btn').click();
             });
         }
+
+        toggleEl.addEventListener('click', function () { listOpen = !listOpen; renderCustomBody(); });
         renderCats();
-        renderStat();
+        renderCustomBody();
+        hydrate(function () {
+            statEl.textContent = (stats.total || 0) > 0 ? ('你已经累计回答了 ' + stats.total + ' 题') : '还没有答题记录，来试试吧';
+            renderCustomBody();
+        });
 
         overlay.querySelector('#cx-qa-start').addEventListener('click', function () {
             closeModal(overlay);
-            askQuestion(curCat);
+            askQuestion(curCat, false);
+        });
+        overlay.querySelector('#cx-qa-ta').addEventListener('click', function () {
+            closeModal(overlay);
+            askQuestion(curCat, true);
         });
         overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(overlay); });
     }
