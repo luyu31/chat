@@ -27,6 +27,7 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
@@ -83,6 +84,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(android.os.Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // 强制浅色：避免系统/容器深色模式触发网页自动黑夜模式
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
+
         createNotificationChannel();
         ensureNotificationPermission();
 
@@ -107,6 +111,12 @@ public class MainActivity extends AppCompatActivity {
         s.setDefaultTextEncodingName("UTF-8");
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
+
+        // 禁止 WebView 强制变暗（安卓深色模式下的自动反色）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            //noinspection deprecation
+            webView.setForceDarkAllowed(false);
+        }
 
         WebView.setWebContentsDebuggingEnabled(true);
 
@@ -179,6 +189,8 @@ public class MainActivity extends AppCompatActivity {
         "(function(){\n" +
         "  if (window.__cxBridgeInjected) return;\n" +
         "  window.__cxBridgeInjected = true;\n" +
+        "  window.addEventListener('error', function(e){ try { AndroidBridge.showError(String(e.message||'未知错误')+' @ '+String(e.filename||'').split('/').pop()+':'+e.lineno); } catch(_){} });\n" +
+        "  window.addEventListener('unhandledrejection', function(e){ try { var r=e.reason; AndroidBridge.showError('Promise: '+String(r&&(r.message||r)).substring(0,120)); } catch(_){} });\n" +
         "  function blobToBase64(blob, cb){\n" +
         "    var r=new FileReader();\n" +
         "    r.onload=function(){var s=r.result;cb(s.substring(s.indexOf(',')+1));};\n" +
@@ -284,6 +296,11 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception e) {
                 show("导出失败：" + e.getMessage());
             }
+        }
+
+        @JavascriptInterface
+        public void showError(String msg) {
+            show("脚本错误: " + msg);
         }
 
         @JavascriptInterface
