@@ -180,7 +180,7 @@
 
         #splash-declaration {
             position: fixed;
-            inset: 0;
+            top: 0; right: 0; bottom: 0; left: 0;
             z-index: 999999;
             background: #06060e;
             display: flex;
@@ -197,7 +197,7 @@
         }
         .splash-bg-stars {
             position: absolute;
-            inset: 0;
+            top: 0; right: 0; bottom: 0; left: 0;
             pointer-events: none;
         }
         .splash-bg-stars span {
@@ -305,7 +305,7 @@
         }
         .splash-slide {
             position: absolute;
-            inset: 0;
+            top: 0; right: 0; bottom: 0; left: 0;
             opacity: 0;
             transform: translateX(28px);
             transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.4,0,0.2,1);
@@ -1106,7 +1106,7 @@
         .message-reaction-badge::before {
             content: '';
             position: absolute;
-            inset: -6px;
+            top: -6px; right: -6px; bottom: -6px; left: -6px;
         }
         /* 娑撳秴鍟€閻拷"娑撯偓閺壜ょ珶鐠愬娼冪憴鎺嬧偓浣哥窔閸欙缚绔存潏褰掓毐"閻ㄥ嫭鏌熷蹇ョ礄閸愬懎顔愰梹澶哥啊娴兼碍鏆ｆ稉顏勭窔娑撯偓娓氀勭拨閸戝搫鐫嗛獮鏇礆閿涳拷
            閺€瑙勫灇鐠佲晜鐖ｇ粵鍓ф畱娑擃厼绺鹃悙瑙勵劀婵傝棄宕遍崷銊︾毜濞夛紕娈戝锔跨瑓鐟欙拷/閸欏厖绗呯憴鎺炵礉閸愬懎顔愰崣姗€鏆遍惃鍕閸婃瑦妲告稉銈堢珶鐎靛湱袨閸︽澘绶氭径鏍ㄥ⒖閿涳拷
@@ -1167,7 +1167,7 @@
         /* 濠娾€崇潌妞嬫ǹ銆冮幆鍛櫏閺嬫粣绱板鏃傛倖/缁€鑹板С/閻戠喕濮虫稉澶岊潚妞嬪孩鐗搁敍宀勬閺堢儤濞婃稉鈧粔宥嗘尡閺€鎾呯幢缁绢垰鐫嶇粈鐑樿癁鐏炲偊绱濇稉宥嗗閹搭亞鍋ｉ崙锟� */
         .reaction-burst-container {
             position: fixed;
-            inset: 0;
+            top: 0; right: 0; bottom: 0; left: 0;
             pointer-events: none;
             z-index: 999999;
             overflow: hidden;
@@ -1963,7 +1963,7 @@
         }
 
         #daily-greeting-modal {
-            position: fixed; inset: 0; z-index: 9998;
+            position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 9998;
             background: rgba(0,0,0,0.78);
             backdrop-filter: blur(28px) saturate(1.6);
             -webkit-backdrop-filter: blur(28px) saturate(1.6);
@@ -1998,7 +1998,7 @@
         }
         .dg-header-band::before {
             content: '';
-            position: absolute; inset: 0; z-index: 0;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
             background:
                 radial-gradient(ellipse at 85% 8%, rgba(255,255,255,0.28) 0%, transparent 48%),
                 radial-gradient(ellipse at 10% 95%, rgba(0,0,0,0.2) 0%, transparent 42%),
@@ -2019,7 +2019,7 @@
         }
 
         .dg-header-band-shimmer {
-            position: absolute; inset: 0; z-index: 1;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 1;
             background: linear-gradient(110deg, transparent 25%, rgba(255,255,255,0.18) 50%, transparent 75%);
             animation: shimmerSlide 4s ease-in-out infinite;
         }
@@ -2271,12 +2271,12 @@
         }
         .daily-greeting-close-btn::before {
             content: '';
-            position: absolute; inset: 0;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0;
             background: linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 55%);
         }
         .daily-greeting-close-btn::after {
             content: '';
-            position: absolute; inset: 0;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0;
             background: linear-gradient(110deg, transparent 25%, rgba(255,255,255,0.12) 50%, transparent 75%);
             animation: btnShimmer 3s ease-in-out infinite 1.5s;
         }
@@ -2291,7 +2291,7 @@
         .daily-greeting-close-btn:active { transform: translateY(1px); }
 
         .dg-card-bg-layer {
-            position: absolute; inset: 0; z-index: 0;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0;
             background-size: cover; background-position: center; background-repeat: no-repeat;
             border-radius: inherit;
             pointer-events: none;
@@ -2300,13 +2300,13 @@
         .daily-greeting-card { position: relative; overflow: hidden; }
 
         .dg-header-band-bg {
-            position: absolute; inset: 0;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0;
             background-size: cover; background-position: center;
             background-repeat: no-repeat;
             z-index: 0;
         }
         .dg-header-band-overlay {
-            position: absolute; inset: 0;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0;
             background: linear-gradient(145deg, var(--accent-color) 0%, rgba(var(--accent-color-rgb),0.72) 100%);
             z-index: 1;
             transition: opacity 0.3s;
@@ -2391,7 +2391,7 @@
             color: #fff !important;
         }
         .dg-card-tint-overlay {
-            position: absolute; inset: 0; z-index: 1;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 1;
             background: rgba(0,0,0,0);
             border-radius: inherit;
             pointer-events: none;
@@ -2539,7 +2539,7 @@
         }
         .env-header-flap::before {
             content: '';
-            position: absolute; inset: 0;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0;
             background: linear-gradient(160deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.04) 55%, transparent 100%);
             pointer-events: none;
         }
@@ -2669,7 +2669,7 @@
         }
         .env-compose-paper::after {
             content: '';
-            position: absolute; inset: 0;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0;
             background: repeating-linear-gradient(
                 transparent,
                 transparent 28px,
@@ -2928,7 +2928,7 @@
         #ti-settings-modal {
             display: none;
             position: fixed;
-            inset: 0;
+            top: 0; right: 0; bottom: 0; left: 0;
             z-index: 99200;
             background: rgba(0,0,0,0.50);
             backdrop-filter: blur(10px);
@@ -3376,7 +3376,7 @@
         }
 
         .welcome-bg-gradient {
-            position: absolute; inset: 0;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0;
             background:
                 radial-gradient(ellipse 80% 60% at 20% 20%, rgba(var(--accent-color-rgb), 0.22) 0%, transparent 55%),
                 radial-gradient(ellipse 60% 50% at 80% 80%, rgba(var(--accent-color-rgb), 0.16) 0%, transparent 52%),
@@ -3391,7 +3391,7 @@
 
         .welcome-animation::before {
             content: '';
-            position: absolute; inset: 0; z-index: 2; pointer-events: none;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 2; pointer-events: none;
             background:
                 radial-gradient(ellipse 90% 90% at 50% 50%, transparent 40%, rgba(0,0,0,0.55) 100%);
         }
@@ -3401,7 +3401,7 @@
         }
         .welcome-animation::after {
             content: '';
-            position: absolute; inset: 0; z-index: 1; pointer-events: none;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 1; pointer-events: none;
             background-image:
                 linear-gradient(rgba(var(--accent-color-rgb),0.03) 1px, transparent 1px),
                 linear-gradient(90deg, rgba(var(--accent-color-rgb),0.03) 1px, transparent 1px);
@@ -3414,7 +3414,7 @@
         }
 
         .welcome-particles {
-            position: absolute; inset: 0;
+            position: absolute; top: 0; right: 0; bottom: 0; left: 0;
             pointer-events: none; overflow: hidden; z-index: 3;
         }
         .wp {
@@ -3519,7 +3519,7 @@
 
         .logo-tech-container::before {
             content: '';
-            position: absolute; inset: -30px;
+            position: absolute; top: -30px; right: -30px; bottom: -30px; left: -30px;
             border-radius: 50%;
             background: radial-gradient(circle, rgba(var(--accent-color-rgb),0.3) 0%, transparent 70%);
             animation: ambientGlow 3.5s ease-in-out infinite;
@@ -3559,14 +3559,14 @@
         }
         .logo-circle-outer::before {
             content: '';
-            position: absolute; inset: -22px;
+            position: absolute; top: -22px; right: -22px; bottom: -22px; left: -22px;
             border-radius: 50%;
             border: 1px solid rgba(var(--accent-color-rgb), 0.15);
             animation: pulseRing 3.5s ease-in-out infinite 0.9s;
         }
         .logo-circle-outer::after {
             content: '';
-            position: absolute; inset: -42px;
+            position: absolute; top: -42px; right: -42px; bottom: -42px; left: -42px;
             border-radius: 50%;
             border: 1px solid rgba(var(--accent-color-rgb), 0.07);
             animation: pulseRing 3.5s ease-in-out infinite 1.6s;
@@ -3701,7 +3701,7 @@
         }
         .loader-tech::before {
             content: '';
-            position: absolute; inset: -1px;
+            position: absolute; top: -1px; right: -1px; bottom: -1px; left: -1px;
             border-radius: 2px;
             background: transparent;
             box-shadow: 0 0 12px rgba(var(--accent-color-rgb), 0.15);
@@ -5585,7 +5585,7 @@
 
         .ann-header-card-bg {
     position: absolute;
-    inset: 0;
+    top: 0; right: 0; bottom: 0; left: 0;
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -5594,7 +5594,7 @@
 
         .ann-header-card-overlay {
     position: absolute;
-    inset: 0;
+    top: 0; right: 0; bottom: 0; left: 0;
     background: linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.5) 100%);
     pointer-events: none;
         }
@@ -9569,7 +9569,7 @@
         .picker-card::before {
     content: '';
     position: absolute;
-    inset: 0;
+    top: 0; right: 0; bottom: 0; left: 0;
     background: linear-gradient(135deg, rgba(var(--accent-color-rgb),0.06) 0%, transparent 60%);
     border-radius: inherit;
         }
@@ -9683,7 +9683,7 @@
         .modal-btn::after, .settings-item::after, .setting-pill-row::after {
     content: '';
     position: absolute;
-    inset: 0;
+    top: 0; right: 0; bottom: 0; left: 0;
     background: radial-gradient(circle, rgba(var(--accent-color-rgb),0.2) 0%, transparent 70%);
     opacity: 0;
     transform: scale(0);
@@ -9774,7 +9774,7 @@
         .avatar-container::after {
             content: '';
             position: absolute;
-            inset: -2px;
+            top: -2px; right: -2px; bottom: -2px; left: -2px;
             border-radius: 50%;
             background: linear-gradient(135deg, var(--accent-color), rgba(var(--accent-color-rgb),0.3));
             z-index: -1;
@@ -10186,7 +10186,7 @@
         .dm-tile::after {
             content: '';
             position: absolute;
-            inset: 0;
+            top: 0; right: 0; bottom: 0; left: 0;
             border-radius: 18px;
             background: rgba(var(--accent-color-rgb), 0);
             transition: background 0.18s;
@@ -10287,7 +10287,7 @@
         .dm-toggle-slider {
             position: absolute;
             cursor: pointer;
-            inset: 0;
+            top: 0; right: 0; bottom: 0; left: 0;
             background: var(--border-color);
             border-radius: 28px;
             transition: 0.28s;
@@ -10347,7 +10347,7 @@
 
         .dm-action-drawer {
             position: fixed;
-            inset: 0;
+            top: 0; right: 0; bottom: 0; left: 0;
             z-index: 9999;
             display: flex;
             flex-direction: column;
@@ -10362,7 +10362,7 @@
         }
         .dm-drawer-backdrop {
             position: absolute;
-            inset: 0;
+            top: 0; right: 0; bottom: 0; left: 0;
             background: rgba(0,0,0,0.42);
             backdrop-filter: blur(3px);
         }
@@ -11875,7 +11875,7 @@ body #user-sticker-picker .empty-sticker-tip {
 
 /* 閳光偓閳光偓 閸忋劌鐫嗘い鐢告桨閸忋儱婧€ 閳光偓閳光偓 */
 #couple-space-page {
-    position: fixed; inset: 0; z-index: 1500;
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 1500;
     display: none; flex-direction: column;
     background: var(--primary-bg);
     opacity: 0;
@@ -11985,7 +11985,7 @@ body #user-sticker-picker .empty-sticker-tip {
     flex: 1; overflow: hidden; position: relative;
 }
 .cs-content .cs-panel {
-    position: absolute; inset: 0;
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0;
     overflow-y: auto; -webkit-overflow-scrolling: touch;
     display: none; padding: 0 16px;
 }
@@ -12101,7 +12101,7 @@ body #user-sticker-picker .empty-sticker-tip {
 
 /* 閳光偓閳光偓 闁喚鍍� 閳光偓閳光偓 */
 #cs-overlay {
-    position: fixed; inset: 0; z-index: 1800;
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 1800;
     background: rgba(0,0,0,0); pointer-events: none;
     transition: background 0.3s;
 }
@@ -12312,7 +12312,7 @@ body #user-sticker-picker .empty-sticker-tip {
     color: rgba(255,255,255,0.4); font-size: 32px;
 }
 .cs-video-play-btn {
-    position: absolute; inset: 0; display: flex;
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex;
     align-items: center; justify-content: center;
 }
 .cs-video-play-btn i {
@@ -12323,7 +12323,7 @@ body #user-sticker-picker .empty-sticker-tip {
 }
 .cs-prev-video { position: relative; }
 .cs-prev-video-icon {
-    position: absolute; inset: 0; display: flex;
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex;
     align-items: center; justify-content: center;
     background: rgba(0,0,0,0.3); border-radius: 8px;
 }
@@ -12450,7 +12450,7 @@ body #user-sticker-picker .empty-sticker-tip {
 .al-photo-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .al-photo-cell:active { opacity: 0.75; }
 .al-photo-cell.selected::after {
-    content: ''; position: absolute; inset: 0;
+    content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
     background: rgba(var(--accent-color-rgb),.35);
 }
 .al-photo-cell.selected::before {
@@ -12466,7 +12466,7 @@ body #user-sticker-picker .empty-sticker-tip {
     color: var(--text-secondary); font-size: 20px;
 }
 .al-cell-play {
-    position: absolute; inset: 0; display: flex;
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex;
     align-items: center; justify-content: center;
     background: rgba(0,0,0,0.25);
 }
@@ -12515,7 +12515,7 @@ body #user-sticker-picker .empty-sticker-tip {
     position: relative; cursor: pointer;
 }
 .al-detail-play {
-    position: absolute; inset: 0; display: flex;
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex;
     align-items: center; justify-content: center;
 }
 .al-detail-play i {
@@ -12556,7 +12556,7 @@ body #user-sticker-picker .empty-sticker-tip {
 .al-strip-thumb.active { opacity: 1; border-color: #fff; }
 .al-strip-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .al-strip-play {
-    position: absolute; inset: 0; display: flex;
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex;
     align-items: center; justify-content: center;
     background: rgba(0,0,0,0.3);
 }
@@ -12609,7 +12609,7 @@ body #user-sticker-picker .empty-sticker-tip {
 
 /* 閳光偓閳光偓 閻╃ǹ鍞介弴鏉戭樋閹垮秳缍� Action Sheet 閳光偓閳光偓 */
 .al-action-mask {
-    position: absolute; inset: 0;
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0;
     background: rgba(0,0,0,0.4);
 }
 .al-action-body {
@@ -12686,7 +12686,7 @@ body #user-sticker-picker .empty-sticker-tip {
 
 /* 閸ョ偞鏁圭粩锟� bottom-sheet overlay */
 .cs-mood-trash-overlay {
-    position: fixed; inset: 0;
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0;
     background: rgba(0,0,0,0.45);
     z-index: 3000;
     display: flex; align-items: flex-end;
@@ -13030,12 +13030,12 @@ body #user-sticker-picker .empty-sticker-tip {
 }
 .ann-detail-card-overlay {
     position: absolute;
-    inset: 0;
+    top: 0; right: 0; bottom: 0; left: 0;
     background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.25) 100%);
 }
 .ann-detail-card-content {
     position: absolute;
-    inset: 0;
+    top: 0; right: 0; bottom: 0; left: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -13527,7 +13527,7 @@ body #user-sticker-picker .empty-sticker-tip {
 
 /* 閳光偓閳光偓 缂佸繑婀￠崢鍡楀蕉閸忋劌鐫嗘い鐢告桨閿涘牓娅旀导瀛樻）鐠佷即顥撻弽纭风礆 閳光偓閳光偓 */
 .pd-history-page {
-    position: fixed; inset: 0; z-index: 2200;
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 2200;
     background: var(--primary-bg);
     display: flex; flex-direction: column;
     transform: translateY(100%);

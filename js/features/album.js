@@ -602,7 +602,7 @@ window._alAlbumMore = function(e, albumId) {
 
     const sheet = document.createElement('div');
     sheet.id = 'al-action-sheet';
-    sheet.style.cssText = 'position:fixed;inset:0;z-index:8000;';
+    sheet.style.cssText = 'position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:8000;';
     sheet.innerHTML = `
         <div class="al-action-mask" onclick="document.getElementById('al-action-sheet').remove()"></div>
         <div class="al-action-body">
@@ -687,7 +687,7 @@ function _alShowConfirm(title, desc, confirmText, isDanger, onConfirm) {
     const old = document.getElementById('al-confirm-sheet'); if (old) old.remove();
     const sheet = document.createElement('div');
     sheet.id = 'al-confirm-sheet';
-    sheet.style.cssText = 'position:fixed;inset:0;z-index:8500;';
+    sheet.style.cssText = 'position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:8500;';
     sheet.innerHTML = `
         <div class="al-action-mask" onclick="document.getElementById('al-confirm-sheet').remove()"></div>
         <div class="al-action-body">

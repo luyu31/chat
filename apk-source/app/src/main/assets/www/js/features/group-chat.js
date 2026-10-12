@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', function() {
 if (exportAllBtn) {
         exportAllBtn.addEventListener('click', async function() {
             const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
+            overlay.style.cssText = 'position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
             overlay.innerHTML = `
                 <div style="background:var(--secondary-bg);border-radius:20px;padding:24px;width:88%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,0.4);animation:modalContentSlideIn 0.3s ease forwards;">
                     <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:4px;display:flex;align-items:center;gap:8px;">

@@ -166,7 +166,7 @@
         if (m) return m;
         m = document.createElement('div');
         m.id = MODAL_ID;
-        m.style.cssText = 'display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+        m.style.cssText = 'display:none;position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:10000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
         m.innerHTML =
             '<div class="modal-content" style="max-width:460px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--secondary-bg,#fff);border-radius:16px;overflow:hidden;opacity:1;transform:none;">' +
                 '<div class="modal-title" style="flex-shrink:0;padding:16px 20px;">' +
@@ -385,7 +385,7 @@
         // 创建进度弹窗
         var overlay = document.createElement('div');
         overlay.id = 'cs-migrate-progress';
-        overlay.style.cssText = 'display:flex;position:fixed;inset:0;z-index:10003;background:rgba(0,0,0,0.55);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+        overlay.style.cssText = 'display:flex;position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:10003;background:rgba(0,0,0,0.55);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
         overlay.innerHTML =
             '<div style="max-width:420px;width:100%;background:var(--secondary-bg,#fff);border-radius:16px;padding:24px;">' +
                 '<div style="font-size:16px;font-weight:600;color:var(--text-color,#333);margin-bottom:16px;">' +
@@ -527,7 +527,7 @@
 
         var m = document.createElement('div');
         m.id = 'cs-restore-picker';
-        m.style.cssText = 'display:flex;position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,0.55);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+        m.style.cssText = 'display:flex;position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:10002;background:rgba(0,0,0,0.55);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
 
         var itemsHtml = list.map(function (s, idx) {
             var name = s.name || '未命名梦角';
@@ -631,7 +631,7 @@
         if (m) return m;
         m = document.createElement('div');
         m.id = HELP_MODAL_ID;
-        m.style.cssText = 'display:none;position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+        m.style.cssText = 'display:none;position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:10001;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
         m.innerHTML =
             '<div class="modal-content" style="max-width:480px;width:100%;max-height:88vh;display:flex;flex-direction:column;background:var(--secondary-bg,#fff);border-radius:16px;overflow:hidden;opacity:1;transform:none;">' +
                 '<div class="modal-title" style="flex-shrink:0;padding:16px 20px;">' +

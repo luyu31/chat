@@ -10,7 +10,7 @@ window._registerPartnerMessageListener = window._registerPartnerMessageListener 
 
         function clearAllAppData() {
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
+    overlay.style.cssText = 'position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:99999;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
     overlay.innerHTML = `
         <div style="background:var(--secondary-bg);border-radius:20px;padding:24px;width:88%;max-width:340px;box-shadow:0 20px 60px rgba(0,0,0,0.4);animation:modalContentSlideIn 0.3s ease forwards;">
             <div style="text-align:center;margin-bottom:20px;">
@@ -1084,7 +1084,7 @@ function manageAutoSendTimer() {
                 }
             }
 
-            DOMElements.html.setAttribute('data-theme', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            DOMElements.html.setAttribute('data-theme', 'light'); // 强制浅色：容器/系统深色模式会导致部分页面显示异常
             DOMElements.partner.name.textContent = settings.partnerName;
             DOMElements.me.name.textContent = settings.myName;
             DOMElements.partner.status.textContent = settings.partnerStatus || '在线';
@@ -2906,7 +2906,7 @@ function showModal(modalElement, focusElement = null) {
                 downloadHref = base64;
             }
             const modal = document.createElement('div');
-            modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;touch-action:pinch-zoom;';
+            modal.style.cssText = 'position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:99999;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;touch-action:pinch-zoom;';
             modal.innerHTML = `
                 <div style="position:relative;max-width:95vw;max-height:92vh;display:flex;align-items:center;justify-content:center;">
                     <img src="${displaySrc}" style="max-width:95vw;max-height:88vh;object-fit:contain;display:block;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.6);" draggable="false">
@@ -2935,7 +2935,7 @@ function showModal(modalElement, focusElement = null) {
             } catch(e) { _diaryForExport = []; _moodForExport = {}; }
 
             const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
+            overlay.style.cssText = 'position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
             overlay.innerHTML = `
                 <div style="background:var(--secondary-bg);border-radius:20px;padding:24px;width:88%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.4);animation:modalContentSlideIn 0.3s ease forwards;">
                     <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:6px;display:flex;align-items:center;gap:8px;">
@@ -3206,7 +3206,7 @@ function showModal(modalElement, focusElement = null) {
                     }
 
                     const overlay = document.createElement('div');
-                    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
+                    overlay.style.cssText = 'position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
 
                     const makeRow = (id, icon, label, sublabel, available, checked) => {
                         if (!available) return '';
@@ -3442,8 +3442,9 @@ window.initializeSession = async function() {
 }
 
 // 监听系统昼夜变化，实时更新 data-theme
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+// （APK/容器环境下强制浅色，不再跟随系统，避免深色模式下部分页面显示异常）
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    document.documentElement.setAttribute('data-theme', 'light');
 });
 
 // 注：往上/往下翻页加载更多消息的触发，只靠 listeners.js 里那个绑定在真正可滚动容器（chat-container）

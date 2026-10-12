@@ -1350,7 +1350,7 @@
     // 兜底一个一模一样效果的浮层，不至于直接报错
     function _bankFallbackOverlay() {
         var overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;';
+        overlay.style.cssText = 'position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;';
         return overlay;
     }
 

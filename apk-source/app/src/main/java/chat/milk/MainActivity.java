@@ -53,6 +53,7 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private ValueCallback<Uri[]> filePathCallback;
+    private boolean uaToastShown = false;
 
     private final ActivityResultLauncher<Intent> fileChooserLauncher =
             registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
@@ -131,6 +132,16 @@ public class MainActivity extends AppCompatActivity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 injectBridges(view);
+                // 诊断：提示容器 WebView 内核版本（每次进程只提示一次）
+                view.evaluateJavascript("navigator.userAgent", value -> {
+                    if (uaToastShown) return;
+                    uaToastShown = true;
+                    java.util.regex.Matcher m = java.util.regex.Pattern
+                            .compile("Chrome/(\\d+)")
+                            .matcher(value == null ? "" : value);
+                    String v = m.find() ? m.group(1) : "未知";
+                    Toast.makeText(MainActivity.this, "WebView 内核: Chrome " + v, Toast.LENGTH_LONG).show();
+                });
             }
         });
 

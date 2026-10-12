@@ -64,7 +64,7 @@
 
         var wrap = document.createElement('div');
         wrap.id = 'poke-sym-modal';
-        wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);';
+        wrap.style.cssText = 'position:fixed;top: 0; right: 0; bottom: 0; left: 0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);';
         wrap.innerHTML = [
             '<div style="background:var(--primary-bg);border-radius:20px;padding:22px 20px;width:min(340px,92vw);box-shadow:0 20px 60px rgba(0,0,0,0.28);border:1px solid var(--border-color);">',
               '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">',
