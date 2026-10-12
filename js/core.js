@@ -1325,10 +1325,16 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     }
 
     const isRedPacket = msg.type === 'redpacket';
+    const isLocationMsg = msg.type === 'location';
+    const isQaCard = msg.type === 'qa-question';
     const isImageOnly = !msg.text && !!msg.image;
     let content = msg.text ? `<div>${msg.text.replace(/\n/g, '<br>')}</div>` : '';
     if (isRedPacket) {
         content = (window.RedPacket && typeof window.RedPacket.renderBubbleHTML === 'function') ? window.RedPacket.renderBubbleHTML(msg) : '';
+    } else if (isLocationMsg) {
+        content = (window.LocationMsg && typeof window.LocationMsg.renderBubbleHTML === 'function') ? window.LocationMsg.renderBubbleHTML(msg) : '';
+    } else if (isQaCard) {
+        content = (window.QuickQA && typeof window.QuickQA.renderCardHTML === 'function') ? window.QuickQA.renderCardHTML(msg) : '';
     } else if (msg.image) {
         // 阶段三B：识别 oss:// 走懒加载；识别 pending:// 走本地 base64 + 上传中角标
         const isCloudImg = typeof msg.image === 'string' && msg.image.indexOf('oss://') === 0;
@@ -1720,6 +1726,8 @@ window._quotePreviewLabel = function (q) {
         ? (messages.find(function (m) { return String(m.id) === String(q.id); }) || q)
         : q;
     if (orig.type === 'redpacket') return '[红包]';
+    if (orig.type === 'location') return '[位置]';
+    if (orig.type === 'qa-question') return '[快问快答]';
     if (orig.voice) return '语音 ' + (orig.voice.duration || 0) + '"';
     if (orig.image) {
         // 新消息发出时带 isSticker 标记，最准；老消息没有标记，就按下面的规则判断

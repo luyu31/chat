@@ -80,10 +80,22 @@ public class MainActivity extends AppCompatActivity {
                 // 结果由 JS 侧的 Notification.requestPermission 覆盖层模拟为 granted
             });
 
+    // 定位权限（网页 geolocation 需要；结果无需回调，JS 侧重试即可）
+    private final ActivityResultLauncher<String> locationPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> { });
+
+    // 静态桥接类里要操作 Activity（申请权限/打开外部链接），持一个弱引用
+    private static java.lang.ref.WeakReference<MainActivity> activityRef = new java.lang.ref.WeakReference<>(null);
+
+    static MainActivity peekActivity() { return activityRef.get(); }
+
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(android.os.Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // 供静态桥接类取用当前 Activity
+        activityRef = new java.lang.ref.WeakReference<>(this);
 
         // 强制浅色：避免系统/容器深色模式触发网页自动黑夜模式
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
@@ -149,6 +161,12 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
                 runOnUiThread(() -> request.grant(request.getResources()));
+            }
+
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, android.webkit.GeolocationPermissions.Callback callback) {
+                // 网页申请定位时直接放行；系统级定位权限由原生运行时权限控制（JS 侧会先调 requestLocationPermission）
+                callback.invoke(origin, true, false);
             }
 
             @Override
@@ -312,6 +330,24 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void showError(String msg) {
             show("脚本错误: " + msg);
+        }
+
+        @JavascriptInterface
+        public void requestLocationPermission() {
+            final MainActivity act = peekActivity();
+            if (act == null) return;
+            act.runOnUiThread(() -> act.locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION));
+        }
+
+        @JavascriptInterface
+        public void openUrl(String url) {
+            try {
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(i);
+            } catch (Exception e) {
+                show("无法打开链接");
+            }
         }
 
         @JavascriptInterface

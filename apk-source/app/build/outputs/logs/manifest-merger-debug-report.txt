@@ -1,20 +1,20 @@
 -- Merging decision tree log ---
 provider#androidx.core.content.FileProvider
-INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml:38:9-46:20
+INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml:40:9-48:20
 	android:grantUriPermissions
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:42:13-47
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:44:13-47
 	android:authorities
 		INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:40:13-64
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:42:13-64
 	android:exported
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:41:13-37
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:43:13-37
 	android:name
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:39:13-62
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:41:13-62
 manifest
-ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:2:1-48:12
-INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml:2:1-48:12
-INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml:2:1-48:12
-INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml:2:1-48:12
+ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:2:1-50:12
+INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml:2:1-50:12
+INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml:2:1-50:12
+INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml:2:1-50:12
 MERGED from [androidx.appcompat:appcompat-resources:1.6.1] /root/.gradle/caches/8.14.5/transforms/a52437c1e21e02198ecf7a8b7bc70d8d/transformed/appcompat-resources-1.6.1/AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.appcompat:appcompat:1.6.1] /root/.gradle/caches/8.14.5/transforms/2d7746120cf4c9070b8e2241586934ed/transformed/appcompat-1.6.1/AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.webkit:webkit:1.9.0] /root/.gradle/caches/8.14.5/transforms/3c18db79e6a708d538330cc063d0515b/transformed/webkit-1.9.0/AndroidManifest.xml:2:1-7:12
@@ -76,21 +76,29 @@ uses-permission#android.permission.CAMERA
 ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:9:5-65
 	android:name
 		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:9:22-62
+uses-permission#android.permission.ACCESS_FINE_LOCATION
+ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:10:5-79
+	android:name
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:10:22-76
+uses-permission#android.permission.ACCESS_COARSE_LOCATION
+ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:11:5-81
+	android:name
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:11:22-78
 uses-permission#android.permission.WRITE_EXTERNAL_STORAGE
-ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:10:5-11:38
+ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:12:5-13:38
 	android:maxSdkVersion
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:11:9-35
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:13:9-35
 	android:name
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:10:22-78
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:12:22-78
 uses-feature#android.hardware.camera
-ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:13:5-85
+ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:15:5-85
 	android:required
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:13:58-82
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:15:58-82
 	android:name
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:13:19-57
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:15:19-57
 application
-ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:15:5-47:19
-INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml:15:5-47:19
+ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:17:5-49:19
+INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml:17:5-49:19
 MERGED from [androidx.emoji2:emoji2:1.2.0] /root/.gradle/caches/8.14.5/transforms/e7db2e3fbe3e11c43a1001ed8140c836/transformed/emoji2-1.2.0/AndroidManifest.xml:23:5-33:19
 MERGED from [androidx.emoji2:emoji2:1.2.0] /root/.gradle/caches/8.14.5/transforms/e7db2e3fbe3e11c43a1001ed8140c836/transformed/emoji2-1.2.0/AndroidManifest.xml:23:5-33:19
 MERGED from [androidx.core:core:1.9.0] /root/.gradle/caches/8.14.5/transforms/431a9430da30728d0f22f7643e693d2a/transformed/core-1.9.0/AndroidManifest.xml:28:5-89
@@ -106,51 +114,51 @@ MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /root/.grad
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.9.0] /root/.gradle/caches/8.14.5/transforms/431a9430da30728d0f22f7643e693d2a/transformed/core-1.9.0/AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:20:9-35
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:22:9-35
 	android:label
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:19:9-41
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:21:9-41
 	android:hardwareAccelerated
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:22:9-43
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:24:9-43
 	android:roundIcon
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:18:9-54
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:20:9-54
 	android:icon
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:17:9-43
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:19:9-43
 	android:allowBackup
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:16:9-35
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:18:9-35
 	android:theme
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:23:9-46
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:25:9-46
 	android:networkSecurityConfig
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:24:9-69
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:26:9-69
 	android:usesCleartextTraffic
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:21:9-44
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:23:9-44
 activity#chat.milk.MainActivity
-ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:26:9-36:20
+ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:28:9-38:20
 	android:launchMode
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:31:13-43
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:33:13-43
 	android:windowSoftInputMode
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:30:13-55
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:32:13-55
 	android:exported
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:28:13-36
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:30:13-36
 	android:configChanges
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:29:13-136
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:31:13-136
 	android:name
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:27:13-41
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:29:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:32:13-35:29
+ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:34:13-37:29
 action#android.intent.action.MAIN
-ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:33:17-69
+ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:35:17-69
 	android:name
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:33:25-66
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:35:25-66
 category#android.intent.category.LAUNCHER
-ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:34:17-77
+ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:36:17-77
 	android:name
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:34:27-74
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:36:27-74
 meta-data#android.support.FILE_PROVIDER_PATHS
-ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:43:13-45:54
+ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:45:13-47:54
 	android:resource
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:45:17-51
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:47:17-51
 	android:name
-		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:44:17-67
+		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:46:17-67
 uses-sdk
 INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from /workspace/apk-source/app/src/main/AndroidManifest.xml
