@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.chuanxun.app"
+    package="chat.milk"
     android:versionCode="20261012"
     android:versionName="1.1" >
 
@@ -23,10 +23,10 @@
         android:required="false" />
 
     <permission
-        android:name="com.chuanxun.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        android:name="chat.milk.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         android:protectionLevel="signature" />
 
-    <uses-permission android:name="com.chuanxun.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+    <uses-permission android:name="chat.milk.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
 
     <application
         android:allowBackup="true"
@@ -42,7 +42,7 @@
         android:theme="@style/Theme.ChuanXun"
         android:usesCleartextTraffic="true" >
         <activity
-            android:name="com.chuanxun.app.MainActivity"
+            android:name="chat.milk.MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode|keyboard|navigation|smallestScreenSize|layoutDirection"
             android:exported="true"
             android:launchMode="singleTop"
@@ -56,7 +56,7 @@
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.chuanxun.app.fileprovider"
+            android:authorities="chat.milk.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true" >
             <meta-data
@@ -65,7 +65,7 @@
         </provider>
         <provider
             android:name="androidx.startup.InitializationProvider"
-            android:authorities="com.chuanxun.app.androidx-startup"
+            android:authorities="chat.milk.androidx-startup"
             android:exported="false" >
             <meta-data
                 android:name="androidx.emoji2.text.EmojiCompatInitializer"

@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace 'com.chuanxun.app'
+    namespace 'chat.milk'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.chuanxun.app"
+        applicationId "chat.milk"
         minSdk 26
         targetSdk 34
         versionCode 20261012

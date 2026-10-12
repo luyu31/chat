@@ -1,4 +1,4 @@
-package com.chuanxun.app;
+package chat.milk;
 
 import android.annotation.SuppressLint;
 import android.app.NotificationChannel;

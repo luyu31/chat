@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.chuanxun.app-mergeDebugResources-19:/values-ro/values-ro.xml",
+            "outputFile": "chat.milk.app-mergeDebugResources-19:/values-ro/values-ro.xml",
             "map": [
                 {
                     "source": "/root/.gradle/caches/8.14.5/transforms/431a9430da30728d0f22f7643e693d2a/transformed/core-1.9.0/res/values-ro/values-ro.xml",

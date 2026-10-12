@@ -123,7 +123,7 @@ MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /root/.grad
 		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:24:9-69
 	android:usesCleartextTraffic
 		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:21:9-44
-activity#com.chuanxun.app.MainActivity
+activity#chat.milk.MainActivity
 ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:26:9-36:20
 	android:launchMode
 		ADDED from /workspace/apk-source/app/src/main/AndroidManifest.xml:31:13-43
@@ -243,7 +243,7 @@ ADDED from [androidx.core:core:1.9.0] /root/.gradle/caches/8.14.5/transforms/431
 		ADDED from [androidx.core:core:1.9.0] /root/.gradle/caches/8.14.5/transforms/431a9430da30728d0f22f7643e693d2a/transformed/core-1.9.0/AndroidManifest.xml:24:9-44
 	android:name
 		ADDED from [androidx.core:core:1.9.0] /root/.gradle/caches/8.14.5/transforms/431a9430da30728d0f22f7643e693d2a/transformed/core-1.9.0/AndroidManifest.xml:23:9-81
-permission#com.chuanxun.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+permission#chat.milk.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ADDED from [androidx.core:core:1.9.0] /root/.gradle/caches/8.14.5/transforms/431a9430da30728d0f22f7643e693d2a/transformed/core-1.9.0/AndroidManifest.xml:22:5-24:47
 	android:protectionLevel
 		ADDED from [androidx.core:core:1.9.0] /root/.gradle/caches/8.14.5/transforms/431a9430da30728d0f22f7643e693d2a/transformed/core-1.9.0/AndroidManifest.xml:24:9-44
@@ -253,7 +253,7 @@ uses-permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ADDED from [androidx.core:core:1.9.0] /root/.gradle/caches/8.14.5/transforms/431a9430da30728d0f22f7643e693d2a/transformed/core-1.9.0/AndroidManifest.xml:26:5-97
 	android:name
 		ADDED from [androidx.core:core:1.9.0] /root/.gradle/caches/8.14.5/transforms/431a9430da30728d0f22f7643e693d2a/transformed/core-1.9.0/AndroidManifest.xml:26:22-94
-uses-permission#com.chuanxun.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+uses-permission#chat.milk.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ADDED from [androidx.core:core:1.9.0] /root/.gradle/caches/8.14.5/transforms/431a9430da30728d0f22f7643e693d2a/transformed/core-1.9.0/AndroidManifest.xml:26:5-97
 	android:name
 		ADDED from [androidx.core:core:1.9.0] /root/.gradle/caches/8.14.5/transforms/431a9430da30728d0f22f7643e693d2a/transformed/core-1.9.0/AndroidManifest.xml:26:22-94

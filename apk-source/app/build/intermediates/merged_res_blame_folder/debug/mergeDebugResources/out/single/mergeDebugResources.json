@@ -1,22 +1,22 @@
 [
     {
-        "merged": "com.chuanxun.app-debug-21:/drawable_ic_launcher_foreground.xml.flat",
-        "source": "com.chuanxun.app-main-23:/drawable/ic_launcher_foreground.xml"
+        "merged": "chat.milk.app-debug-21:/xml_file_paths.xml.flat",
+        "source": "chat.milk.app-main-23:/xml/file_paths.xml"
     },
     {
-        "merged": "com.chuanxun.app-debug-21:/mipmap-anydpi-v26_ic_launcher.xml.flat",
-        "source": "com.chuanxun.app-main-23:/mipmap-anydpi-v26/ic_launcher.xml"
+        "merged": "chat.milk.app-debug-21:/xml_network_security_config.xml.flat",
+        "source": "chat.milk.app-main-23:/xml/network_security_config.xml"
     },
     {
-        "merged": "com.chuanxun.app-debug-21:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
-        "source": "com.chuanxun.app-main-23:/mipmap-anydpi-v26/ic_launcher_round.xml"
+        "merged": "chat.milk.app-debug-21:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "chat.milk.app-main-23:/mipmap-anydpi-v26/ic_launcher_round.xml"
     },
     {
-        "merged": "com.chuanxun.app-debug-21:/xml_file_paths.xml.flat",
-        "source": "com.chuanxun.app-main-23:/xml/file_paths.xml"
+        "merged": "chat.milk.app-debug-21:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "chat.milk.app-main-23:/mipmap-anydpi-v26/ic_launcher.xml"
     },
     {
-        "merged": "com.chuanxun.app-debug-21:/xml_network_security_config.xml.flat",
-        "source": "com.chuanxun.app-main-23:/xml/network_security_config.xml"
+        "merged": "chat.milk.app-debug-21:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "chat.milk.app-main-23:/drawable/ic_launcher_foreground.xml"
     }
 ]

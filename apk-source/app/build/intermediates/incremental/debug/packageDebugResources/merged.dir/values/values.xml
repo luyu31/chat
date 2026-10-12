@@ -3,7 +3,7 @@
     <color name="bg_splash">#06060E</color>
     <color name="ic_launcher_bg">#06060E</color>
     <color name="ic_launcher_fg">#C5A47E</color>
-    <string name="app_name">传讯</string>
+    <string name="app_name">chat.milk</string>
     <style name="Theme.ChuanXun" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowBackground">@color/bg_splash</item>
         <item name="android:statusBarColor">@color/bg_splash</item>

@@ -1,1 +1,1 @@
--keep class com.chuanxun.app.** { *; }
+-keep class chat.milk.** { *; }
