@@ -28,7 +28,7 @@
         this.onclose = null;
         this.onerror = null;
         this.onshow = null;
-        try { N.notify(this.title || 'milk.chat', this.body, this.tag); } catch (e) {}
+        try { N.notify(this.title || 'milk', this.body, this.tag); } catch (e) {}
         var self = this;
         setTimeout(function () {
             try { if (typeof self.onshow === 'function') self.onshow(); } catch (e) {}
@@ -91,7 +91,7 @@
 
     /* ---------------- 对外的小工具 ---------------- */
     window.__milkNative = {
-        notify: function (t, b) { try { N.notify(t || 'milk.chat', b || '', ''); } catch (e) {} },
+        notify: function (t, b) { try { N.notify(t || 'milk', b || '', ''); } catch (e) {} },
         clearBadge: function () { try { N.clearBadge(); } catch (e) {} },
         platform: function () { try { return N.platform(); } catch (e) { return 'android'; } }
     };

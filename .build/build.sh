@@ -72,8 +72,8 @@ fi
   --ks "$KS" --ks-key-alias milkchat \
   --ks-pass pass:milkchat --key-pass pass:milkchat \
   --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
-  --out "$OUT/milk.chat.apk" "$OUT/aligned.apk"
+  --out "$OUT/milk.apk" "$OUT/aligned.apk"
 
-"$BT/apksigner" verify --print-certs "$OUT/milk.chat.apk" | head -5
-echo "==> 完成: $OUT/milk.chat.apk"
-ls -la "$OUT/milk.chat.apk"
+"$BT/apksigner" verify --print-certs "$OUT/milk.apk" | head -5
+echo "==> 完成: $OUT/milk.apk"
+ls -la "$OUT/milk.apk"

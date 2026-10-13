@@ -385,7 +385,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String appName() {
-            return "milk.chat";
+            return "milk";
         }
     }
 
@@ -449,7 +449,7 @@ public class MainActivity extends Activity {
 
             new AlertDialog.Builder(this)
                     .setTitle("保持后台运行")
-                    .setMessage("为了让 milk.chat 在熄屏、切到后台时也能及时收到消息通知，"
+                    .setMessage("为了让 milk 在熄屏、切到后台时也能及时收到消息通知，"
                             + "建议允许它在后台运行、并关闭电池优化。")
                     .setPositiveButton("去设置", new DialogInterface.OnClickListener() {
                         @Override

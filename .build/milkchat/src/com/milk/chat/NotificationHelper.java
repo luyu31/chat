@@ -71,7 +71,7 @@ public final class NotificationHelper {
         if (m.getNotificationChannel(CH_KEEPALIVE) == null) {
             NotificationChannel ch = new NotificationChannel(
                     CH_KEEPALIVE, "后台运行", NotificationManager.IMPORTANCE_MIN);
-            ch.setDescription("保持 milk.chat 在后台运行，以便及时收到消息");
+            ch.setDescription("保持 milk 在后台运行，以便及时收到消息");
             ch.setShowBadge(false);
             ch.setLockscreenVisibility(Notification.VISIBILITY_SECRET);
             ch.enableVibration(false);
@@ -101,7 +101,7 @@ public final class NotificationHelper {
         NotificationManager m = nm(c);
         if (m == null) return;
 
-        String t = (title == null || title.trim().isEmpty()) ? "milk.chat" : title.trim();
+        String t = (title == null || title.trim().isEmpty()) ? "milk" : title.trim();
         String b = (body == null) ? "" : body;
         int badge = badgeCount > 0 ? badgeCount : 1;
 
@@ -162,7 +162,7 @@ public final class NotificationHelper {
             builder.setPriority(Notification.PRIORITY_MIN);
         }
         builder.setSmallIcon(R.drawable.ic_notif);
-        builder.setContentTitle("milk.chat 正在后台运行");
+        builder.setContentTitle("milk 正在后台运行");
         builder.setContentText("保持连接，随时接收新消息");
         builder.setOngoing(true);
         builder.setShowWhen(false);

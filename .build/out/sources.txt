@@ -1,0 +1,6 @@
+/workspace/.build/milkchat/src/com/milk/chat/NotificationHelper.java
+/workspace/.build/milkchat/src/com/milk/chat/BadgeHelper.java
+/workspace/.build/milkchat/src/com/milk/chat/KeepAliveService.java
+/workspace/.build/milkchat/src/com/milk/chat/MainActivity.java
+/workspace/.build/milkchat/src/com/milk/chat/BootReceiver.java
+/workspace/.build/out/gen/com/milk/chat/R.java
