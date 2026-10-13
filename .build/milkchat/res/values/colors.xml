@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="window_bg">#FFF4EEE8</color>
+    <color name="status_bar">#FFFFFFFF</color>
+    <color name="ic_launcher_bg">#FFFFFFFF</color>
+    <color name="notif_accent">#FF111111</color>
+</resources>
