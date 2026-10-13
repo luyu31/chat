@@ -26,6 +26,7 @@ import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -82,7 +83,16 @@ public class MainActivity extends Activity {
         setContentView(root);
 
         setupWebView();
-        webView.loadUrl(START_URL);
+        // 主文档用 loadDataWithBaseURL 内联加载，避免依赖 shouldInterceptRequest 拦截主文档
+        // （部分定制 WebView / 兼容层不会对主文档调用拦截，导致白屏）。
+        // baseUrl 仍指向虚拟域名，保证 localStorage / IndexedDB 等保持同源。
+        String html = readAsset("web/index.html");
+        if (html != null && !html.isEmpty()) {
+            webView.loadDataWithBaseURL("https://" + APP_HOST + "/", html,
+                    "text/html", "UTF-8", null);
+        } else {
+            webView.loadUrl(START_URL);
+        }
 
         startKeepAlive();
         requestNotificationPermission();
@@ -160,6 +170,20 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 injectShim(view);
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                // 仅当主文档真的加载失败时（例如 fallback 的 loadUrl 路径），把错误显示出来，
+                // 避免对用户呈现一无所知的白屏。
+                if (request != null && request.isForMainFrame()) {
+                    CharSequence desc = error == null ? "未知错误" : error.getDescription();
+                    int code = error == null ? -1 : error.getErrorCode();
+                    view.loadData("<html><body style='font-family:sans-serif;padding:24px;color:#333'>"
+                            + "<h3>milk 加载失败</h3><p>" + desc + "（错误码 " + code + "）</p>"
+                            + "<p>请确认应用存储权限正常，或尝试重新启动应用。</p></body></html>",
+                            "text/html", "UTF-8");
+                }
             }
         });
 
