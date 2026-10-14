@@ -905,4 +905,252 @@
         }, 4000);
     });
 
+    // ── 数据分析面板（纯本地计算，无任何网络/AI 请求） ──
+    // 入口注入：锚点选 #pd-irregular-hint（统计卡片行下方那行"波动较大"提示，
+    // 有唯一 id、位置稳定），插在它后面正好是"统计卡片区域"的末尾、日历卡片之前；
+    // 锚点万一找不到，依次退到 #period-body 底部、弹窗 .modal-content 底部。
+    function _injectAnalysisEntry() {
+        if (document.getElementById('pd-analysis-entry')) return;  // 已注入过，跳过
+        var entry = document.createElement('div');
+        entry.id = 'pd-analysis-entry';
+        entry.innerHTML =
+            '<i class="fas fa-chart-line" style="font-size:14px;color:var(--accent-color,#c5a47e);"></i>' +
+            '<span style="flex:1;margin-left:9px;font-size:13px;font-weight:600;color:var(--text-primary,#333);">查看数据分析</span>' +
+            '<span style="font-size:14px;color:var(--text-secondary,#999);">&rsaquo;</span>';
+        entry.style.cssText = 'margin-top:10px;padding:11px 14px;border-radius:12px;' +
+            'border:1px solid var(--border-color,#e8e8e8);background:var(--primary-bg,transparent);' +
+            'display:flex;align-items:center;cursor:pointer;';
+        entry.addEventListener('click', function () { _openAnalysis(); });
+
+        var anchor = document.getElementById('pd-irregular-hint');
+        if (anchor && anchor.parentNode) {
+            anchor.parentNode.insertBefore(entry, anchor.nextSibling);
+            return;
+        }
+        var pbody = document.getElementById('period-body');
+        if (pbody) { pbody.appendChild(entry); return; }
+        var mc = document.querySelector('#period-modal .modal-content');
+        if (mc) mc.appendChild(entry);
+    }
+
+    // 分析弹窗骨架——只创建一次，重复打开直接复用（照 checkin.js buildModal 的模式）
+    function _buildAnalysisModal() {
+        if (document.getElementById('pd-analysis-modal')) return;
+        var m = document.createElement('div');
+        m.className = 'modal';
+        m.id = 'pd-analysis-modal';
+        m.style.zIndex = '3300';
+        m.innerHTML =
+            '<div class="modal-content" style="max-width:420px;width:90vw;max-height:80vh;overflow-y:auto;">' +
+                '<div class="modal-title">' +
+                    '<i class="fas fa-chart-line"></i><span>经期数据分析</span>' +
+                '</div>' +
+                '<div id="pd-analysis-body"></div>' +
+                '<div class="modal-buttons" style="position:sticky;bottom:0;background:var(--secondary-bg,#fff);' +
+                    'border-top:1px solid var(--border-color,#e8e8e8);margin:12px -24px 0;' +
+                    'padding:12px 24px max(14px, env(safe-area-inset-bottom, 0px));justify-content:flex-end;">' +
+                    '<button type="button" class="modal-btn modal-btn-secondary" id="pd-analysis-close">关闭</button>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(m);
+
+        m.querySelector('#pd-analysis-close').addEventListener('click', function () {
+            if (typeof window.hideModal === 'function') window.hideModal(m); else m.style.display = 'none';
+        });
+        m.addEventListener('click', function (e) {
+            if (e.target === m) {
+                if (typeof window.hideModal === 'function') window.hideModal(m); else m.style.display = 'none';
+            }
+        });
+    }
+
+    // 统计区块外壳：标题 + 内容，纯内联样式，配色跟随 app 的 CSS 变量
+    function _analysisSection(icon, title, bodyHtml) {
+        return '<div style="margin-top:12px;padding:14px;border-radius:14px;border:1px solid var(--border-color,#e8e8e8);background:var(--primary-bg,transparent);">' +
+            '<div style="display:flex;align-items:center;gap:7px;margin-bottom:12px;font-size:13px;font-weight:700;color:var(--text-primary,#333);">' +
+                '<i class="fas ' + icon + '" style="font-size:12px;color:var(--accent-color,#c5a47e);"></i><span>' + title + '</span>' +
+            '</div>' + bodyHtml + '</div>';
+    }
+
+    // 某个区块数据不足时的友好提示
+    function _analysisEmpty() {
+        return '<div style="font-size:12px;color:var(--text-secondary,#999);line-height:1.7;padding:4px 0;">数据还不够，再记录几个周期就有啦</div>';
+    }
+
+    // 1) 周期长度趋势：相邻两次经期开始日的间隔天数（数组里的记录都已开始，
+    //    无需再过滤），取最近 10 次画纯 CSS 柱状图，柱高按数值归一化
+    function _cycleTrendHtml() {
+        var sorted = _data.periods.slice().sort(function (a, b) { return a.startDate < b.startDate ? -1 : 1; });
+        if (sorted.length < 2) return _analysisEmpty();  // 不到两次经期，算不出间隔
+
+        var gaps = [];  // { days: 间隔天数, label: 后一次经期开始的月份 }
+        for (var i = 1; i < sorted.length; i++) {
+            var d = _parse(sorted[i].startDate);
+            gaps.push({ days: _diff(sorted[i - 1].startDate, sorted[i].startDate), label: (d.getMonth() + 1) + '月' });
+        }
+        var recent = gaps.slice(-10);
+
+        var days = recent.map(function (g) { return g.days; });
+        var avg  = Math.round(days.reduce(function (a, b) { return a + b; }, 0) / days.length * 10) / 10;
+        var max  = Math.max.apply(null, days);
+        var min  = Math.min.apply(null, days);
+        // 是否规律：复用 _calcSwing 的标准差判定（样本标准差 >= 8 天算不规律）
+        var irregular = _calcSwing(days).irregular;
+
+        var stat = function (label, val, color) {
+            return '<div style="flex:1;min-width:0;text-align:center;">' +
+                '<div style="font-size:11px;color:var(--text-secondary,#999);">' + label + '</div>' +
+                '<div style="font-size:13px;font-weight:700;color:' + (color || 'var(--text-primary,#333)') + ';margin-top:2px;">' + val + '</div></div>';
+        };
+        var summary = '<div style="display:flex;margin-bottom:14px;padding:9px 0;border-radius:10px;background:rgba(var(--accent-color-rgb,197,164,126),0.08);">' +
+            stat('平均', avg + '天') +
+            stat('最长', max + '天') +
+            stat('最短', min + '天') +
+            stat('规律性', irregular ? '波动较大' : '比较规律', irregular ? '#d97757' : null) +
+            '</div>';
+
+        var BAR_MAX = 72;  // 柱区最大高度(px)
+        var bars = recent.map(function (g) {
+            var h = Math.max(8, Math.round(g.days / max * BAR_MAX));  // 最矮给8px，保证看得见
+            return '<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;">' +
+                '<span style="font-size:10px;color:var(--text-primary,#333);">' + g.days + '</span>' +
+                '<div style="width:66%;max-width:26px;height:' + h + 'px;background:var(--accent-color,#c5a47e);border-radius:6px 6px 2px 2px;opacity:0.85;"></div>' +
+                '<span style="font-size:10px;color:var(--text-secondary,#999);white-space:nowrap;">' + g.label + '</span>' +
+                '</div>';
+        }).join('');
+
+        return summary + '<div style="display:flex;align-items:flex-end;gap:6px;">' + bars + '</div>';
+    }
+
+    // 2) 症状频率排行：遍历每日打卡记录统计每个症状出现次数
+    //    （打卡时自定义症状就存在 symptoms 数组里，天然包含在内），按次数降序条形图
+    function _symptomRankHtml() {
+        var counts = {};
+        Object.keys(_data.dailyRecords).forEach(function (ds) {
+            var rec = _data.dailyRecords[ds];
+            if (rec && rec.symptoms) {
+                rec.symptoms.forEach(function (s) {
+                    if (!s) return;
+                    counts[s] = (counts[s] || 0) + 1;
+                });
+            }
+        });
+        var arr = Object.keys(counts)
+            .map(function (s) { return { name: s, n: counts[s] }; })
+            .sort(function (a, b) { return b.n - a.n; });
+        if (!arr.length) return _analysisEmpty();
+
+        var maxN = arr[0].n;
+        var rows = arr.slice(0, 8).map(function (it, idx) {
+            var w = Math.max(6, Math.round(it.n / maxN * 100));  // 条宽按次数归一化
+            var alpha = (1 - idx * 0.09).toFixed(2);             // 名次越靠后颜色越浅，柔和的层次感
+            return '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;">' +
+                '<span style="flex:0 0 58px;font-size:12px;color:var(--text-primary,#333);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + it.name + '</span>' +
+                '<div style="flex:1;height:14px;border-radius:7px;background:rgba(var(--accent-color-rgb,197,164,126),0.10);overflow:hidden;">' +
+                    '<div style="width:' + w + '%;height:100%;border-radius:7px;background:rgba(var(--accent-color-rgb,197,164,126),' + alpha + ');"></div>' +
+                '</div>' +
+                '<span style="flex:0 0 34px;text-align:right;font-size:11px;color:var(--text-secondary,#999);">' + it.n + '次</span>' +
+                '</div>';
+        }).join('');
+        return '<div>' + rows + '</div>';
+    }
+
+    // 3) 出血量分布：flow 1-5 各级的天数，五根小柱。
+    //    柱色用跟"今日记录"出血量按钮同一套红色系浓度——那个按钮用的 --pd-flow-rgb
+    //    只定义在 #period-modal 作用域里，这个分析弹窗挂在 body 下继承不到，
+    //    所以这里直接写同一组颜色的字面值
+    function _flowDistHtml() {
+        var FLOW_ALPHAS = [0, 0.25, 0.4, 0.6, 0.8, 1];  // 浓度与出血量按钮(极少→极多)一致
+        var flowDays = [0, 0, 0, 0, 0, 0];
+        Object.keys(_data.dailyRecords).forEach(function (ds) {
+            var f = _data.dailyRecords[ds] && _data.dailyRecords[ds].flow;
+            if (f >= 1 && f <= 5) flowDays[f]++;
+        });
+        var total = flowDays[1] + flowDays[2] + flowDays[3] + flowDays[4] + flowDays[5];
+        if (!total) return _analysisEmpty();
+
+        var maxF = Math.max(flowDays[1], flowDays[2], flowDays[3], flowDays[4], flowDays[5]);
+        var BAR_MAX = 64;
+        var bars = '';
+        for (var f = 1; f <= 5; f++) {
+            var h = Math.max(6, Math.round(flowDays[f] / maxF * BAR_MAX));
+            bars += '<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;">' +
+                '<span style="font-size:10px;color:var(--text-primary,#333);">' + flowDays[f] + '天</span>' +
+                '<div style="width:60%;max-width:24px;height:' + h + 'px;background:rgba(210,80,100,' + FLOW_ALPHAS[f] + ');border-radius:6px 6px 2px 2px;"></div>' +
+                '<span style="font-size:10px;color:var(--text-secondary,#999);white-space:nowrap;">' + FLOW_LABELS[f] + '</span>' +
+                '</div>';
+        }
+        return '<div style="display:flex;align-items:flex-end;gap:8px;">' + bars + '</div>';
+    }
+
+    // 4) 记录总览：记录月数（打卡日期的年月去重）、打卡总天数、
+    //    经期总天数（每次从开始算到结束/今天）、平均经期长度
+    function _overviewHtml() {
+        var recKeys = Object.keys(_data.dailyRecords);
+        var months = {};
+        recKeys.forEach(function (ds) { months[ds.slice(0, 7)] = true; });  // 'YYYY-MM' 去重
+
+        var today = _today();
+        var periodDays = _data.periods.reduce(function (s, p) {
+            return s + _diff(p.startDate, p.endDate || today) + 1;  // 进行中的算到今天
+        }, 0);
+        var avgLen = _data.periods.length ? Math.round(periodDays / _data.periods.length) : null;
+
+        var cell = function (val, label) {
+            return '<div style="flex:1;min-width:40%;padding:11px 6px;border-radius:10px;background:rgba(var(--accent-color-rgb,197,164,126),0.08);text-align:center;">' +
+                '<div style="font-size:15px;font-weight:700;color:var(--text-primary,#333);">' + val + '</div>' +
+                '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:3px;">' + label + '</div></div>';
+        };
+        return '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
+            cell(Object.keys(months).length + ' 个', '记录月数') +
+            cell(recKeys.length + ' 天', '打卡天数') +
+            cell(periodDays + ' 天', '经期总天数') +
+            cell(avgLen === null ? '--' : avgLen + ' 天', '平均经期长度') +
+            '</div>';
+    }
+
+    // 渲染分析内容——每次打开都重算一遍，保证展示的是最新数据
+    function _renderAnalysis() {
+        var bodyEl = document.getElementById('pd-analysis-body');
+        if (!bodyEl) return;
+
+        // 一点数据都没有时给个整体空状态，比一排"暂无"更友好
+        if (!_data.periods.length && !Object.keys(_data.dailyRecords).length) {
+            bodyEl.innerHTML =
+                '<div style="padding:24px 6px;text-align:center;">' +
+                    '<i class="fas fa-seedling" style="font-size:26px;color:var(--accent-color,#c5a47e);opacity:0.65;"></i>' +
+                    '<div style="font-size:13px;font-weight:600;color:var(--text-primary,#333);margin-top:12px;">数据还不够，再记录几个周期就有啦</div>' +
+                    '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:6px;line-height:1.8;">回去标记一次经期、每天打卡出血量和症状，<br>这里会慢慢长出你的专属图表</div>' +
+                '</div>';
+            return;
+        }
+
+        bodyEl.innerHTML =
+            _analysisSection('fa-chart-bar', '周期长度趋势', _cycleTrendHtml()) +
+            _analysisSection('fa-notes-medical', '症状频率排行', _symptomRankHtml()) +
+            _analysisSection('fa-tint', '出血量分布', _flowDistHtml()) +
+            _analysisSection('fa-list-ul', '记录总览', _overviewHtml());
+    }
+
+    // 打开数据分析弹窗。对外暴露沿用本文件已有的 window._pdXxx 方式
+    // （现有代码没有 window.Period 对象，保持一致，挂成 window._pdOpenAnalysis）
+    async function _openAnalysis() {
+        if (!_loaded) await _load();
+        _buildAnalysisModal();
+        _renderAnalysis();
+        var m = document.getElementById('pd-analysis-modal');
+        if (!m) return;
+        if (typeof window.showModal === 'function') window.showModal(m);
+        else m.style.display = 'flex';
+    }
+    window._pdOpenAnalysis = _openAnalysis;
+
+    // 本脚本在 body 底部加载，执行到这里时弹窗 DOM 一般已就绪；
+    // 万一还在解析中就等 DOMContentLoaded 再注入
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _injectAnalysisEntry);
+    } else {
+        _injectAnalysisEntry();
+    }
+
 })();

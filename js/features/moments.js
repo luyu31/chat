@@ -229,12 +229,17 @@ function _imgGrid(images){
     if(!images||!images.length)return'';const n=Math.min(images.length,6);
     return`<div class="cs-post-imgs n${n}">${images.slice(0,n).map(src=>`<div style="aspect-ratio:1;overflow:hidden;border-radius:8px;">${_imgEl(src)}</div>`).join('')}</div>`;
 }
-function _videoThumb(videoSrc, coverSrc){
+function _videoThumb(postId, videoSrc, coverSrc){
     const cover=coverSrc||'';
     const isCloud=cover.indexOf('oss://')===0;
     const coverTag=cover?(isCloud?`<img data-lazy-cloud-ref="${cover}" class="cs-video-cover">`:`<img src="${cover}" class="cs-video-cover">`):`<div class="cs-video-cover cs-video-cover-empty"><i class="fas fa-film"></i></div>`;
-    return`<div class="cs-video-thumb" onclick="window.openCsVideoPlayer('${videoSrc}')">${coverTag}<div class="cs-video-play-btn"><i class="fas fa-play"></i></div></div>`;
+    // 播放时按帖子 id 找回视频源——本地视频是超大 base64，不能内嵌进 onclick 属性
+    return`<div class="cs-video-thumb" onclick="window._mPlayVideo('${postId}')">${coverTag}<div class="cs-video-play-btn"><i class="fas fa-play"></i></div></div>`;
 }
+window._mPlayVideo=function(postId){
+    const p=(momentsData.posts||[]).find(x=>x.id===postId);
+    if(p&&p.video)window.openCsVideoPlayer(p.video);
+};
 window.openCsVideoPlayer=function(src){
     const overlay=document.getElementById('cs-video-player-overlay');
     const player=document.getElementById('cs-video-player');
@@ -466,7 +471,7 @@ function _renderCard(post){
             ${canDel?`<button class="cs-post-del" onclick="event.stopPropagation();window._mDeletePost('${post.id}')"><i class="fas fa-trash-alt"></i></button>`:'<div style="width:24px;"></div>'}
         </div>
         <div class="cs-post-body">${post.text}</div>
-        ${post.video?_videoThumb(post.video,post.videoCover):_imgGrid(post.images)}
+        ${post.video?_videoThumb(post.id,post.video,post.videoCover):_imgGrid(post.images)}
         <div class="cs-post-foot">
             <span class="cs-post-date">${_fmtDateTime(post)}</span>
             <button class="cs-like-btn${likeOn?' on':''}" id="cs-lbtn-${post.id}" onclick="event.stopPropagation();window._mToggleLike('${post.id}')">
@@ -578,6 +583,91 @@ function _updateBigAvatars(){
     if(meEl){const s=_getAvSrc(false);meEl.innerHTML=s?`<img src="${s}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`:dflt;}
 }
 
+// ─── 梦角个性签名 ────────────────────────────────────────────────────────
+// 空间页头像区下方展示，每天从签名库随机换一条（沿用 features.js 的每日随机机制）
+var _mMottoDefault = [
+    '今天也很想你',
+    '在等你的消息',
+    '你是我最温柔的牵挂',
+    '和你在一起的每一天都值得',
+    '想你的时候，风都是甜的'
+];
+
+// 签名库：优先读 customMottos（字卡组的「个性签名」），没有就退回内置默认
+function _mMottoPool() {
+    var pool = [];
+    try {
+        if (typeof customMottos !== 'undefined' && Array.isArray(customMottos)) pool = customMottos.slice();
+    } catch (e) {}
+    if (!pool.length) pool = _mMottoDefault.slice();
+    return pool;
+}
+
+// 每日种子：跟 features.js 的 _getDailyGreetingData 用同一个 userSalt / todayKey 算法
+function _mDailySeed() {
+    var now = new Date();
+    var todayKey = String(now.getFullYear()) + String(now.getMonth() + 1) + String(now.getDate());
+    var userSalt = localStorage.getItem('_dgUserSalt');
+    if (!userSalt) {
+        userSalt = String(Math.floor(Math.random() * 999983) + 1);
+        localStorage.setItem('_dgUserSalt', userSalt);
+    }
+    var seed = 0;
+    var saltedKey = todayKey + userSalt;
+    for (var i = 0; i < saltedKey.length; i++) seed += saltedKey.charCodeAt(i) * (i + 1);
+    return seed;
+}
+
+function _mSeededRand(seed, offset) {
+    var x = Math.sin(seed * 9301 + offset * 49297 + 233) * 1000003;
+    return x - Math.floor(x);
+}
+
+function _mTodayMotto() {
+    var pool = _mMottoPool();
+    var seed = _mDailySeed();
+    return pool[Math.floor(_mSeededRand(seed, 0) * pool.length)];
+}
+
+// 在空间页头像区下方渲染签名（大字 + 引号样式 + 换一条按钮）
+function _renderPartnerMotto() {
+    var section = document.querySelector('#cs-outer-header .cs-couple-section');
+    if (!section) return;
+    var host = document.getElementById('cs-partner-motto');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'cs-partner-motto';
+        section.appendChild(host);
+    }
+    host.innerHTML =
+        '<div style="text-align:center;margin-top:8px;">' +
+            '<div style="font-size:18px;font-weight:600;color:var(--text-primary,#333);line-height:1.5;font-style:italic;">' +
+                '<span style="opacity:.45;">“</span><span id="cs-partner-motto-text"></span><span style="opacity:.45;">”</span>' +
+            '</div>' +
+            '<button onclick="window._mChangePartnerMotto()" style="margin-top:5px;padding:3px 12px;border-radius:12px;border:1px solid var(--border-color,#e5e5e5);background:transparent;color:var(--text-secondary,#999);font-size:11px;cursor:pointer;font-family:var(--font-family);">让他换个签名</button>' +
+        '</div>';
+    var textEl = document.getElementById('cs-partner-motto-text');
+    if (textEl) textEl.textContent = _mTodayMotto();
+}
+
+// 「让他换个签名」：随机换一条，并给梦角加熟练度（存在性检查）
+window._mChangePartnerMotto = function () {
+    var pool = _mMottoPool();
+    if (!pool.length) return;
+    var textEl = document.getElementById('cs-partner-motto-text');
+    var cur = textEl ? textEl.textContent : '';
+    var next = pool[Math.floor(Math.random() * pool.length)];
+    if (pool.length > 1 && next === cur) {
+        var others = pool.filter(function (t) { return t !== cur; });
+        next = others[Math.floor(Math.random() * others.length)];
+    }
+    if (textEl) textEl.textContent = next;
+    if (window.PartnerProficiency && typeof window.PartnerProficiency.gain === 'function') {
+        try { window.PartnerProficiency.gain(2); } catch (e) {}
+    }
+    if (typeof showNotification === 'function') showNotification('梦角换了个签名 ✦', 'success');
+};
+
 // ─── 主入口 ───
 window.openCoupleSpace=window.openMomentsModal=function(scrollToPostId){
     const page=document.getElementById('couple-space-page');if(!page)return;
@@ -590,7 +680,7 @@ window.openCoupleSpace=window.openMomentsModal=function(scrollToPostId){
             feedPanel.insertBefore(outerHeader,feedPanel.firstChild);
         }
         page.classList.add('cs-open');
-        _csSetTab('feed');_csRenderFeed();_updateBigAvatars();
+        _csSetTab('feed');_csRenderFeed();_updateBigAvatars();_renderPartnerMotto();
         if(typeof window._annLoadPinned==='function'){
             window._annLoadPinned().then(function(){_updateDaysCounter();});
         }else{_updateDaysCounter();}
@@ -705,9 +795,7 @@ window.onCsVideoClick=function(){
 window.onCsVideoSelected=function(input){
     const file=input.files[0];if(!file)return;
     if(file.size>_VIDEO_MAX_BYTES){alert('视频太大啦，最多支持 50MB 哦');input.value='';return;}
-    if(!(window.CloudSync&&window.CloudSync.isConnected())){
-        alert('上传视频需要先配置云存储，视频文件太大无法保存在本地');input.value='';return;
-    }
+    // App 版：没有云存储也能发视频，直接存手机本地（IndexedDB），不再强制要求 OSS
     const blobUrl=URL.createObjectURL(file);
     // 取第一帧作封面
     const vid=document.createElement('video');vid.src=blobUrl;vid.muted=true;vid.playsInline=true;
@@ -752,17 +840,31 @@ window.submitCsPost=async function(){
     try{
         let images=[], video=null, videoCover=null;
         if(_composeVideo){
-            // 上传视频封面
-            try{const cr=await window.CloudMedia.upload(_composeVideo.coverB64,'moments-cover');videoCover=cr&&cr.url?cr.url:null;}catch(e){videoCover=null;}
-            // 上传视频
-            const vidUrl=await new Promise((resolve,reject)=>{
-                const reader=new FileReader();
-                reader.onload=async e=>{
-                    try{const r=await window.CloudMedia.upload(e.target.result,'moments-video');resolve(r&&r.url?r.url:null);}catch(err){reject(err);}
-                };
-                reader.readAsDataURL(_composeVideo.file);
-            });
-            video=vidUrl;
+            // 有云存储就传云端；没配置或上传失败时，视频直接存本地 base64
+            try{
+                if(window.CloudSync&&window.CloudSync.isConnected()&&window.CloudMedia){
+                    const cr=await window.CloudMedia.upload(_composeVideo.coverB64,'moments-cover');
+                    videoCover=cr&&cr.url?cr.url:null;
+                    video=await new Promise((resolve,reject)=>{
+                        const reader=new FileReader();
+                        reader.onload=async e=>{
+                            try{const r=await window.CloudMedia.upload(e.target.result,'moments-video');resolve(r&&r.url?r.url:null);}catch(err){reject(err);}
+                        };
+                        reader.readAsDataURL(_composeVideo.file);
+                    });
+                }
+            }catch(e){}
+            if(!video){
+                try{
+                    videoCover=videoCover||_composeVideo.coverB64;
+                    video=await new Promise((resolve,reject)=>{
+                        const reader=new FileReader();
+                        reader.onload=e=>resolve(e.target.result);
+                        reader.onerror=reject;
+                        reader.readAsDataURL(_composeVideo.file);
+                    });
+                }catch(e){}
+            }
         } else {
             for(const d of _composeImgs){
                 if(window.CloudSync&&window.CloudSync.isConnected()&&window.CloudMedia){

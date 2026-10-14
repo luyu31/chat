@@ -46,7 +46,7 @@
     };
 
     // 观影中：当前视频信息（从 waiting 跳转过来时写入）
-    var _currentVideo = { src: '', title: '', type: 'video' }; // type: 'video' | 'bilibili'
+    var _currentVideo = { src: '', title: '', type: 'video', page: 1, bvid: '' }; // type: 'video' | 'bilibili'；page/bvid 用于B站合集选集
 
     // 观影开始时间（纯内存，不用持久化——'watching' 状态本身刷新就会退回 waiting，
     // 见下面 _apptLoad 里的说明，所以这个计时器只在同一次会话里有意义）
@@ -387,9 +387,12 @@
                 var bvMatch = /BV[0-9A-Za-z]{10}/.exec(biliVal);
                 if (!bvMatch) { errorEl.textContent = '没找到有效的BV号，检查一下链接格式'; return; }
                 var bvid = bvMatch[0];
-                var embedSrc = 'https://player.bilibili.com/player.html?bvid=' + bvid + '&page=1&high_quality=1&danmaku=0';
+                // 合集/多P视频：从链接里解析 ?p=N（比如 ...?p=3 就是第3P），没有就默认第1P
+                var pageMatch = /[?&]p=(\d+)/.exec(biliVal);
+                var page = pageMatch ? Math.max(1, parseInt(pageMatch[1], 10)) : 1;
+                var embedSrc = 'https://player.bilibili.com/player.html?bvid=' + bvid + '&page=' + page + '&high_quality=1&danmaku=0';
                 close();
-                onPicked(embedSrc, 'B站视频', 'bilibili');
+                onPicked(embedSrc, 'B站视频', 'bilibili', { bvid: bvid, page: page });
                 return;
             }
 
@@ -419,8 +422,48 @@
     var _outsideClickBound = false;
 
     function _getPanel() {
-        return document.getElementById('cs-panel-cinema');
+        // 一起读书并进电影院 tab 后，cinema 只重绘"观影"子视图（#cinema-view-movie），
+        // 子tab栏和书架容器都在重绘范围外——切到读书再切回来，视频 DOM 没被销毁，能接着看
+        return document.getElementById('cinema-view-movie') || document.getElementById('cs-panel-cinema');
     }
+
+    // ── 子页切换：观影 / 一起读书（同一 tab 内的两个视图）────
+    var _cinemaView = 'movie'; // 'movie' | 'reading'
+    var _subtabsBound = false;
+
+    function _applyView(v) {
+        _cinemaView = v;
+        var mv = document.getElementById('cinema-view-movie');
+        var rv = document.getElementById('cinema-view-reading');
+        var b1 = document.getElementById('cinema-st-movie');
+        var b2 = document.getElementById('cinema-st-reading');
+        if (mv) mv.classList.toggle('cinema-view-on', v === 'movie');
+        if (rv) rv.classList.toggle('cinema-view-on', v === 'reading');
+        if (b1) b1.classList.toggle('on', v === 'movie');
+        if (b2) b2.classList.toggle('on', v === 'reading');
+    }
+
+    function _bindSubtabsOnce() {
+        if (_subtabsBound) return;
+        var b1 = document.getElementById('cinema-st-movie');
+        var b2 = document.getElementById('cinema-st-reading');
+        if (!b1 || !b2) return;
+        _subtabsBound = true;
+        b1.addEventListener('click', function () { window._cinemaSwitchView('movie'); });
+        b2.addEventListener('click', function () { window._cinemaSwitchView('reading'); });
+    }
+
+    window._cinemaSwitchView = function (v) {
+        if (v !== 'reading') v = 'movie';
+        if (v === 'reading') {
+            // 切去读书时暂停本地视频（B站 iframe 跨域控制不了，回来继续看）
+            var vid = document.getElementById('cinema-video');
+            if (vid && vid.tagName === 'VIDEO') { try { vid.pause(); } catch (e) {} }
+            if (typeof window._cinemaCloseArchive === 'function') window._cinemaCloseArchive();
+        }
+        _applyView(v);
+        if (v === 'reading' && typeof window._readingInit === 'function') window._readingInit();
+    };
 
     function _clearWaitTimer() {
         if (_waitLockTimer) {
@@ -541,6 +584,9 @@
     function _hdHTML() {
         return '<div class="cinema-hd">' +
             '<span class="cinema-hd-title">电影院</span>' +
+            '<button class="cs-icon-btn" id="cinema-lines-btn" title="他说什么（观影台词）" style="margin-right:2px;">' +
+                '<i class="fas fa-comment-dots"></i>' +
+            '</button>' +
             '<button class="cs-icon-btn" id="cinema-archive-btn" title="影日志">' +
                 '<span class="cinema-archive-icon"></span>' +
             '</button>' +
@@ -562,9 +608,64 @@
         return '<div class="cinema-theater-hd">' +
             '<button class="cs-icon-btn" id="cinema-theater-back-btn" title="返回"><i class="fas fa-chevron-left"></i></button>' +
             '<span class="cinema-theater-hd-title">观影中</span>' +
+            (_currentVideo.type === 'bilibili' ? _epPickerHTML() : '') +
             '<button class="cs-icon-btn" id="cinema-theater-settings-btn" title="设置"><i class="fas fa-cog"></i></button>' +
         '</div>';
     }
+    // ── B站合集选集控件：‹ P[输入框] ›，切集只换 iframe src，不打断聊天 ──
+    function _epPickerHTML() {
+        var p = _currentVideo.page || 1;
+        return '<div class="cinema-ep-picker" id="cinema-ep-picker">' +
+            '<button type="button" class="cinema-ep-btn" id="cinema-ep-prev" title="上一集"><i class="fas fa-chevron-left"></i></button>' +
+            '<span class="cinema-ep-p">P</span>' +
+            '<input type="number" min="1" step="1" class="cinema-ep-num" id="cinema-ep-num" value="' + p + '" inputmode="numeric">' +
+            '<button type="button" class="cinema-ep-btn" id="cinema-ep-next" title="下一集"><i class="fas fa-chevron-right"></i></button>' +
+        '</div>';
+    }
+
+    function _setBiliPage(n) {
+        if (!_currentVideo.src || _currentVideo.type !== 'bilibili') return;
+        if (!n || isNaN(n) || n < 1) n = 1;
+        n = Math.floor(n);
+        _currentVideo.page = n;
+        // 只替换 page 参数，其余（bvid/清晰度/弹幕开关）保持不变
+        if (/[?&]page=\d+/.test(_currentVideo.src)) {
+            _currentVideo.src = _currentVideo.src.replace(/([?&]page=)\d+/, '$1' + n);
+        } else {
+            _currentVideo.src += '&page=' + n;
+        }
+        var frame = document.getElementById('cinema-video');
+        if (frame && frame.tagName === 'IFRAME') {
+            frame.src = _currentVideo.src; // 直接换src重载播放器，不重画面板，聊天记录不丢
+        }
+        var num = document.getElementById('cinema-ep-num');
+        if (num) num.value = n;
+        // 切集台词：自定义（{n}=集数）> 字卡库随机，都没有就不说
+        var line = window.SceneLines ? SceneLines.pick('cinema', 'episode', { n: n }) : null;
+        if (line) _pushMessage({ sender: 'partner', content: line, type: 'text' });
+    }
+
+    function _bindEpPicker() {
+        var prev = document.getElementById('cinema-ep-prev');
+        var next = document.getElementById('cinema-ep-next');
+        var num = document.getElementById('cinema-ep-num');
+        if (!prev || !next || !num) return;
+        prev.addEventListener('click', function () {
+            var n = parseInt(num.value, 10) || 1;
+            _setBiliPage(n - 1);
+        });
+        next.addEventListener('click', function () {
+            var n = parseInt(num.value, 10) || 1;
+            _setBiliPage(n + 1);
+        });
+        num.addEventListener('change', function () {
+            var n = parseInt(num.value, 10);
+            if (!n || n < 1) { num.value = _currentVideo.page || 1; return; }
+            _setBiliPage(n);
+        });
+        num.addEventListener('click', function (e) { e.stopPropagation(); });
+    }
+
     function _bindTheaterHdListeners() {
         var backBtn = document.getElementById('cinema-theater-back-btn');
         if (backBtn) {
@@ -575,8 +676,8 @@
         }
         var settingsBtn = document.getElementById('cinema-theater-settings-btn');
         if (settingsBtn) {
-            // 占位：整个情侣空间的设置，功能后续再接
-            settingsBtn.addEventListener('click', function () {});
+            // 沉浸模式的齿轮：打开"他说什么"台词设置（开场/切集/散场）
+            settingsBtn.addEventListener('click', _openCinemaLinesEditor);
         }
     }
 
@@ -630,7 +731,7 @@
         _cinemaSendWatchEvent(false, durationMin);
         // 自动结束时用户不在，不弹打分面板，直接按"跳过"的规则记一条历史
         // （梦角这边还是 100% 给评分+评语，跟正常"跳过"路径完全一致）
-        var partner = _cinemaGeneratePartnerReview();
+        var partner = _cinemaGeneratePartnerReview(watchedTitle);
         _histLoad().then(function () {
             _history.unshift({
                 id: Date.now() + Math.random(),
@@ -653,12 +754,14 @@
     // 保证"影评"里能看到真实看过的片子，而不是只有手动造的假数据。
     // 保存前先 _histLoad()，避免这次会话都没打开过"影评"tab 时 _history
     // 还是空数组，写回去把之前存的记录覆盖掉。
-    // ── 梦角对本次观影的自动评价：100% 给星，评语从字卡池真实抽取 ──
-    // 星级 1-5 随机；评语从 customReplies 字卡池（跟聊天自动回复同一个池子）
-    // 随机不重复抽 2-4 条拼起来，绝不使用任何预设/编造的文案。
-    // 如果字卡池是空的，星级照给，评语只能空着（没有素材可用）。
-    function _cinemaGeneratePartnerReview() {
+    // ── 梦角对本次观影的自动评价：100% 给星，评语优先用自定义"散场台词"，
+    // 没设置就从 customReplies 字卡池（跟聊天自动回复同一个池子）随机不重复
+    // 抽 2-4 条拼起来，绝不使用任何预设/编造的文案。
+    // 字卡池也是空的 → 星级照给，评语空着。
+    function _cinemaGeneratePartnerReview(title) {
         var stars = 1 + Math.floor(Math.random() * 5);
+        var customLine = window.SceneLines ? SceneLines.pick('cinema', 'end', { title: title }) : null;
+        if (customLine) return { stars: stars, review: customLine };
         var pool = _cinemaBuildReplyPool();
         if (!pool.length) return { stars: stars, review: '' };
         var shuffled = pool.slice();
@@ -706,7 +809,7 @@
         function finish(withReview) {
             var reviewVal = withReview ? document.getElementById('cinema-rating-review').value.trim() : '';
             var finalStars = withReview ? stars : 0;
-            var partner = _cinemaGeneratePartnerReview();
+            var partner = _cinemaGeneratePartnerReview(title);
             _histLoad().then(function () {
                 _history.unshift({
                     id: Date.now() + Math.random(),
@@ -1255,6 +1358,24 @@
             document.getElementById('cinema-cancel-invite-btn').addEventListener('click', _negoCancelInvite);
         }
         document.getElementById('cinema-archive-btn').addEventListener('click', _openArchive);
+        _bindLinesBtn();
+    }
+
+    // ── 台词编辑入口（嵌入视图头部 + 沉浸模式齿轮共用）────
+    function _openCinemaLinesEditor() {
+        if (!window.SceneLines) return;
+        SceneLines.openEditor({
+            title: '观影台词',
+            slots: [
+                { scene: 'cinema', slot: 'start',   label: '开场（开始一起看时）', hint: '可用 {title} 代替片名', ph: '留空则随机用字卡库' },
+                { scene: 'cinema', slot: 'episode', label: '切集（换下一P时）',   hint: '可用 {n} 代替集数', ph: '留空则随机用字卡库' },
+                { scene: 'cinema', slot: 'end',     label: '散场（看完之后）',     hint: '可用 {title} 代替片名', ph: '留空则随机用字卡库' }
+            ]
+        });
+    }
+    function _bindLinesBtn() {
+        var b = document.getElementById('cinema-lines-btn');
+        if (b) b.addEventListener('click', _openCinemaLinesEditor);
     }
 
     // ── 渲染：有约定（等待中）────────────────────────────
@@ -1299,11 +1420,13 @@
         var startBtn = document.getElementById('cinema-start-btn');
         if (startBtn && !locked) {
             startBtn.addEventListener('click', function () {
-                _openVideoSourceModal(function (src, title, type) {
+                _openVideoSourceModal(function (src, title, type, extra) {
                     _clearWaitTimer();
                     _currentVideo.src = src;
                     _currentVideo.title = title;
                     _currentVideo.type = type || 'video';
+                    _currentVideo.bvid = (extra && extra.bvid) || '';
+                    _currentVideo.page = (extra && extra.page) || 1;
                     _immersive = true;
                     _renderLoading();
                     setTimeout(function () {
@@ -1312,6 +1435,9 @@
                         window._cinemaWatching = true;
                         _apptSave();
                         _cinemaSendWatchEvent(true);
+                        // 开场台词：自定义（{title}=片名）> 字卡库随机，都没有就不说
+                        var startLine = window.SceneLines ? SceneLines.pick('cinema', 'start', { title: _currentVideo.title }) : null;
+                        if (startLine) _pushMessage({ sender: 'partner', content: startLine, type: 'text' });
                         _scheduleWatchAutoEnd();
                         _cinemaRender();
                     }, 1650);
@@ -1368,6 +1494,7 @@
             '</div>' +
             '<div class="cinema-watch-toolbar">' +
                 '<button class="cinema-tool-btn" id="cinema-change-film-btn"><i class="fas fa-exchange-alt"></i> 换片</button>' +
+                (isBili ? _epPickerHTML() : '') +
                 '<span class="cinema-watch-title" id="cinema-watch-title">' + _escapeHtml(title) + '</span>' +
                 '<button class="cinema-tool-btn cinema-tool-end" id="cinema-end-btn"><i class="fas fa-stop-circle"></i> 结束观影</button>' +
             '</div>' +
@@ -1408,8 +1535,11 @@
         var videoEl = document.getElementById('cinema-video');
         _watchVideoLoad(videoEl);
 
+        // B站合集选集控件（工具栏/沉浸头部，同一时刻只存在一份）
+        _bindEpPicker();
+
         document.getElementById('cinema-change-film-btn').addEventListener('click', function () {
-            _openVideoSourceModal(function (src, title, type) {
+            _openVideoSourceModal(function (src, title, type, extra) {
                 var video = document.getElementById('cinema-video');
                 if (video && video.tagName === 'VIDEO' && video.src && video.src.indexOf('blob:') === 0) {
                     URL.revokeObjectURL(video.src);
@@ -1417,6 +1547,8 @@
                 _currentVideo.src = src;
                 _currentVideo.title = title;
                 _currentVideo.type = type || 'video';
+                _currentVideo.bvid = (extra && extra.bvid) || '';
+                _currentVideo.page = (extra && extra.page) || 1;
                 // 换片可能是"普通视频→B站"或反过来，标签本身不一样(<video>↔<iframe>)，
                 // 没法直接改 src 了事，干脆整个面板重渲染一次，简单可靠
                 _renderWatching();
@@ -1890,8 +2022,17 @@
 
     window._cinemaInit = function () {
         _bindOutsideClickOnce();
+        _bindSubtabsOnce();
         _cinemaMigrateLegacyKeys();
         Promise.all([_apptLoad(), _negoLoad()]).then(function () {
+            // 上次停在"一起读书"子页：进 tab 直接回书架，不重画观影视图，
+            // 保住切走前暂停的播放器（回来点播放接着看，进度不丢）
+            if (_cinemaView === 'reading') {
+                _applyView('reading');
+                if (typeof window._readingInit === 'function') window._readingInit();
+                return;
+            }
+            _applyView('movie');
             _cinemaRender();
         });
     };

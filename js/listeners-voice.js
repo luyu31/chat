@@ -2,6 +2,7 @@
  * 首页改造 · 梦角伪语音模块
  *   - 对方文本消息 20% 概率渲染成语音条样式（下方贴原文字）
  *   - 点击语音条：等待动效（三点跳动）→ 播放动效（wifi弧线循环）→ 静态
+ *   - 通话中（缩小成胶囊+小喇叭开）收到语音消息自动朗读，平时手动点击播放
  * ──────────────────────────────────────────────────────────────── */
 (function () {
     'use strict';
@@ -127,6 +128,7 @@
                     if (node.classList && node.classList.contains('message-wrapper')) {
                         maybeFakeVoiceForPartner(node);
                         renderVoiceIfNeeded(node);
+                        autoPlayVoiceIfNeeded(node);
                     }
                 });
             });
@@ -299,6 +301,73 @@
                 if (currentBubble === bubble) currentBubble = null;
             }, duration * 1000);
         });
+
+        // ─────────── 通话中语音消息自动朗读 ───────────
+        // 平时语音条必须手动点播放；只有"通话进行中"时才像打电话一样自动出声：
+        // - 通话窗口展开：由通话里的语音播报（小喇叭）负责朗读，这里不重复播
+        // - 通话缩小成胶囊 + 小喇叭开着：新收到的语音消息在这里自动朗读
+        // - 没在通话 / 小喇叭关着 / 未配置真实语音TTS：一律手动点击播放
+        // 历史消息、翻页重渲染出来的旧语音永远不自动播。
+        const _autoQueue = [];
+        const _autoConsidered = new Set(); // 消息id → 已经判断过"要不要自动播"。
+        // 每条消息只在到达那一刻判断一次：当时不在通话/喇叭关着而跳过的，
+        // 之后进了通话或历史重新渲染也不会突然补播（重渲染会生成全新DOM，靠dataset去重会失效）
+        let _autoBusy = false;
+
+        function autoPlayVoiceIfNeeded(wrapper) {
+            if (!wrapper.classList.contains('received')) return;
+            const msgId = wrapper.dataset.msgId || wrapper.dataset.id;
+            if (!msgId) return;
+            if (_autoConsidered.has(msgId)) return;
+            _autoConsidered.add(msgId);
+            if (!window.callFeature || !window.callFeature.chatVoiceAuto || !window.callFeature.chatVoiceAuto()) return;
+            if (!window.voiceTTS || !window.voiceTTS.isTtsReady()) return; // 没配真实语音：保持点击播放
+            const msg = findMessage(msgId);
+            if (!msg || !msg.voice || !msg.voice.fakeText) return;
+            // 只自动播"刚刚收到"的消息：进页面/翻页把历史重新渲染出来时不播
+            const ts = msg.timestamp ? new Date(msg.timestamp).getTime() : 0;
+            if (!ts || Date.now() - ts > 8000) return;
+            const bubble = wrapper.querySelector('.voice-bubble');
+            if (bubble) _autoQueue.push({ bubble: bubble, msgId: msgId, text: msg.voice.fakeText });
+            _drainAutoQueue();
+        }
+
+        function _drainAutoQueue() {
+            if (_autoBusy || !_autoQueue.length) return;
+            if (currentBubble) { setTimeout(_drainAutoQueue, 800); return; } // 用户正在手动播放，等它结束
+            const item = _autoQueue.shift();
+            if (!item.bubble.isConnected) { _drainAutoQueue(); return; } // 消息已被移出DOM
+            _autoBusy = true;
+            _speakBubbleAuto(item.bubble, item.msgId, item.text)
+                .catch(() => {})
+                .finally(() => { _autoBusy = false; _drainAutoQueue(); });
+        }
+
+        async function _speakBubbleAuto(bubble, msgId, text) {
+            let audio = null;
+            bubble.classList.add('tts-loading');
+            try {
+                const audioUrl = await window.voiceTTS.getAudioForMessage(msgId, text);
+                if (!bubble.isConnected) return;
+                audio = new Audio(audioUrl);
+                if (window.voiceTTS.applyPlaybackSettings) window.voiceTTS.applyPlaybackSettings(audio);
+                _stopCurrentAudio();
+                currentBubble = bubble;
+                _currentAudio = audio;
+                bubble.classList.remove('tts-loading');
+                bubble.classList.add('playing');
+                await new Promise(res => {
+                    audio.onended = res;
+                    audio.onerror = res;
+                    audio.onpause = res; // 被手动打断（用户点了别的语音条）时也要放行队列
+                    audio.play().catch(res); // 浏览器拦截自动播放时静默放弃（App内WebView已放行）
+                });
+            } finally {
+                bubble.classList.remove('tts-loading', 'playing');
+                if (currentBubble === bubble) currentBubble = null;
+                if (_currentAudio === audio) _currentAudio = null;
+            }
+        }
 
         // ─────────── helpers ───────────
         function findMessage(id) {

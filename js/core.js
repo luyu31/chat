@@ -453,7 +453,8 @@ const loadData = async () => {
             localforage.getItem(getStorageKey('customPokeGroups')),
             localforage.getItem(getStorageKey('customStatusGroups')),
             localforage.getItem(getStorageKey('customPeriodCare')),
-            localforage.getItem(getStorageKey('myStickerGroups'))
+            localforage.getItem(getStorageKey('myStickerGroups')),
+            localforage.getItem(getStorageKey('customCheckinLines'))
         ]);
         const getVal = (index) => results[index].status === 'fulfilled' ? results[index].value : null;
 
@@ -480,6 +481,7 @@ const loadData = async () => {
         const savedStatusGroups = getVal(20);
         const savedPeriodCare = getVal(21);
         const savedMyStickerGroups = getVal(22);
+        const savedCheckinLines = getVal(23);
 
         if (savedPartnerPersonas) partnerPersonas = savedPartnerPersonas;
 
@@ -510,6 +512,7 @@ const loadData = async () => {
         else customIntros = CONSTANTS.WELCOME_ANIMATIONS.map(a => `${a.line1}|${a.line2}`);
 
         customPeriodCare = savedPeriodCare || [];  // 没有内置预设，用户没配置就是空数组
+        customCheckinLines = savedCheckinLines || [];  // 打卡专用字卡，同样是空数组起步
 
         if (savedMessages && Array.isArray(savedMessages)) {
             messages = savedMessages.map(m => ({
@@ -723,10 +726,13 @@ const LIBRARY_CONFIG = {
         tabs: [
             { id: 'pokes', name: '拍一拍', mode: 'list' },
             { id: 'statuses', name: '对方状态', mode: 'list' },
+            { id: 'slacking', name: '摸鱼状态', mode: 'list' },
             { id: 'surveyBank', name: '问卷题库', mode: 'list' },
             { id: 'period', name: '经期', mode: 'list' },
+            { id: 'checkinBank', name: '打卡', mode: 'list' },
             { id: 'redpacketBank', name: '红包祝福语', mode: 'list' },
             { id: 'mottos', name: '顶部格言', mode: 'list' },
+            { id: 'motto', name: '个性签名', mode: 'list' },
             { id: 'intros', name: '开场动画', mode: 'list' }
         ]
     }
@@ -777,8 +783,14 @@ window.deleteAnniversaryItem = function(id) {
 };
 
 const _BACKUP_PREFIX = 'BACKUP_V1_';
-function _backupCriticalData() {
+let _lastCritBackupTs = 0;
+function _backupCriticalData(force) {
     if (window._skipBackup) return;
+    // 闪退恢复备份是同步写 localStorage（最多 4.5MB），聊天记录一长就是一次明显的掉帧。
+    // 它只需要在崩溃前"最近"有一份就行——非紧急路径（saveData 内部调用）60 秒最多做一次；
+    // 紧急路径（切后台/关页面前）传 force=true 强制立即写。
+    if (!force && Date.now() - _lastCritBackupTs < 60000) return;
+    _lastCritBackupTs = Date.now();
     try {
         const backupPayload = {
             ts: Date.now(),
@@ -846,6 +858,7 @@ const saveData = async () => {
         { key: 'customMottos',           val: () => localforage.setItem(getStorageKey('customMottos'), customMottos) },
         { key: 'customIntros',           val: () => localforage.setItem(getStorageKey('customIntros'), customIntros) },
         { key: 'customPeriodCare',       val: () => localforage.setItem(getStorageKey('customPeriodCare'), customPeriodCare) },
+        { key: 'customCheckinLines',     val: () => localforage.setItem(getStorageKey('customCheckinLines'), customCheckinLines) },
         { key: 'stickerLibrary',         val: () => localforage.setItem(getStorageKey('stickerLibrary'), stickerLibrary) },
         { key: 'myStickerLibrary',       val: () => localforage.setItem(getStorageKey('myStickerLibrary'), myStickerLibrary) },
         { key: 'myStickerGroups',        val: () => localforage.setItem(getStorageKey('myStickerGroups'), window.myStickerGroups || []) },
@@ -884,7 +897,33 @@ const saveData = async () => {
         console.warn(`[saveData] ${failed.length} 项写入失败，已触发 localStorage 降级备份`, failed);
     }
 
-    _backupCriticalData();
+    _lastSaveFingerprint = _computeSaveFingerprint();
+    _backupCriticalData(false); // 内部调用走 60 秒节流；切后台/关页面前的紧急调用才是强制的
+};
+
+// ── 自动保存的"没变就跳过"：给定时全量保存用的指纹 ──
+// 3 分钟一次的自动保存之前不管有没有改动都会把全部数据（含整份聊天记录）
+// 重新序列化写一遍 IndexedDB + localStorage，挂着不动也周期性掉帧/耗电。
+// 这里用一份轻量指纹（消息条数 + 最后一条消息标识 + 各集合长度）判断有没有变化，
+// 没变就直接跳过。真正的改动路径都有自己的 throttledSaveData/saveData 调用，不受影响。
+let _lastSaveFingerprint = null;
+function _computeSaveFingerprint() {
+    const lastMsg = messages.length ? messages[messages.length - 1] : null;
+    try {
+        return JSON.stringify([
+            messages.length,
+            lastMsg ? String(lastMsg.id) + '@' + (lastMsg.timestamp ? new Date(lastMsg.timestamp).getTime() : '') : '',
+            customReplies.length, stickerLibrary.length, myStickerLibrary.length,
+            anniversaries.length, customPokes.length, customStatuses.length,
+            JSON.stringify(settings).length
+        ]);
+    } catch (e) { return null; }
+}
+window.saveDataIfChanged = async function () {
+    const fp = _computeSaveFingerprint();
+    if (fp !== null && fp === _lastSaveFingerprint) return false; // 没有任何变化，跳过
+    await saveData();
+    return true;
 };
 
         function initializeRandomUI() {
@@ -1023,8 +1062,8 @@ if (customIntros && customIntros.length > 0) {
         scrambleText(subEl, line2, 2000);
     }, 600);
 } else {
-    document.getElementById('welcome-title-glitch').textContent = "传讯";
-    document.getElementById('welcome-subtitle-scramble').textContent = "请在设置中添加开场动画";
+    document.getElementById('welcome-title-glitch').textContent = "和你在一起的每一天";
+    document.getElementById('welcome-subtitle-scramble').textContent = "和你在一起的每一天";
 }
 
 
@@ -1234,6 +1273,18 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         return fragment;
     }
 
+    // ── 撤回的消息：不再显示原内容，渲染成居中的灰色提示条（微信风格）──
+    if (msg.recalled) {
+        const recallDiv = document.createElement('div');
+        recallDiv.className = 'message-recalled-tip';
+        recallDiv.dataset.msgId = msg.id;
+        const who = msg.sender === 'user' ? (settings.myName || '你') : (settings.partnerName || '对方');
+        recallDiv.innerHTML = `<i class="fas fa-ban"></i>${who}撤回了一条消息`;
+        fragment.appendChild(recallDiv);
+        lastSenderRef.current = 'system';
+        return fragment;
+    }
+
     let showTimestamp = true;
     if (settings.timeFormat === 'off') {
         showTimestamp = false;
@@ -1375,6 +1426,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     actionsHTML += `<button class="meta-action-btn reaction-btn" title="表情回应"><i class="far fa-grin"></i></button>`;
     const starIcon = msg.favorited ? 'fas fa-star' : 'far fa-star';
     actionsHTML += `<button class="meta-action-btn favorite-action-btn ${msg.favorited ? 'favorited' : ''}" title="${msg.favorited ? '取消收藏' : '收藏'}"><i class="${starIcon}"></i></button>`;
+    actionsHTML += `<button class="meta-action-btn recall-btn" title="撤回"><i class="fas fa-rotate-left"></i></button>`;
     actionsHTML += `<button class="meta-action-btn delete-btn" title="删除"><i class="fas fa-trash-alt"></i></button>`;
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'message-meta-actions';
@@ -1606,6 +1658,26 @@ window._jumpToMessage = function(id) {
     return true;
 };
 
+// 原生通知点击的跳转入口（MainActivity 收到 jump_msg_id extra 后调这里）。
+// 冷启动场景：onPageFinished 时消息数据多半还在从 localforage 异步加载，
+// 直接 _jumpToMessage 会查不到消息——所以先等 messages 就绪（最多 5 秒），
+// 到了就跳目标消息，超时/找不到就退回"回到最新消息"，保证行为不比原来差
+window._onNativeJumpMsg = function(id) {
+    if (id === undefined || id === null) return;
+    var waited = 0;
+    (function tryJump() {
+        var ready = typeof messages !== 'undefined' && Array.isArray(messages) && messages.length > 0;
+        if (ready && window._jumpToMessage(id)) return;
+        if (!ready && waited < 5000) {
+            waited += 200;
+            setTimeout(tryJump, 200);
+            return;
+        }
+        // 超时或消息不存在（已被删）：退回最新消息
+        if (typeof window._backToLatestMessages === 'function') window._backToLatestMessages();
+    })();
+};
+
 // 从历史浏览模式回到最新消息——切回正常模式，重置成"只看最近一批"，然后自动滚到底部
 window._backToLatestMessages = function() {
     msgViewMode = 'latest';
@@ -1719,6 +1791,7 @@ window._quotePreviewLabel = function (q) {
     const orig = (typeof messages !== 'undefined' && Array.isArray(messages))
         ? (messages.find(function (m) { return String(m.id) === String(q.id); }) || q)
         : q;
+    if (orig.recalled) return '[消息]';
     if (orig.type === 'redpacket') return '[红包]';
     if (orig.voice) return '语音 ' + (orig.voice.duration || 0) + '"';
     if (orig.image) {
@@ -2758,8 +2831,9 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         }
                     }
 
+                    const partnerMsgId = Date.now() + i;
                     addMessage({
-                        id: Date.now() + i,
+                        id: partnerMsgId,
                         sender: settings.partnerName || '对方',
                         text: finalText,
                         timestamp: new Date(),
@@ -2772,15 +2846,16 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         type: 'normal'
                     });
                     if (typeof window._sendPartnerNotification === 'function') {
-                        window._sendPartnerNotification(settings.partnerName || '对方', finalText);
+                        window._sendPartnerNotification(settings.partnerName || '对方', finalText, partnerMsgId);
                     }
                     playSound('message');
 
                     if (shouldSendSticker) {
                         const randomSticker = enabledStickerPool[Math.floor(Math.random() * enabledStickerPool.length)];
                         setTimeout(() => {
+                            const stickerMsgId = Date.now() + i + 2000;
                             addMessage({
-                                id: Date.now() + i + 2000,
+                                id: stickerMsgId,
                                 sender: settings.partnerName || '对方',
                                 text: '',
                                 timestamp: new Date(),
@@ -2793,7 +2868,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                             });
                             playSound('message');
                             if (typeof window._sendPartnerNotification === 'function') {
-                                window._sendPartnerNotification(settings.partnerName || '对方', '[表情]');
+                                window._sendPartnerNotification(settings.partnerName || '对方', '[表情]', stickerMsgId);
                             }
                         }, 400 + Math.random() * 600);
                     }
@@ -3052,6 +3127,7 @@ function showModal(modalElement, focusElement = null) {
                         if (customMottos && customMottos.length > 0) exportObj.customMottos = customMottos;
                         if (customIntros && customIntros.length > 0) exportObj.customIntros = customIntros;
                         if (customPeriodCare && customPeriodCare.length > 0) exportObj.customPeriodCare = customPeriodCare;
+                        if (customCheckinLines && customCheckinLines.length > 0) exportObj.customCheckinLines = customCheckinLines;
                         if (window.customReplyGroups && window.customReplyGroups.length > 0) exportObj.customReplyGroups = window.customReplyGroups;
                         if (window.customPokeGroups && window.customPokeGroups.length > 0) exportObj.customPokeGroups = window.customPokeGroups;
                         if (window.customStatusGroups && window.customStatusGroups.length > 0) exportObj.customStatusGroups = window.customStatusGroups;
@@ -3286,6 +3362,7 @@ function showModal(modalElement, focusElement = null) {
                         if (doReplies  && importedData.customStatuses && Array.isArray(importedData.customStatuses)) customStatuses = importedData.customStatuses;
                         if (doReplies  && importedData.customMottos && Array.isArray(importedData.customMottos)) customMottos = importedData.customMottos;
                         if (doReplies  && importedData.customPeriodCare && Array.isArray(importedData.customPeriodCare)) customPeriodCare = importedData.customPeriodCare;
+                        if (doReplies  && importedData.customCheckinLines && Array.isArray(importedData.customCheckinLines)) customCheckinLines = importedData.customCheckinLines;
                         if (doReplies  && importedData.customIntros && Array.isArray(importedData.customIntros)) customIntros = importedData.customIntros;
                         if (doReplies  && importedData.customReplyGroups) window.customReplyGroups = importedData.customReplyGroups;
                         if (doReplies  && importedData.customPokeGroups) window.customPokeGroups = importedData.customPokeGroups;

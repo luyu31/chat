@@ -156,8 +156,8 @@
                 var x = (Math.random() * 100).toFixed(1);
                 var y = (Math.random() * 100).toFixed(1);
                 var sz = Math.random() > 0.75 ? '3px' : '2px';
-                var del = (Math.random() * 4).toFixed(2);
-                var dur = (2 + Math.random() * 3).toFixed(1);
+                var del = (Math.random() * 2).toFixed(2);
+                var dur = (1 + Math.random() * 1.5).toFixed(1);
                 html += '<span style="left:'+x+'%;top:'+y+'%;width:'+sz+';height:'+sz+';animation-delay:'+del+'s;animation-duration:'+dur+'s;"></span>';
             }
             starsEl.innerHTML = html;
@@ -223,6 +223,32 @@
             });
         }
 
+        // ── 动画提速：slide 过渡时长运行时减半（styles.css 里是 0.4s，这里覆盖成 0.2s）──
+        if (!document.getElementById('splash-speed-css')) {
+            var speedCss = document.createElement('style');
+            speedCss.id = 'splash-speed-css';
+            speedCss.textContent = '#splash-declaration .splash-slide{transition-duration:.2s;}';
+            document.head.appendChild(speedCss);
+        }
+
+        // ── 跳过按钮：右下角半透明小字，点击直接进场（JS 动态注入，不动 index.html 的 DOM）──
+        if (!document.getElementById('splash-skip-btn')) {
+            var skipBtn = document.createElement('div');
+            skipBtn.id = 'splash-skip-btn';
+            skipBtn.textContent = '跳过';
+            skipBtn.title = '跳过声明，直接进入';
+            skipBtn.style.cssText = 'position:absolute;right:20px;bottom:18px;padding:8px 16px;'
+                + 'font-size:12px;letter-spacing:4px;color:rgba(255,255,255,.32);cursor:pointer;'
+                + 'user-select:none;-webkit-user-select:none;z-index:20;transition:color .2s ease;';
+            skipBtn.addEventListener('mouseenter', function() { skipBtn.style.color = 'rgba(255,255,255,.75)'; });
+            skipBtn.addEventListener('mouseleave', function() { skipBtn.style.color = 'rgba(255,255,255,.32)'; });
+            skipBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                enterSite();
+            });
+            splash.appendChild(skipBtn);
+        }
+
         updateUI();
     }
 
@@ -235,7 +261,7 @@
             slides[prevIdx].classList.remove('active');
             slides[prevIdx].classList.add('exit-left');
             var exitEl = slides[prevIdx];
-            setTimeout(function() { exitEl.classList.remove('exit-left'); }, 420);
+            setTimeout(function() { exitEl.classList.remove('exit-left'); }, 220);
         }
 
         cur = idx;
@@ -255,7 +281,7 @@
             setTimeout(function() {
                 var inp = document.getElementById('splash-pledge-input');
                 if (inp) inp.focus();
-            }, 450);
+            }, 250);
         }
     }
 
@@ -281,7 +307,7 @@
         var splash = document.getElementById('splash-declaration');
         if (splash) {
             splash.classList.add('splash-fade-out');
-            setTimeout(function() { splash.style.display = 'none'; }, 950);
+            setTimeout(function() { splash.style.display = 'none'; }, 400);
         }
     }
 

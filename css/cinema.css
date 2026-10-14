@@ -98,6 +98,20 @@
     display: flex !important;
 }
 
+/* ── 子页视图：观影 / 一起读书（顶部子tab切换）────────── */
+.cinema-view {
+    flex: 1;
+    min-height: 0;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+}
+.cinema-view.cinema-view-on { display: flex; }
+/* 沉浸观影/加载过渡时隐藏子tab栏（连外层顶栏一起藏） */
+#couple-space-page.cinema-theater-mode #cs-panel-cinema .al-subtabs {
+    display: none !important;
+}
+
 /* ── Header：对齐纪念日/心情手账风格 ─────────────────── */
 .cinema-hd {
     display: flex;
@@ -684,6 +698,56 @@
     color: #c04040;
 }
 .cinema-tool-btn:active { opacity: 0.75; }
+/* ── B站合集选集控件 ‹ P[n] › ──────────────────────── */
+.cinema-ep-picker {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--secondary-bg, #f0f0f0);
+    border-radius: 20px;
+    padding: 2px 6px;
+}
+.cinema-ep-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.cinema-ep-btn:active { opacity: 0.6; }
+.cinema-ep-p {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary, #999);
+    margin-right: 1px;
+}
+.cinema-ep-num {
+    width: 44px;
+    height: 24px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 12px;
+    background: var(--primary-bg, #fff);
+    color: var(--text-primary);
+    font-size: 12px;
+    text-align: center;
+    font-family: inherit;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.cinema-ep-num::-webkit-outer-spin-button,
+.cinema-ep-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.cinema-ep-num:focus { outline: none; border-color: var(--accent-color, #c5a47e); }
+.cinema-theater-hd .cinema-ep-picker { background: rgba(255,255,255,0.14); }
+.cinema-theater-hd .cinema-ep-btn { color: #fff; }
+.cinema-theater-hd .cinema-ep-p { color: rgba(255,255,255,0.7); }
+.cinema-theater-hd .cinema-ep-num { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.25); color: #fff; }
 .cinema-watch-title {
     flex: 1;
     text-align: center;

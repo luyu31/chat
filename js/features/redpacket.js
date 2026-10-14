@@ -27,6 +27,10 @@
     var _storageKey = null;
 
     // ── Storage（照抄 survey.js 的取key方式） ──────────────────────
+    // 注意：所有分支都要缓存 _storageKey。之前扫描/兜底分支不缓存，会出现"读取用一个 key、
+    // 写入用另一个 key"的漂移——典型翻车现场：冷启动早期 SESSION_ID 没就绪时用兜底 key 读到
+    // 空数据，之后 SESSION_ID 就绪了 _save 却写到正式会话 key，把历史红包记录整个覆盖成空的，
+    // 表现为"红包气泡还在、点进去数据找不到了"。
     async function _getKey() {
         if (_storageKey) return _storageKey;
         var properKey = null;
@@ -39,12 +43,14 @@
         try {
             var allKeys = await localforage.keys();
             var found = allKeys.find(function (k) { return k.indexOf('_redpacketData') !== -1; });
-            if (found) return found;
+            if (found) { _storageKey = found; return found; }
             var msgKey = allKeys.find(function (k) { return k.indexOf('_chatMessages') !== -1; });
             var prefix = msgKey ? msgKey.replace('_chatMessages', '') : 'CHAT_APP_V3_';
-            return prefix + '_redpacketData';
+            _storageKey = prefix + '_redpacketData';
+            return _storageKey;
         } catch (e) {
-            return 'CHAT_APP_V3__redpacketData';
+            _storageKey = 'CHAT_APP_V3__redpacketData';
+            return _storageKey;
         }
     }
 
@@ -81,10 +87,55 @@
 
     async function _load() {
         var key = await _getKey();
+        // key 校验：如果刚才走的是扫描/兜底分支（当时 SESSION_ID 没就绪），趁现在还没置
+        // _loaded、还没机会 _save，赶紧校验一遍正式 key——发现不一致就换正式 key 重读，
+        // 杜绝"读到空数据 → 之后把空数据覆盖写到正式 key"的灾难
+        try {
+            if (typeof SESSION_ID !== 'undefined' && SESSION_ID && typeof window.getStorageKey === 'function') {
+                var properKey = window.getStorageKey('redpacketData');
+                if (properKey && properKey !== key) { _storageKey = properKey; key = properKey; }
+            }
+        } catch (e) {}
         var saved = await localforage.getItem(key);
         if (saved) _data = Object.assign({ outbox: [], inbox: [], msgBank: [], scheduler: null }, saved);
         _seedMsgBank();
         _loaded = true; // 不管读到的是真数据还是空的，这次读取本身没出错就算加载成功
+    }
+
+    // ── 消息自愈：红包 record 丢了（历史 bug / 极端时序），从消息对象里冗余的
+    // redpacketPayload 重建记录。新发的红包消息都会带 payload，record 即使丢了
+    // 也能照常打开、照常显示金额，不再出现"点进去什么都没有"。
+    function _recoverFromMessage(msg) {
+        if (!msg || !msg.redpacketId || !msg.redpacketPayload) return null;
+        var direction = msg.redpacketDirection || 'outbox';
+        var existing = getById(msg.redpacketId, direction);
+        if (existing) return existing;
+        var p = msg.redpacketPayload;
+        var record = {
+            id: msg.redpacketId,
+            amount: Number(p.amount) || 0,
+            blessing: String(p.blessing || ''),
+            sticker: p.sticker || null,
+            sentTime: Number(p.sentTime) || (msg.timestamp ? new Date(msg.timestamp).getTime() : Date.now()),
+            status: p.status || 'pending'
+        };
+        if (direction === 'outbox') {
+            record.willReceive = !!p.willReceive;
+            record.resolveAt = Number(p.resolveAt) || (record.sentTime + 24 * 3600000);
+        } else {
+            record.resolveAt = Number(p.resolveAt) || (record.sentTime + 24 * 3600000);
+        }
+        if (p.receiveTime) record.receiveTime = Number(p.receiveTime);
+        // 自愈时如果早过了 24h 还挂着 pending，直接按已过期落账
+        if (record.status === 'pending' && record.resolveAt && Date.now() >= record.resolveAt) {
+            record.status = 'returned';
+        }
+        var arr = direction === 'inbox' ? _data.inbox : _data.outbox;
+        if (!Array.isArray(arr)) arr = [];
+        if (direction === 'inbox') _data.inbox = arr; else _data.outbox = arr;
+        arr.push(record);
+        _save();
+        return record;
     }
 
     function _save() {
@@ -741,6 +792,7 @@
                 if (r.status === 'received') r.receiveTime = r.resolveAt;
                 changed = true;
                 _spawnReceiverMessage(r, 'outbox');
+                _syncPayloadToMessage(r, 'outbox'); // 结算结果同步进消息冗余 payload
             }
         });
         (_data.inbox || []).forEach(function (r) {
@@ -749,6 +801,7 @@
                 r.status = 'returned'; // inbox 只有"用户点開"或"超时过期"两条路，轮询扫到的只会是超时这条
                 changed = true;
                 _spawnReceiverMessage(r, 'inbox');
+                _syncPayloadToMessage(r, 'inbox'); // 过期状态同步进消息冗余 payload
             }
         });
         if (changed) {
@@ -764,6 +817,20 @@
         if (direction === 'outbox') return (_data.outbox || []).find(function (r) { return r.id === id; }) || null;
         return (_data.outbox || []).find(function (r) { return r.id === id; }) ||
                (_data.inbox || []).find(function (r) { return r.id === id; }) || null;
+    }
+
+    // record 状态变化（领取/过期）时，把消息对象里冗余的 payload 同步更新，
+    // 这样即使 record 数据真的丢了，从消息自愈出来的状态也是最新的
+    function _syncPayloadToMessage(record, direction) {
+        if (typeof messages === 'undefined' || !Array.isArray(messages)) return;
+        for (var i = messages.length - 1; i >= 0; i--) {
+            var m = messages[i];
+            if (m && m.type === 'redpacket' && m.redpacketId === record.id && m.redpacketPayload) {
+                m.redpacketPayload.status = record.status;
+                if (record.receiveTime) m.redpacketPayload.receiveTime = record.receiveTime;
+            }
+        }
+        if (typeof throttledSaveData === 'function') throttledSaveData();
     }
 
     // ── 发送（用户 → 梦角） ──────────────────────
@@ -800,6 +867,12 @@
                 redpacketId: id,
                 redpacketDirection: 'outbox',
                 redpacketRole: 'original', // 这是红包最初发出的那条消息
+                // 关键数据冗余进消息本身：record 存储万一丢失，还能从消息自愈，红包不至于变砖
+                redpacketPayload: {
+                    amount: record.amount, blessing: record.blessing, sticker: record.sticker,
+                    sentTime: record.sentTime, status: record.status,
+                    willReceive: record.willReceive, resolveAt: record.resolveAt
+                },
                 favorited: false,
                 note: null
             });
@@ -852,6 +925,11 @@
                 redpacketId: id,
                 redpacketDirection: 'inbox',
                 redpacketRole: 'original', // 这是红包最初发出的那条消息
+                // 关键数据冗余进消息本身：record 存储万一丢失，还能从消息自愈，红包不至于变砖
+                redpacketPayload: {
+                    amount: record.amount, blessing: record.blessing, sticker: record.sticker,
+                    sentTime: record.sentTime, status: record.status, resolveAt: record.resolveAt
+                },
                 favorited: false,
                 note: null
             });
@@ -885,6 +963,7 @@
         record.status = 'received';
         record.receiveTime = Date.now();
         _save();
+        _syncPayloadToMessage(record, 'inbox'); // 消息里的冗余 payload 同步更新，之后自愈出来的也是已领取状态
 
         if (typeof addMessage === 'function') {
             addMessage({
@@ -925,6 +1004,7 @@
     function renderBubbleHTML(msg) {
         var direction = msg.redpacketDirection || 'outbox';
         var record = getById(msg.redpacketId, direction);
+        if (!record) record = _recoverFromMessage(msg); // record 丢失时从消息冗余数据自愈，避免空白气泡
         var status = record ? record.status : 'pending';
         var blessing = record ? record.blessing : '';
         var originalSenderIsUser = (direction === 'outbox');
@@ -953,11 +1033,24 @@
     }
 
     // ── 拆红包弹窗 ──────────────────────
-    function openByMessageId(msgId) {
+    // 改成 async：冷启动后用户从通知栏点进来立刻戳红包时，红包数据可能还在异步加载——
+    // 之前直接查一次 record 查不到就报"数据找不到了"（其实数据马上就到），现在先等
+    // 加载完成再查；真丢了就走消息 payload 自愈，总之保证点开一定有东西
+    async function openByMessageId(msgId) {
         var msg = (typeof messages !== 'undefined') ? messages.find(function (m) { return String(m.id) === String(msgId); }) : null;
         if (!msg || !msg.redpacketId) return;
         var direction = msg.redpacketDirection || 'outbox';
         var record = getById(msg.redpacketId, direction);
+        if (!record && !_loaded) {
+            // 数据还没加载完（典型：点通知冷启动进来马上点红包）——等加载，最多再等 4 秒
+            var waited = 0;
+            while (!_loaded && waited < 4000) {
+                await new Promise(function (r) { setTimeout(r, 150); });
+                waited += 150;
+            }
+            record = getById(msg.redpacketId, direction);
+        }
+        if (!record) record = _recoverFromMessage(msg); // record 真丢了：从消息冗余数据自愈
         if (!record) {
             if (typeof showNotification === 'function') showNotification('这个红包的数据找不到了', 'error');
             return;

@@ -5,6 +5,7 @@
     const KEY_POS      = 'callWindowPos';
     const KEY_SIZE     = 'callWindowSize';
     const KEY_PILL_POS = 'callPillPos';
+    const KEY_VC       = 'callVoiceCastEnabled'; // 通话中语音播报开关
     // 之前这个key完全没加前缀（既不是APP_PREFIX+sid，也不是APP_PREFIX），云同步/本地选择性恢复
     // 那套按key名字匹配的逻辑根本认不出它，形同被漏掉。改成跟其他全局key一样带上APP_PREFIX；
     // LEGACY是老用户可能已经存过的没前缀的那份，读的时候兜底一下顺便悄悄搬过去，不丢已有背景
@@ -32,6 +33,20 @@
         randomCallTimer: null,
         isPartnerCall:   false,
     };
+
+    // 通话中语音播报：梦角在通话期间发的消息（字卡回复）同步显示到通话窗口并自动 TTS 朗读
+    const VC = {
+        enabled:  localStorage.getItem(KEY_VC) !== 'false', // 默认开启
+        queue:    [],
+        playing:  false,
+        audio:    null,
+        hideTimer: null,
+        errorNotified: false, // 本次通话内"播报失败"提醒只弹一次，避免刷屏
+    };
+    // TTS 是否可用（依赖 设置→聊天设置→真实语音(TTS) 里的 MiniMax 配置）
+    function vcTtsReady() {
+        return !!(window.voiceTTS && window.voiceTTS.isTtsReady && window.voiceTTS.isTtsReady());
+    }
 
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -289,15 +304,46 @@
 }
 .call-util-btn:hover{background:rgba(255,255,255,.24);color:#fff;transform:scale(1.1);}
 .call-util-btn.active{background:rgba(255,255,255,.28);color:#fff;}
+/* 语音播报开着但真实语音没配置：黄色警告，提示"不会出声" */
+.call-util-btn.vc-warn{background:rgba(240,160,32,.30);color:#ffc44d;}
+.call-util-btn.vc-warn:hover{background:rgba(240,160,32,.45);color:#ffd27a;}
 #call-bg-btn{bottom:70px;right:10px;}
 #call-immersive-btn{bottom:70px;left:10px;}
+#call-vc-btn{bottom:106px;right:10px;}
 #call-bg-file-input{display:none;}
+
+/* 通话中梦角消息气泡：头像 + 文字 + 播报指示 */
+#call-live-msg{
+    position:absolute;left:10px;right:10px;bottom:92px;z-index:9;
+    display:none;align-items:flex-start;gap:7px;
+    background:rgba(0,0,0,.46);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,.16);border-radius:14px;
+    padding:9px 12px;color:#fff;font-size:12px;line-height:1.55;
+    text-align:left;pointer-events:none;
+}
+#call-live-msg.visible{display:flex;animation:cLm .25s ease;}
+#call-live-msg .clm-ic{
+    flex-shrink:0;width:26px;height:26px;border-radius:50%;overflow:hidden;
+    background:var(--accent-color,#e0698a);
+    display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(255,255,255,.85);
+}
+#call-live-msg .clm-ic img{width:100%;height:100%;object-fit:cover;}
+#call-live-msg .clm-txt{
+    flex:1;min-width:0;word-break:break-word;
+    display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;
+}
+#call-live-msg .clm-spk{
+    flex-shrink:0;font-size:10px;color:rgba(255,255,255,.55);align-self:flex-end;display:none;
+}
+#call-live-msg.speaking .clm-spk{display:block;animation:cBl 1.1s step-end infinite;}
+@keyframes cLm{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
 
 #call-window.immersive #call-window-header,
 #call-window.immersive #call-window-body,
 #call-window.immersive #call-connecting-state,
 #call-window.immersive #call-window-controls,
 #call-window.immersive #call-bg-btn,
+#call-window.immersive #call-vc-btn,
 #call-window.immersive .call-overlay{opacity:0 !important;pointer-events:none !important;}
 #call-window.immersive #call-immersive-btn{opacity:.35 !important;pointer-events:all !important;}
 #call-window.immersive #call-immersive-btn:hover{opacity:1 !important;}
@@ -469,8 +515,15 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
     </div>
 
     <button class="call-util-btn" id="call-immersive-btn" title="沉浸模式"><i class="fas fa-eye-slash"></i></button>
+    <button class="call-util-btn" id="call-vc-btn" title="通话语音播报"><i class="fas fa-volume-up"></i></button>
     <button class="call-util-btn" id="call-bg-btn" title="更换背景"><i class="fas fa-image"></i></button>
     <input type="file" id="call-bg-file-input" accept="image/*,.gif">
+
+    <div id="call-live-msg">
+      <div class="clm-ic" id="clm-av"><i class="fas fa-user"></i></div>
+      <div class="clm-txt" id="clm-txt"></div>
+      <i class="fas fa-volume-up clm-spk"></i>
+    </div>
 
     <div id="call-window-controls">
       <button class="call-hangup-btn" id="call-hangup-btn">${SVG_HU}</button>
@@ -547,7 +600,8 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         if (b) b.textContent = t;
         // 闪退恢复用：节流写盘心跳
         tryHeartbeatCallSession();
-        S.timerRAF = requestAnimationFrame(tick);
+        // 500ms 一拍足够（显示只精确到秒），比 60fps 的 rAF 省得多
+        S.timerRAF = setTimeout(tick, 500);
     }
 
     // ─── 通话闪退恢复：live session 持久化 ─────────────
@@ -653,11 +707,12 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
 
     function startCall(isPartner) {
         if (!S.enabled) return;
+        VC.errorNotified = false; // 新通话重新允许"播报失败"提醒
         S.active = true; S.startTime = null; S.elapsed = 0;
         S.minimized = false; S.isPartnerCall = !!isPartner; S.immersive = false;
         document.getElementById('call-window')?.classList.remove('immersive');
 
-        ['call-inc-avatar','call-conn-avatar','call-win-avatar','call-mini-av'].forEach(fillAv);
+        ['call-inc-avatar','call-conn-avatar','call-win-avatar','call-mini-av','clm-av'].forEach(fillAv);
         ['call-conn-name','call-win-name','call-mini-name'].forEach(fillNm);
         applyBg(); positionWindow();
 
@@ -677,7 +732,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             S.connectingTimer = setTimeout(() => {
                 if (!S.active) return;
                 S.active = false;
-                cancelAnimationFrame(S.timerRAF);
+                clearTimeout(S.timerRAF);
                 const winEl = document.getElementById('call-window');
                 if (winEl) { winEl.classList.remove('visible'); winEl.classList.remove('immersive'); }
                 const connEl = document.getElementById('call-connecting-state');
@@ -704,16 +759,110 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 // 通话接通：立即写入第一次心跳
                 writeCallSession();
                 tick();
+                // 语音播报默认开启，但真实语音(TTS)没配置时之前会静默只显文字——
+                // 用户以为"选了他说话却不出声"。接通时主动提醒一次怎么配置
+                updateVcBtn(); // 按钮警告态也要跟着当前 TTS 状态刷新（接通前可能刚改过配置）
+                if (VC.enabled && !vcTtsReady()) {
+                    if (typeof showNotification === 'function')
+                        showNotification('语音播报已开启，但尚未配置 ta 的真实语音：设置 → 聊天设置 → 真实语音(TTS)，配置后通话中 ta 的话会自动朗读', 'warning', 5200);
+                }
             }, 1400 + Math.random() * 1400);
         }
+    }
+
+    // ─── 通话中语音播报 ───
+    // 梦角在通话期间发的消息（字卡回复）→ 通话窗口顶部气泡 + 自动 TTS 朗读
+    // 仅通话窗口展开时生效；缩小成胶囊时不播报（消息照常进聊天流）
+    function vcCanShow() {
+        return S.active && !S.minimized;
+    }
+
+    function updateVcBtn() {
+        const btn = document.getElementById('call-vc-btn');
+        if (!btn) return;
+        const ready = vcTtsReady();
+        btn.classList.toggle('active', VC.enabled);
+        // 开了播报但真实语音没配置：黄色警告态，一眼能看出"开了也不会出声"
+        btn.classList.toggle('vc-warn', VC.enabled && !ready);
+        const ic = btn.querySelector('i');
+        if (ic) ic.className = VC.enabled ? 'fas fa-volume-up' : 'fas fa-volume-mute';
+        btn.title = !VC.enabled ? '语音播报：关'
+            : (ready ? '语音播报：开' : '语音播报：开（未配置真实语音，仅显示文字）');
+    }
+
+    function showLiveMsg(text, speaking) {
+        if (!vcCanShow()) return;
+        const box = document.getElementById('call-live-msg');
+        if (!box) return;
+        const txt = box.querySelector('#clm-txt');
+        if (txt) txt.textContent = text;
+        box.classList.add('visible');
+        box.classList.toggle('speaking', !!speaking);
+        clearTimeout(VC.hideTimer);
+    }
+
+    function hideLiveMsg() {
+        const box = document.getElementById('call-live-msg');
+        if (box) { box.classList.remove('visible', 'speaking'); }
+    }
+
+    function vcStop() {
+        VC.queue.length = 0;
+        if (VC.audio) { try { VC.audio.pause(); } catch (e) {} VC.audio = null; }
+        VC.playing = false;
+        clearTimeout(VC.hideTimer);
+        hideLiveMsg();
+    }
+
+    async function vcPlayNext() {
+        if (VC.playing || !VC.queue.length) return;
+        if (!vcCanShow()) { vcStop(); return; }
+        const item = VC.queue.shift();
+        VC.playing = true;
+        let spoke = false;
+        try {
+            if (VC.enabled && window.voiceTTS && window.voiceTTS.isTtsReady()) {
+                const url = await window.voiceTTS.getAudioForMessage(item.id, item.text);
+                if (url && vcCanShow()) {
+                    const audio = new Audio(url);
+                    if (window.voiceTTS.applyPlaybackSettings) window.voiceTTS.applyPlaybackSettings(audio);
+                    VC.audio = audio;
+                    showLiveMsg(item.text, true);
+                    await new Promise(res => {
+                        audio.onended = res; audio.onerror = res;
+                        audio.play().catch(res);
+                    });
+                    spoke = true;
+                }
+            }
+        } catch (e) {
+            console.warn('[call] voice-cast tts error:', e);
+            // 播报失败之前是静默吞掉只显文字，用户完全不知道为什么"开了说话却没声音"。
+            // 现在把原因弹出来（本次通话只提醒一次，不刷屏）
+            if (!VC.errorNotified) {
+                VC.errorNotified = true;
+                updateVcBtn();
+                if (typeof showNotification === 'function')
+                    showNotification('语音播报失败：' + ((e && e.message) ? e.message : '网络或配置异常') + '，本次通话将仅显示文字', 'warning', 4500);
+            }
+        }
+        VC.audio = null;
+        VC.playing = false;
+        if (!vcCanShow()) { hideLiveMsg(); return; }
+        // 朗读完短暂停留收起；没朗读（开关关/未配置TTS）时多显示一会儿文字
+        showLiveMsg(item.text, false);
+        clearTimeout(VC.hideTimer);
+        VC.hideTimer = setTimeout(() => { if (!VC.playing) hideLiveMsg(); }, spoke ? 1200 : 3800);
+        vcPlayNext();
     }
 
     function endCall() {
         if (!S.active) return;
         const dur = S.elapsed;
         S.active = false; S.startTime = null;
-        cancelAnimationFrame(S.timerRAF);
+        clearTimeout(S.timerRAF);
         clearTimeout(S.connectingTimer); clearTimeout(S.incomingTimer);
+        vcStop();
 
         // 清除闪退恢复用的 live session
         clearCallSession();
@@ -748,10 +897,25 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         ov.classList.add('visible');
         clearTimeout(S.incomingTimer);
 
-        // 播放视频通话邀请音效
+        // App 原生全屏来电：后台/锁屏时交给系统级全屏界面 + 原生铃声（像手机来电）。
+        // 此时跳过网页铃声，避免双重播放；前台时仍走网页音效。
+        let nativeRing = false;
         try {
-            if (typeof playSound === 'function') playSound('invite_videocall');
-        } catch (e) { console.warn('[call] invite sound error:', e); }
+            if (window.MilkChat && document.hidden) {
+                const av = (document.querySelector('#partner-avatar img') || {}).src || '';
+                const ringAllowed = (typeof settings === 'undefined' || settings.soundEnabled !== false)
+                    && ((settings && settings.inviteVideocallSoundPreset) || 'default') !== 'mute';
+                window.MilkChat.startRinging(getName(), av, ringAllowed);
+                nativeRing = ringAllowed;
+            }
+        } catch (e) { console.warn('[call] native ring error:', e); }
+
+        // 播放视频通话邀请音效
+        if (!nativeRing) {
+            try {
+                if (typeof playSound === 'function') playSound('invite_videocall');
+            } catch (e) { console.warn('[call] invite sound error:', e); }
+        }
 
         // 后台推送通知（仅当页面在后台 + 用户开启了通知）
         try {
@@ -771,6 +935,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 if (!ov.classList.contains('visible')) return;
                 ov.classList.remove('visible');
                 try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
+                try { if (window.MilkChat) window.MilkChat.stopRinging(); } catch(e) {}
                 const myName = (typeof settings !== 'undefined' && settings.myName) || '我';
                 const partnerName = getName();
                 const rejectLabels = [
@@ -787,6 +952,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 if (!ov.classList.contains('visible')) return;
                 ov.classList.remove('visible');
                 try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
+                try { if (window.MilkChat) window.MilkChat.stopRinging(); } catch(e) {}
                 const myName = (typeof settings !== 'undefined' && settings.myName) || '我';
                 sendCallEvent('fa-phone-slash', `${myName}未接听 ${getName()} 的来电`, null);
             }, 60000);
@@ -802,6 +968,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
 
     function minimizeWindow() {
         S.minimized = true;
+        vcStop(); // 缩小成胶囊后不再播报（消息照常进聊天）
         document.getElementById('call-window')?.classList.remove('visible');
         const pill = document.getElementById('call-mini-pill');
         if (pill) { pill.classList.add('visible'); positionPill(); }
@@ -866,16 +1033,20 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         const pill = document.getElementById('call-mini-pill');
         if (!pill) return;
         let on = false;
+        let startX = 0, startY = 0;
         pill.addEventListener('pointerdown', e => {
             if (e.target.closest('.call-mini-hangup')) return;
             e.preventDefault();
             const r = pill.getBoundingClientRect();
             S.pillDragOff = { x: e.clientX - r.left, y: e.clientY - r.top };
+            startX = e.clientX; startY = e.clientY;
             S.pillDragged = false; on = true;
             try { pill.setPointerCapture(e.pointerId); } catch(_) {}
         });
         pill.addEventListener('pointermove', e => {
             if (!on || !S.pillDragOff) return; e.preventDefault();
+            // 位移超过 6px 才算拖拽，轻微抖动不算（留给点击恢复用）
+            if (!S.pillDragged && Math.hypot(e.clientX - startX, e.clientY - startY) < 6) return;
             S.pillDragged = true;
             pill.style.left   = clamp(e.clientX - S.pillDragOff.x, 0, window.innerWidth  - pill.offsetWidth)  + 'px';
             pill.style.top    = clamp(e.clientY - S.pillDragOff.y, 0, window.innerHeight - pill.offsetHeight) + 'px';
@@ -887,6 +1058,9 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 const r = pill.getBoundingClientRect();
                 S.pillPos = { x: r.left, y: r.top };
                 localStorage.setItem(KEY_PILL_POS, JSON.stringify(S.pillPos));
+            } else {
+                // 没拖 = 单击胶囊 → 恢复通话窗口（之前只有重新点通话按钮才能放大，是个 bug）
+                restoreWindow();
             }
             S.pillDragOff = null;
             try { pill.releasePointerCapture(e.pointerId); } catch(_) {}
@@ -927,6 +1101,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             document.getElementById('call-incoming-overlay')?.classList.remove('visible');
             clearTimeout(S.incomingTimer);
             try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
+            try { if (window.MilkChat) window.MilkChat.stopRinging(); } catch(e) {}
             const myName = (typeof settings !== 'undefined' && settings.myName) || '我';
             sendCallEvent('fa-phone-slash', `${myName}拒绝了 ${getName()} 的通话`, null);
         });
@@ -934,6 +1109,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             document.getElementById('call-incoming-overlay')?.classList.remove('visible');
             clearTimeout(S.incomingTimer);
             try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
+            try { if (window.MilkChat) window.MilkChat.stopRinging(); } catch(e) {}
             startCall(true);
         });
 
@@ -945,6 +1121,42 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             if (!S.pillDragged) restoreWindow();
         });
         document.getElementById('call-immersive-btn')?.addEventListener('click', e => { e.stopPropagation(); toggleImmersive(); });
+
+        // 语音播报开关（通话窗口右侧小喇叭）
+        document.getElementById('call-vc-btn')?.addEventListener('click', e => {
+            e.stopPropagation();
+            VC.enabled = !VC.enabled;
+            localStorage.setItem(KEY_VC, VC.enabled ? 'true' : 'false');
+            VC.errorNotified = false;
+            if (VC.enabled) {
+                // 开启时先说清楚能不能真的出声：真实语音(TTS)没配置的话之前会静默降级成纯文字，
+                // 用户以为坏了。这里直接引导去配置（开关保持开，配置保存后立即生效）
+                const ready = vcTtsReady();
+                if (typeof showNotification === 'function')
+                    showNotification(ready ? '通话语音播报已开启'
+                        : '语音播报需要先配置 ta 的真实语音（设置 → 聊天设置 → 真实语音TTS 填写 MiniMax Key），配置前通话中仅以文字显示',
+                        ready ? 'info' : 'warning', ready ? 1800 : 5200);
+            } else {
+                vcStop();
+                if (typeof showNotification === 'function')
+                    showNotification('通话语音播报已关闭', 'info', 1800);
+            }
+            updateVcBtn();
+        });
+        updateVcBtn();
+
+        // 梦角消息 → 通话界面气泡 + 自动朗读（走 core.js 的多监听通道，不影响陪伴模块的钩子）
+        window._partnerMessageListeners = window._partnerMessageListeners || [];
+        window._partnerMessageListeners.push(function (msg) {
+            if (!S.active || !msg || msg.sender === 'user' || msg.type !== 'normal') return;
+            // 伪语音消息的文字被清空、原文放在 voice.fakeText 里，两种都要能播报
+            var text = (msg.text && msg.text.trim()) ? msg.text
+                     : (msg.voice && msg.voice.fakeText) ? msg.voice.fakeText : '';
+            if (!text) return;
+            if (!vcCanShow()) return; // 通话窗口缩小/结束时：不播报，消息只进聊天
+            VC.queue.push({ id: msg.id, text: text });
+            if (!VC.playing) vcPlayNext();
+        });
         document.getElementById('call-window')?.addEventListener('click', e => {
             if (S.immersive && !e.target.closest('#call-immersive-btn')) toggleImmersive();
         });
@@ -991,7 +1203,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         initDrag(); initPillDrag(); initResize();
     }
 
-    window.callFeature = { startCall, endCall, showIncomingCall, restoreWindow, minimizeWindow, isActive: () => S.active };
+    window.callFeature = { startCall, endCall, showIncomingCall, restoreWindow, minimizeWindow, isActive: () => S.active, isMinimized: () => !!S.minimized, chatVoiceAuto: () => S.active && S.minimized && VC.enabled };
 
     function init() {
         injectCSS();
@@ -1050,18 +1262,21 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 if (session.bgImage) S.bgImage = session.bgImage;
 
                 document.getElementById('call-window')?.classList.remove('immersive');
-                ['call-inc-avatar','call-conn-avatar','call-win-avatar','call-mini-av'].forEach(fillAv);
+                ['call-inc-avatar','call-conn-avatar','call-win-avatar','call-mini-av','clm-av'].forEach(fillAv);
                 ['call-conn-name','call-win-name','call-mini-name'].forEach(fillNm);
                 applyBg(); positionWindow();
 
                 const win  = document.getElementById('call-window');
                 const body = document.getElementById('call-window-body');
                 const conn = document.getElementById('call-connecting-state');
-                if (win)    win.classList.add('visible');
                 if (conn)   conn.classList.remove('visible'); // 跳过"连接中"
                 if (body)   body.style.display = '';
 
                 if (session.immersive && win) win.classList.add('immersive');
+
+                // 恢复时尊重缩小状态：之前是缩小胶囊的话恢复成胶囊（点胶囊可放大）
+                if (session.minimized) minimizeWindow();
+                else if (win) win.classList.add('visible');
 
                 // 重新启动 tick
                 tick();

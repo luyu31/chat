@@ -66,6 +66,28 @@
                 if (typeof toggleBatchMode === 'function') toggleBatchMode();
             }
         },
+        {
+            id: 'checkin',
+            iconClass: 'fas fa-clipboard-check',
+            label: '查岗',
+            ready: true,
+            action: function () {
+                if (window.Checkin) window.Checkin.open();
+                else if (typeof showNotification === 'function')
+                    showNotification('查岗功能加载中，稍后再试～', 'info', 2000);
+            }
+        },
+        {
+            id: 'ledger',
+            iconClass: 'fas fa-wallet',
+            label: '记账',
+            ready: true,
+            action: function () {
+                if (window.Ledger) window.Ledger.open();
+                else if (typeof showNotification === 'function')
+                    showNotification('记账功能加载中，稍后再试～', 'info', 2000);
+            }
+        },
         // 占位项，真正的"搞怪"逻辑（右下角道具面板：番茄/鸡蛋/蛋糕/水桶）在
         // js/features/throw-egg.js 里，它加载后会调用 registerItem('throw-egg', ...)
         // 把这项升级成真实功能
@@ -77,6 +99,17 @@
                 '</svg>',
             label: '搞怪',
             ready: false
+        },
+        {
+            id: 'control',
+            iconClass: 'fas fa-masks-theater',
+            label: '操控',
+            ready: true,
+            action: function () {
+                if (window.Control) window.Control.open();
+                else if (typeof showNotification === 'function')
+                    showNotification('操控功能加载中，稍后再试～', 'info', 2000);
+            }
         },
         // 加回"位置"和"快问快答"这两个（凑够6个，两行各3个/4个，看起来不那么空），
         // 小红书/抖音还是先不加，功能都没做

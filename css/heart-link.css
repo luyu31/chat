@@ -1,0 +1,292 @@
+/* ════════════════════════════════════════════════════
+   heart-link.css — 心链感应
+   ════════════════════════════════════════════════════ */
+
+/* ── 顶栏胶囊：挂在 partner-status 里，和状态文字并排 ── */
+#hl-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding: 2px 8px 2px 7px;
+    border: 1px solid var(--border-color, #e5ddd5);
+    border-radius: 20px;
+    background: var(--secondary-bg, rgba(0,0,0,0.03));
+    color: var(--text-secondary, #999);
+    font-size: 10.5px;
+    line-height: 1.4;
+    cursor: pointer;
+    vertical-align: middle;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+#hl-chip i {
+    font-size: 9.5px;
+    color: var(--accent-color, #e891b7);
+}
+#hl-chip .hl-chip-val {
+    font-family: monospace;
+    letter-spacing: 0.3px;
+    min-width: 26px;
+    text-align: left;
+}
+#hl-chip:active {
+    transform: scale(0.94);
+}
+#hl-chip.hl-chip-dead i {
+    color: var(--text-secondary, #bbb);
+    animation: hl-blink 1.6s ease-in-out infinite;
+}
+@keyframes hl-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+}
+
+/* ── 面板 ───────────────────────────────────────────── */
+.hl-modal {
+    max-width: 380px;
+    width: 90vw;
+}
+.hl-stage {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px 14px;
+    border-radius: 16px;
+    background: var(--secondary-bg, rgba(0,0,0,0.03));
+    overflow: hidden;
+}
+.hl-ring {
+    width: 74px;
+    height: 74px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    color: var(--accent-color, #e891b7);
+    background: var(--primary-bg, #fff);
+    border: 2px solid var(--accent-color, #e891b7);
+    position: relative;
+    z-index: 1;
+    margin-bottom: 14px;
+    transition: all 0.4s ease;
+}
+/* 感应中：外圈扩散 + 心跳 */
+.hl-scanning .hl-ring::before,
+.hl-scanning .hl-ring::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    border: 2px solid var(--accent-color, #e891b7);
+    animation: hl-ping 1.4s ease-out infinite;
+}
+.hl-scanning .hl-ring::after {
+    animation-delay: 0.7s;
+}
+.hl-scanning .hl-ring i {
+    animation: hl-beat 0.7s ease-in-out infinite;
+}
+@keyframes hl-ping {
+    0% { transform: scale(1); opacity: 0.7; }
+    100% { transform: scale(1.8); opacity: 0; }
+}
+@keyframes hl-beat {
+    0%, 100% { transform: scale(1); }
+    30% { transform: scale(1.22); }
+    60% { transform: scale(0.95); }
+}
+/* 结果态：安静地缓缓跳动 */
+.hl-stage:not(.hl-scanning) .hl-ring i {
+    animation: hl-beat-slow 2.4s ease-in-out infinite;
+}
+@keyframes hl-beat-slow {
+    0%, 100% { transform: scale(1); }
+    12% { transform: scale(1.12); }
+    24% { transform: scale(1); }
+}
+.hl-dead .hl-ring {
+    border-color: var(--text-secondary, #bbb);
+    color: var(--text-secondary, #bbb);
+}
+
+.hl-pct {
+    font-size: 40px;
+    font-weight: 800;
+    font-family: monospace;
+    color: var(--text-primary, #333);
+    line-height: 1.1;
+    letter-spacing: 1px;
+}
+.hl-dead .hl-pct {
+    color: var(--text-secondary, #999);
+}
+.hl-word {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent-color, #e891b7);
+    margin-top: 4px;
+}
+.hl-dead .hl-word {
+    color: var(--text-secondary, #999);
+}
+.hl-desc {
+    font-size: 11.5px;
+    color: var(--text-secondary, #999);
+    margin-top: 8px;
+    text-align: center;
+}
+
+/* 心电图 */
+.hl-ecg {
+    width: 100%;
+    height: 54px;
+    margin-top: 12px;
+}
+.hl-ecg path {
+    stroke: var(--accent-color, #e891b7);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 3px rgba(232, 145, 183, 0.45));
+}
+.hl-dead .hl-ecg path {
+    stroke: var(--text-secondary, #bbb);
+    stroke-dasharray: 4 3;
+    filter: none;
+}
+/* 感应中：波形流动 */
+.hl-scanning .hl-ecg path {
+    stroke-dasharray: 60 240;
+    animation: hl-ecg-flow 1.2s linear infinite;
+}
+@keyframes hl-ecg-flow {
+    0% { stroke-dashoffset: 300; }
+    100% { stroke-dashoffset: 0; }
+}
+
+/* 信号格 */
+.hl-bars {
+    display: flex;
+    gap: 5px;
+    margin-top: 12px;
+    align-items: flex-end;
+}
+.hl-bar {
+    width: 14px;
+    border-radius: 3px;
+    background: var(--border-color, #e5ddd5);
+}
+.hl-bar:nth-child(1) { height: 8px; }
+.hl-bar:nth-child(2) { height: 12px; }
+.hl-bar:nth-child(3) { height: 16px; }
+.hl-bar:nth-child(4) { height: 20px; }
+.hl-bar:nth-child(5) { height: 24px; }
+.hl-bar.on {
+    background: var(--accent-color, #e891b7);
+}
+
+/* 面板按钮 */
+.hl-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+}
+.hl-actions .modal-btn {
+    flex: 1;
+}
+.hl-edit-lines {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    padding: 8px;
+    border: none;
+    background: none;
+    color: var(--text-secondary, #999);
+    font-size: 11.5px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+.hl-edit-lines:active {
+    opacity: 0.6;
+}
+
+/* ── 聊天卡片 ───────────────────────────────────────── */
+.hl-card {
+    width: 218px;
+    border-radius: 14px;
+    background: var(--primary-bg, #fff);
+    border: 1px solid var(--border-color, #e5ddd5);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    padding: 14px 16px 12px;
+    position: relative;
+    overflow: hidden;
+}
+.hl-card-banner {
+    position: absolute;
+    top: 10px;
+    right: -26px;
+    transform: rotate(38deg);
+    background: var(--accent-color, #e891b7);
+    color: #fff;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    padding: 3px 30px;
+    opacity: 0.85;
+}
+.hl-card-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.hl-card-top i {
+    font-size: 18px;
+    color: var(--accent-color, #e891b7);
+}
+.hl-card-pct {
+    font-size: 28px;
+    font-weight: 800;
+    font-family: monospace;
+    color: var(--text-primary, #333);
+    line-height: 1;
+}
+.hl-card-word {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--accent-color, #e891b7);
+    margin-top: 6px;
+}
+.hl-card-bars {
+    display: flex;
+    gap: 4px;
+    margin-top: 10px;
+    align-items: flex-end;
+}
+.hl-card-bars .hl-bar {
+    width: 11px;
+    border-radius: 2px;
+}
+.hl-card-bars .hl-bar:nth-child(1) { height: 6px; }
+.hl-card-bars .hl-bar:nth-child(2) { height: 9px; }
+.hl-card-bars .hl-bar:nth-child(3) { height: 12px; }
+.hl-card-bars .hl-bar:nth-child(4) { height: 15px; }
+.hl-card-bars .hl-bar:nth-child(5) { height: 18px; }
+.hl-card-time {
+    font-size: 10px;
+    color: var(--text-secondary, #aaa);
+    margin-top: 10px;
+    border-top: 1px dashed var(--border-color, #e5ddd5);
+    padding-top: 8px;
+}
+/* 失联卡片：整体变灰 */
+.hl-card-dead .hl-card-top i,
+.hl-card-dead .hl-card-word {
+    color: var(--text-secondary, #999);
+}
+.hl-card-dead .hl-card-banner {
+    background: var(--text-secondary, #999);
+}

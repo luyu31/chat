@@ -1,12 +1,23 @@
 function renderStatsContent() {
             const statsContent = DOMElements.statsModal.content;
 
+            // 统计页渲染安全阀：高频回复里可能有超长文本（整段小说/粘贴的卡片），
+            // 直接把全文塞进 title 属性和可见 div 会让弹窗 HTML 膨胀到几 MB，
+            // 手机 WebView 布局这种内容会直接卡死白屏。统一截断+转义。
+            const escAttr = (s) => String(s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const clampText = (s, n) => {
+                s = String(s || '');
+                return s.length > n ? s.slice(0, n) + '…' : s;
+            };
+
             const partnerMessages = messages.filter(msg =>
                 msg.sender !== 'user' && msg.sender !== null &&
                 msg.text &&
                 msg.type !== 'system'
             );
-            
+
             const myMessages = messages.filter(msg =>
                 msg.sender === 'user' &&
                 msg.text &&
@@ -34,7 +45,7 @@ function renderStatsContent() {
                 return Object.entries(countMap)
                     .map(([text, count]) => ({ text, count }))
                     .sort((a, b) => b.count - a.count)
-                    .slice(0, 5); 
+                    .slice(0, 5);
             };
 
             const partnerTop = getTopReplies(partnerMessages);
@@ -45,12 +56,14 @@ function renderStatsContent() {
                 const maxVal = list[0].count;
                 return list.map((item, index) => {
                     const percent = (item.count / maxVal) * 100;
+                    const shortText = clampText(item.text, 60);
+                    const tipText = clampText(item.text, 120);
                     return `
                     <div class="rank-item">
                         <div class="rank-progress-bg" style="width: ${percent}%; opacity: 0.1; background-color: var(--text-primary);"></div>
                         <div class="rank-info">
                             <div class="rank-number">#${index + 1}</div>
-                            <div class="rank-text" title="${item.text}">${item.text}</div>
+                            <div class="rank-text" title="${escAttr(tipText)}">${escAttr(shortText)}</div>
                             <div class="rank-count">${item.count}次</div>
                         </div>
                     </div>`;
@@ -804,8 +817,21 @@ function renderFavorites() {
     const list = document.getElementById('favorites-list');
     if (!list) return;
 
-    const favoritedMessages = (typeof messages !== 'undefined' ? messages : [])
+    // 渲染安全阀：收藏里可能有超长文本或大图（base64 内嵌），
+    // 全量渲染会把弹窗 HTML 撑到几百 MB 直接卡死手机。截断文本 +
+    // 限制条数 + 图片点击走 data-id 事件（不再把整张图重复内嵌进 onclick）
+    const escHtml = (s) => String(s || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const clampText = (s, n) => {
+        s = String(s || '');
+        return s.length > n ? s.slice(0, n) + '…' : s;
+    };
+    const FAV_RENDER_CAP = 100;
+
+    const allFavorited = (typeof messages !== 'undefined' ? messages : [])
         .filter(m => m.favorited && m.type !== 'system');
+    const favoritedMessages = allFavorited.slice(0, FAV_RENDER_CAP);
 
     if (favoritedMessages.length === 0) {
         list.innerHTML = `
@@ -817,7 +843,11 @@ function renderFavorites() {
         return;
     }
 
-    list.innerHTML = favoritedMessages.map(msg => {
+    const capNote = allFavorited.length > FAV_RENDER_CAP
+        ? `<div style="text-align:center;font-size:11px;color:var(--text-secondary);margin-bottom:8px;">共 ${allFavorited.length} 条收藏，仅显示最近 ${FAV_RENDER_CAP} 条</div>`
+        : '';
+
+    list.innerHTML = capNote + favoritedMessages.map(msg => {
         const isUser = msg.sender === 'user';
         const senderName = isUser
             ? ((typeof settings !== 'undefined' && settings.myName) || '我')
@@ -827,11 +857,11 @@ function renderFavorites() {
             hour: '2-digit', minute: '2-digit'
         }) : '';
         const content = msg.text
-            ? msg.text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            ? escHtml(clampText(msg.text, 300))
             : msg.image
-                ? `<img src="${msg.image}" style="max-width:100%;max-height:180px;border-radius:8px;display:block;margin-top:4px;cursor:pointer;" onclick="if(typeof viewImage==='function')viewImage('${msg.image.replace(/'/g,'\\\'')}')" loading="lazy">`
+                ? `<img src="${msg.image}" data-fav-img="${msg.id}" style="max-width:100%;max-height:180px;border-radius:8px;display:block;margin-top:4px;cursor:pointer;" loading="lazy">`
                 : msg.voice
-                    ? `<div class="fav-voice-btn" data-msg-id="${msg.id}" data-fake-text="${(msg.voice.fakeText||'').replace(/"/g,'&quot;')}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(var(--accent-color-rgb),0.1);border-radius:20px;cursor:pointer;"><svg viewBox="0 0 22 22" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-color);flex-shrink:0;"><circle cx="6" cy="11" r="1.3" fill="currentColor" stroke="none"/><path d="M10 8 A 3.5 3.5 0 0 1 10 14"/><path d="M13 5 A 7 7 0 0 1 13 17"/></svg><span style="font-size:12px;color:var(--accent-color);">${msg.voice.duration || 0}"</span></div>${msg.voice.fakeText ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">${msg.voice.fakeText.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>` : ''}`
+                    ? `<div class="fav-voice-btn" data-msg-id="${msg.id}" data-fake-text="${escHtml(msg.voice.fakeText || '')}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(var(--accent-color-rgb),0.1);border-radius:20px;cursor:pointer;"><svg viewBox="0 0 22 22" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-color);flex-shrink:0;"><circle cx="6" cy="11" r="1.3" fill="currentColor" stroke="none"/><path d="M10 8 A 3.5 3.5 0 0 1 10 14"/><path d="M13 5 A 7 7 0 0 1 13 17"/></svg><span style="font-size:12px;color:var(--accent-color);">${msg.voice.duration || 0}"</span></div>${msg.voice.fakeText ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">${escHtml(clampText(msg.voice.fakeText, 120))}</div>` : ''}`
                     : '';
         const avatarEl = isUser
             ? (typeof DOMElements !== 'undefined' ? DOMElements.me.avatar : null)
@@ -863,6 +893,16 @@ function renderFavorites() {
                 " title="取消收藏"><i class="fas fa-star" style="color:var(--accent-color);"></i></button>
             </div>`;
     }).join('');
+
+    // 图片点击查看：从 messages 里按 id 取原图，避免把整张 base64 重复内嵌进 onclick
+    list.querySelectorAll('img[data-fav-img]').forEach(imgEl => {
+        imgEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = Number(imgEl.dataset.favImg);
+            const msg = (typeof messages !== 'undefined' ? messages : []).find(m => m.id === id);
+            if (msg && msg.image && typeof viewImage === 'function') viewImage(msg.image);
+        });
+    });
 
     list.querySelectorAll('.fav-remove-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -1046,6 +1086,21 @@ window._runMsgSearch = function() {
         const re = new RegExp('(' + keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
         return escaped.replace(re, '<mark style="background:rgba(var(--accent-color-rgb),0.25);color:var(--accent-color);border-radius:2px;padding:0 1px;">$1</mark>');
     }
+    // 截取关键词附近的一段文本用于展示（全文可能几十万字符）
+    const SEARCH_SNIPPET = 120;
+    const escSearch = (s) => String(s || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    function snippetAround(text, keyword) {
+        text = String(text || '');
+        if (text.length <= SEARCH_SNIPPET) return text;
+        let start = 0;
+        if (keyword) {
+            const idx = text.toLowerCase().indexOf(keyword);
+            if (idx > 30) start = Math.max(0, idx - 40);
+        }
+        return (start > 0 ? '…' : '') + text.slice(start, start + SEARCH_SNIPPET) + '…';
+    }
 
     resultsEl.innerHTML = results.slice(0, 100).map(msg => {
         const isUser = msg.sender === 'user';
@@ -1055,15 +1110,17 @@ window._runMsgSearch = function() {
         const ts = msg.timestamp ? new Date(msg.timestamp).toLocaleString('zh-CN', {
             month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
         }) : '';
+        // 渲染安全阀：超长消息只截取关键词附近的一段，图片不内嵌 base64（改用小图标），
+        // 否则 100 条结果 × 每条几百 KB~几 MB 会把搜索页 HTML 撑爆，手机直接卡死
         const content = msg.text
-            ? highlight(msg.text, q)
-            : (msg.image ? `<img src="${msg.image}" style="max-height:60px;border-radius:6px;display:block;margin-top:4px;" loading="lazy">` : '');
+            ? highlight(snippetAround(msg.text, q), q)
+            : (msg.image ? `<span style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:rgba(var(--accent-color-rgb),0.1);font-size:12px;color:var(--accent-color);"><i class="fas fa-image"></i> 图片消息 · 点击定位</span>` : '');
         return `<div style="display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border-radius:12px;background:var(--primary-bg);border:1px solid var(--border-color);margin-bottom:8px;cursor:pointer;"
             onclick="if(typeof showNotification==='function')showNotification('已定位消息', 'info', 1500); if(typeof scrollToQuotedMessage==='function'){var el=document.createElement('div');el.dataset.replyId='${msg.id}';scrollToQuotedMessage(el);}">
             ${getAvatarHtml(isUser)}
             <div style="flex:1;min-width:0;">
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
-                    <span style="font-size:12px;font-weight:600;color:var(--accent-color);">${senderName}</span>
+                    <span style="font-size:12px;font-weight:600;color:var(--accent-color);">${escSearch(senderName)}</span>
                     <span style="font-size:11px;color:var(--text-secondary);">${ts}</span>
                 </div>
                 <div style="font-size:13px;color:var(--text-primary);line-height:1.5;word-break:break-word;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;">${content}</div>
@@ -2294,6 +2351,10 @@ function initComboMenu() {
     ]);
 
     function tokenize(text) {
+        text = String(text || '');
+        // 安全阀：单条消息超长（整段小说/粘贴的卡片）时只取前 2000 字参与词频，
+        // 否则一条消息就能生成几十万个 n-gram 键，词频表直接爆内存
+        if (text.length > 2000) text = text.slice(0, 2000);
         text = text
             .replace(/https?:\/\/\S+/g, '')
             .replace(/\[.*?\]/g, '')
@@ -2335,12 +2396,6 @@ function initComboMenu() {
             if (!STOP_WORDS.has(w)) words[w] = (words[w] || 0) + 1;
         });
         return words;
-    }
-
-    function mergeFreq(a, b) {
-        var o = Object.assign({}, a);
-        Object.keys(b).forEach(function(k) { o[k] = (o[k] || 0) + b[k]; });
-        return o;
     }
 
     function topWords(freq, n) {
@@ -2503,9 +2558,17 @@ function initComboMenu() {
         var myMsgs      = messages.filter(function(m) { return m.sender === 'user' && m.text && m.type !== 'system' && m.type !== 'call-event'; });
 
         var pFreq = {}, mFreq = {};
-        partnerMsgs.forEach(function(m) { pFreq = mergeFreq(pFreq, tokenize(m.text)); });
-        myMsgs.forEach(function(m)      { mFreq = mergeFreq(mFreq, tokenize(m.text)); });
-        var aFreq = mergeFreq(pFreq, mFreq);
+        // 性能修复：原来每条消息都 mergeFreq（内部 Object.assign 全量复制累积对象），
+        // 真实聊天里词汇分散，几万条消息就是几十亿次键拷贝，手机上词云页直接卡死。
+        // 改为直接向同一个对象累加，一遍扫完。
+        function _accum(target, text) {
+            var w = tokenize(text);
+            for (var k in w) target[k] = (target[k] || 0) + w[k];
+        }
+        partnerMsgs.forEach(function(m) { _accum(pFreq, m.text); });
+        myMsgs.forEach(function(m)      { _accum(mFreq, m.text); });
+        var aFreq = Object.assign({}, pFreq);
+        for (var ak in mFreq) aFreq[ak] = (aFreq[ak] || 0) + mFreq[ak];
 
         var pTop = topWords(pFreq, 60);
         var mTop = topWords(mFreq, 60);

@@ -39,6 +39,7 @@
         let customMottos = [];
         let customIntros = [];
         let customPeriodCare = [];  // 经期关心话术——氛围感配置里的新分类，不分组
+        let customCheckinLines = [];  // 打卡专用字卡——氛围感配置里的新分类，查岗功能说的一切话优先从这里抽
         let currentMajorTab = 'reply'; 
         let currentSubTab = 'custom';  
         let currentReplyTab = 'custom';

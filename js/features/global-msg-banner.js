@@ -153,7 +153,8 @@
         try {
             if (document.hidden) {
                 if (typeof window._sendPartnerNotification === 'function') {
-                    window._sendPartnerNotification((typeof settings !== 'undefined' && settings.partnerName) || '对方', text);
+                    // msgId 一路传下去：系统通知带上它，用户点通知进 app 后能直达这条消息（比如红包）
+                    window._sendPartnerNotification((typeof settings !== 'undefined' && settings.partnerName) || '对方', text, msgId);
                 }
                 return;
             }

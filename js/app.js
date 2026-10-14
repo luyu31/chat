@@ -46,13 +46,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.warn('[boot] 紧急备份检查失败:', e);
         }
 
-        updateLoader('正在建立安全连接...', '10%');
+        updateLoader('和你在一起的每一天', '10%');
         await safeAwait(initializeSession());
 
-        updateLoader('正在读取记忆存档...', '40%');
+        updateLoader('和你在一起的每一天', '40%');
         await safeAwait(loadData());
 
-        updateLoader('正在渲染我们的世界...', '70%');
+        updateLoader('和你在一起的每一天', '70%');
         
         await Promise.allSettled([
             safeAwait(initializeRandomUI?.()),
@@ -68,12 +68,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             try { if (typeof checkMomentsStatus === 'function') checkMomentsStatus(); } catch(e) { console.warn('[后台轮询] 动态检查失败', e); }
         }, 30000);
 
+        // 是否看过开屏引导（老用户）。后台被系统回收后重进时用它跳过长开屏，
+        // 避免"每次从桌面点进来都要重新看一遍开场动画"
+        const tourSeen = await safeAwait(localforage?.getItem(APP_PREFIX + 'tour_seen'), false);
+
         if (disclaimerModal) {
-            const tourSeen = await safeAwait(localforage?.getItem(APP_PREFIX + 'tour_seen'), false);
-            
             if (!tourSeen) {
                 showModal(disclaimerModal);
-                
+
                 if (acceptDisclaimerBtn && !acceptDisclaimerBtn._bound) {
                     acceptDisclaimerBtn._bound = true;
                     acceptDisclaimerBtn.addEventListener('click', () => {
@@ -85,15 +87,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        updateLoader('连接成功，欢迎回来。', '100%');
-        setTimeout(hideWelcomeScreen, 3500);
+        updateLoader('和你在一起的每一天', '100%');
+        // 老用户快速进入（0.4s + 渐隐），首次安装仍保留完整开场
+        setTimeout(hideWelcomeScreen, tourSeen ? 400 : 3500);
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') {
                 try {
                     if (typeof saveTimeout !== 'undefined') clearTimeout(saveTimeout);
                 } catch (e) {}
-                try { _backupCriticalData(); } catch (e) { console.warn('[visibilitychange] 紧急备份失败:', e); }
+                try { _backupCriticalData(true); } catch (e) { console.warn('[visibilitychange] 紧急备份失败:', e); }
                 try {
                     const p = saveData();
                     if (p && typeof p.catch === 'function') {
@@ -127,15 +130,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         window.addEventListener('pagehide', () => {
-            try { _backupCriticalData(); } catch (e) {}
+            try { _backupCriticalData(true); } catch (e) {}
         });
 
         window.addEventListener('beforeunload', () => {
-            try { _backupCriticalData(); } catch (e) {}
+            try { _backupCriticalData(true); } catch (e) {}
         });
 
+        // 定时自动保存：没变化就跳过（见 core.js 的 saveDataIfChanged），
+        // 之前是每 3 分钟无条件全量重写一遍所有数据，闲着也周期性掉帧
         setInterval(() => {
-            saveData().catch(e => console.warn('[autoBackup] 定时保存失败:', e));
+            if (typeof window.saveDataIfChanged === 'function') {
+                window.saveDataIfChanged().catch(e => console.warn('[autoBackup] 定时保存失败:', e));
+            } else {
+                saveData().catch(e => console.warn('[autoBackup] 定时保存失败:', e));
+            }
         }, 3 * 60 * 1000);
 
         (() => {
@@ -163,6 +172,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, 3000);
 
+        // 扔鸡蛋功能的动画库（gsap，约 70KB）改为空闲懒加载：不再跟着开屏一起解析，
+        // 进来 15 秒后再拉。加载完手动补注册更多菜单项——throw-egg.js 原本靠
+        // DOMContentLoaded 注册，晚加载时那个时机已经过了
+        window._lazyLoadThrowEgg = function () {
+            if (window.ThrowEgg || window._throwEggLoading) return;
+            window._throwEggLoading = true;
+            const load = (src) => new Promise((res, rej) => {
+                const s = document.createElement('script');
+                s.src = src; s.onload = res; s.onerror = rej;
+                document.head.appendChild(s);
+            });
+            load('js/vendor/gsap.min.js')
+                .then(() => load('js/features/throw-egg.js'))
+                .then(() => {
+                    if (window.ThrowEgg && window.MoreMenu && typeof window.MoreMenu.registerItem === 'function') {
+                        window.MoreMenu.registerItem('throw-egg', { ready: true, action: window.ThrowEgg.openPanel });
+                    }
+                })
+                .catch((e) => console.warn('[lazy] 扔鸡蛋资源加载失败', e))
+                .finally(() => { window._throwEggLoading = false; });
+        };
+        setTimeout(() => { try { window._lazyLoadThrowEgg(); } catch (e) {} }, 15000);
+
     } catch (err) {
         console.error('严重初始化错误:', err);
         try {
@@ -189,12 +221,22 @@ const stickerInput = document.getElementById('sticker-file-input');
                     const files = Array.from(e.target.files);
                     if (!files.length) return;
 
-                    const oversized = files.filter(f => f.size > 2 * 1024 * 1024);
+                    // GIF 走单独的上限并原样保留（canvas 压缩会把动画压成第一帧静图）
+                    const GIF_MAX_SIZE = 600 * 1024;
+                    const NORMAL_MAX_SIZE = 2 * 1024 * 1024;
+                    const isGifFile = f => f.type === 'image/gif' || /\.gif$/i.test(f.name);
+
+                    const oversized = files.filter(f => f.size > (isGifFile(f) ? GIF_MAX_SIZE : NORMAL_MAX_SIZE));
                     if (oversized.length > 0) {
-                        showNotification(oversized.length + ' 张图片超过 2MB 限制，已跳过', 'warning');
+                        const gifCount = oversized.filter(isGifFile).length;
+                        const otherCount = oversized.length - gifCount;
+                        const parts = [];
+                        if (gifCount > 0) parts.push(gifCount + ' 张GIF超过600KB');
+                        if (otherCount > 0) parts.push(otherCount + ' 张图片超过2MB');
+                        showNotification(parts.join('，') + '，已跳过', 'warning');
                     }
 
-                    const validFiles = files.filter(f => f.size <= 2 * 1024 * 1024);
+                    const validFiles = files.filter(f => f.size <= (isGifFile(f) ? GIF_MAX_SIZE : NORMAL_MAX_SIZE));
                     if (!validFiles.length) return;
 
                     showNotification('正在批量处理 ' + validFiles.length + ' 张图片...', 'info');
@@ -205,7 +247,17 @@ const stickerInput = document.getElementById('sticker-file-input');
 
                     for (const file of validFiles) {
                         try {
-                            const base64 = await optimizeImage(file, 300, 0.8);
+                            let base64;
+                            if (isGifFile(file)) {
+                                base64 = await new Promise((resolve, reject) => {
+                                    const reader = new FileReader();
+                                    reader.onload = ev => resolve(ev.target.result);
+                                    reader.onerror = reject;
+                                    reader.readAsDataURL(file);
+                                });
+                            } else {
+                                base64 = await optimizeImage(file, 300, 0.8);
+                            }
                             let toStore = base64;
                             // 阶段三B：连了云端就上传，本地只存 oss:// 引用
                             if (cloudReady) {

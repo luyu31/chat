@@ -522,7 +522,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-window._sendPartnerNotification = function(title, body) {
+window._sendPartnerNotification = function(title, body, msgId) {
     try {
         if (localStorage.getItem('notifEnabled') !== '1') return;
         if (!('Notification' in window)) return;
@@ -531,7 +531,9 @@ window._sendPartnerNotification = function(title, body) {
         new Notification(title || '传讯', {
             body: body || '对方发来了消息',
             icon: (document.querySelector('#partner-avatar img') || {}).src,
-            tag: 'partner-msg',
+            // 带 msgId 时用 jump: 前缀传给原生：点通知进 app 后直达这条消息
+            // （普通通知仍然是 partner-msg 这个 tag，原生侧不认识的前缀当普通 tag 处理）
+            tag: (msgId !== undefined && msgId !== null) ? ('jump:' + msgId) : 'partner-msg',
             renotify: true
         });
     } catch(e) {}

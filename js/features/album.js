@@ -63,6 +63,10 @@ function _cleanTrash() {
 }
 
 // ─── 动态同步（moments.js 发帖后调用） ───
+// 可入库的照片/视频源：云引用（oss://）或本地 dataURL（App 版直接存手机本地，不再强制要求 OSS）
+const _alSyncableSrc = (s) => !!s && typeof s === 'string'
+    && (s.indexOf('oss://') === 0 || /^data:(image|video)\//.test(s));
+
 window._albumSyncMomentsPost = async function(postId, images, videoSrc, videoCover) {
     // 之前这里没有保证相册数据已经加载过——如果用户这次打开App全程没点开过"相册"tab，
     // _albumDataLoaded 就还是false，下面的saveAlbumData()会被安全保护拦下来，图片同步会被静默跳过。
@@ -71,16 +75,16 @@ window._albumSyncMomentsPost = async function(postId, images, videoSrc, videoCov
     let changed = false;
     if (images && images.length) {
         images.forEach(src => {
-            if (!src || src.indexOf('oss://') !== 0) return; // 只同步 OSS 引用
+            if (!_alSyncableSrc(src)) return;
             albumData.photos.push({ id:_alUid('p'), albumId:_SYS_MOMENTS_ID, src,
                 date:_alToday(), timestamp:Date.now(), isFavorite:false, deletedAt:null,
                 sourcePostId:postId, isVideo:false, videoSrc:null });
             changed = true;
         });
     }
-    if (videoSrc && videoSrc.indexOf('oss://') === 0) {
+    if (_alSyncableSrc(videoSrc)) {
         albumData.photos.push({ id:_alUid('p'), albumId:_SYS_MOMENTS_ID,
-            src: (videoCover && videoCover.indexOf('oss://') === 0) ? videoCover : null,
+            src: _alSyncableSrc(videoCover) ? videoCover : null,
             date:_alToday(), timestamp:Date.now(), isFavorite:false, deletedAt:null,
             sourcePostId:postId, isVideo:true, videoSrc });
         changed = true;
@@ -139,35 +143,6 @@ function _alFmtDate(d) {
         ? `${dt.getMonth()+1}月${dt.getDate()}日`
         : `${dt.getFullYear()}年${dt.getMonth()+1}月${dt.getDate()}日`;
 }
-
-// ─── OSS 未连接缺省页 ───
-function _alRenderNoOss() {
-    const wrap = document.getElementById('al-list-grid'); if (!wrap) return;
-    wrap.innerHTML = `
-        <div class="al-no-oss">
-            <div class="al-no-oss-icon"><i class="fas fa-images"></i></div>
-            <div class="al-no-oss-title">相册需要云端存储</div>
-            <div class="al-no-oss-desc">
-                作为一个网页，我其实扛不住太多照片——图片堆多了浏览器就容易撑不住，轻则变卡，重则直接崩掉，之前存的东西也会跟着没了。所以相册需要借助云端来帮忙保管，配置好了就能用啦。不配置也只是相册功能用不了，其他功能都可以正常使用。
-            </div>
-            <div class="al-no-oss-path">
-                <i class="fas fa-route"></i> 配置路径：右上角 ⚙️ 设置 → 数据管理 → 阿里云 OSS
-            </div>
-            <button class="al-no-oss-btn" onclick="window._alGoOssConfig()">去配置</button>
-        </div>`;
-    _alShowView('list');
-}
-window._alGoOssConfig = function() {
-    // 先关闭情侣空间，再打开设置→数据管理
-    if (typeof closeCoupleSpace === 'function') closeCoupleSpace();
-    setTimeout(() => {
-        const settingsModal = document.getElementById('settings-modal');
-        if (settingsModal && typeof showModal === 'function') {
-            showModal(settingsModal);
-            setTimeout(() => { document.getElementById('data-settings')?.click(); }, 350);
-        }
-    }, 300);
-};
 
 // ─── 渲染：相册列表 ───
 function _alRenderList() {
@@ -364,9 +339,9 @@ function _alRenderDetail(photoId) {
     const mainArea = document.getElementById('al-detail-main');
     if (mainArea) {
         if (photo.isVideo && photo.videoSrc) {
-            // 视频：点击打开播放器
+            // 视频：点击打开播放器（按 id 查找视频源，避免把超大 base64 内嵌进 onclick 属性）
             const cover = photo.src;
-            mainArea.innerHTML = `<div class="al-detail-video-thumb" onclick="window.openCsVideoPlayer('${photo.videoSrc}')">
+            mainArea.innerHTML = `<div class="al-detail-video-thumb" onclick="window._alPlayVideo('${photo.id}')">
                 ${cover ? _alImgEl(cover, 'width:100%;height:100%;object-fit:contain;') : '<div class="al-cell-empty al-detail-empty"><i class="fas fa-film"></i></div>'}
                 <div class="al-detail-play"><i class="fas fa-play"></i></div>
             </div>`;
@@ -484,6 +459,14 @@ function _alSetSubTab(tab) {
     const btn = document.getElementById('al-st-'+tab); if (btn) btn.classList.add('on');
 }
 
+// ─── 视频播放（按 id 从相册数据里取视频源，兼容本地超大 base64） ───
+window._alPlayVideo = function(photoId) {
+    const p = albumData.photos.find(x => x.id === photoId);
+    if (p && p.videoSrc && typeof window.openCsVideoPlayer === 'function') {
+        window.openCsVideoPlayer(p.videoSrc);
+    }
+};
+
 // ─── 对外 API ───
 window._alOpenAlbum = function(albumId) { _alSelectMode=false; _alSelectedIds.clear(); _alRenderGrid(albumId); };
 
@@ -556,16 +539,10 @@ window._alOpenTrash = function() {
 };
 
 // ─── 主入口 ───
+// App 版：数据直接存手机本地（IndexedDB），不再要求先配置云存储。
+// 配置了 OSS 的用户仍然会走云端上传（见 _alUploadToAlbum），两种模式共存。
 window._alInit = async function() {
     await loadAlbumData();
-    const hasOss = window.CloudSync && window.CloudSync.isConnected();
-    // 没有 OSS 时隐藏 subtab，避免用户切到回收站后再切回相册绕过检测
-    const subtabs = document.querySelector('#cs-panel-album .al-subtabs');
-    if (subtabs) subtabs.style.display = hasOss ? '' : 'none';
-    if (!hasOss) {
-        _alRenderNoOss();
-        return;
-    }
     _alRenderList();
 };
 

@@ -151,9 +151,12 @@ function _renderListContentOnly() {
     } else if (currentMajorTab === 'atmosphere') {
         if (currentSubTab === 'pokes') itemsToRender = customPokes;
         else if (currentSubTab === 'statuses') itemsToRender = customStatuses;
+        else if (currentSubTab === 'slacking') { _renderSlackingTab(list); return; }
         else if (currentSubTab === 'mottos') itemsToRender = customMottos;
+        else if (currentSubTab === 'motto') itemsToRender = customMottos;
         else if (currentSubTab === 'intros') itemsToRender = customIntros;
         else if (currentSubTab === 'period') itemsToRender = customPeriodCare;
+        else if (currentSubTab === 'checkinBank') itemsToRender = customCheckinLines;
         else if (currentSubTab === 'surveyBank') {
             if (typeof window._surveyRenderBankTab === 'function') window._surveyRenderBankTab(list);
             return;
@@ -172,7 +175,10 @@ function _renderListContentOnly() {
 
     if (filtered.length === 0) {
         const empty = document.createElement('div');
-        empty.innerHTML = renderEmptyState(q ? `未找到 "${q}"` : '列表空空如也');
+        const emptyText = (!q && currentSubTab === 'checkinBank')
+            ? '还没有打卡字卡<br><span style="font-size:11px;opacity:.7;">查岗里他说的每句话都会优先从这里抽，可用 {item} 代替任务名</span>'
+            : (q ? `未找到 "${q}"` : '列表空空如也');
+        empty.innerHTML = renderEmptyState(emptyText);
         list.appendChild(empty.firstElementChild || empty);
         return;
     }
@@ -248,9 +254,12 @@ function renderReplyLibrary() {
     } else if (currentMajorTab === 'atmosphere') {
         if (currentSubTab === 'pokes') itemsToRender = customPokes;
         else if (currentSubTab === 'statuses') itemsToRender = customStatuses;
+        else if (currentSubTab === 'slacking') { _renderSlackingTab(list); return; }
         else if (currentSubTab === 'mottos') itemsToRender = customMottos;
+        else if (currentSubTab === 'motto') itemsToRender = customMottos;
         else if (currentSubTab === 'intros') itemsToRender = customIntros;
         else if (currentSubTab === 'period') itemsToRender = customPeriodCare;
+        else if (currentSubTab === 'checkinBank') itemsToRender = customCheckinLines;
         else if (currentSubTab === 'surveyBank') {
             if (typeof window._surveyRenderBankTab === 'function') window._surveyRenderBankTab(list);
             return;
@@ -268,7 +277,10 @@ function renderReplyLibrary() {
     let filtered = q ? itemsToRender.filter(item => item.toLowerCase().includes(q)) : itemsToRender;
 
     if (filtered.length === 0) {
-        list.innerHTML = renderEmptyState(q ? `未找到"${q}"` : '列表空空如也');
+        const emptyText = (!q && currentSubTab === 'checkinBank')
+            ? '还没有打卡字卡<br><span style="font-size:11px;opacity:.7;">查岗里他说的每句话都会优先从这里抽，可用 {item} 代替任务名</span>'
+            : (q ? `未找到"${q}"` : '列表空空如也');
+        list.innerHTML = renderEmptyState(emptyText);
         return;
     }
 
@@ -283,7 +295,8 @@ function _renderModernToolbar() {
     let toolbar = document.getElementById('batch-ops-toolbar');
     // 问卷题库这个 tab 是自己单独一套渲染（对象结构，不是纯字符串数组），
     // 不走下面这套批量管理/分组/去重逻辑——那些都是照着字符串数组写的，硬塞进来只会出岔子
-    if (currentMajorTab === 'atmosphere' && (currentSubTab === 'surveyBank' || currentSubTab === 'redpacketBank')) {
+    // 摸鱼状态也是 {id,text} 对象结构，单独一套渲染，同样不走通用批量逻辑
+    if (currentMajorTab === 'atmosphere' && (currentSubTab === 'surveyBank' || currentSubTab === 'redpacketBank' || currentSubTab === 'slacking')) {
         if (toolbar) toolbar.style.display = 'none';
         return;
     }
@@ -837,6 +850,7 @@ function _renderAtmosphereList(list, items) {
         pokes:    new Map(customPokes.map((r,i)   => [r, i])),
         statuses: new Map(customStatuses.map((r,i) => [r, i])),
         mottos:   new Map(customMottos.map((r,i)   => [r, i])),
+        motto:    new Map(customMottos.map((r,i)   => [r, i])),
         intros:   new Map(customIntros.map((r,i)   => [r, i])),
         period:   new Map(customPeriodCare.map((r,i) => [r, i])),
     };
@@ -857,6 +871,101 @@ function _renderAtmosphereList(list, items) {
         frag.appendChild(div);
     });
     list.appendChild(frag);
+}
+
+// ─── 摸鱼状态（查岗「他在干什么」）字卡组 ───────────────────────────────
+// 结构 {id, text}，存在 localStorage（state.js 里没有现成的全局数组）
+var _slackingStorageKey = 'customSlackingStatuses';
+var _slackingBuiltin = [
+    { id: 's_1', text: '在摸鱼刷视频' },
+    { id: 's_2', text: '在偷偷打游戏' },
+    { id: 's_3', text: '在认真工作，勿扰' },
+    { id: 's_4', text: '在发呆想你了' },
+    { id: 's_5', text: '在吃零食' },
+    { id: 's_6', text: '在开会摸鱼' },
+    { id: 's_7', text: '在装忙，其实在等你消息' },
+    { id: 's_8', text: '在偷偷查岗你' }
+];
+
+// 读取摸鱼状态库；首次使用时写入内置默认，之后用户增删都以 localStorage 为准
+function _getSlackingStatuses() {
+    var raw = null;
+    try { raw = JSON.parse(localStorage.getItem(_slackingStorageKey)); } catch (e) {}
+    if (!Array.isArray(raw)) {
+        raw = _slackingBuiltin.slice();
+        try { localStorage.setItem(_slackingStorageKey, JSON.stringify(raw)); } catch (e) {}
+    }
+    return raw;
+}
+
+function _saveSlackingStatuses(list) {
+    try { localStorage.setItem(_slackingStorageKey, JSON.stringify(list)); } catch (e) {}
+}
+
+// 供查岗等功能读取：返回纯文本数组
+window._getSlackingStatusPool = function () {
+    return _getSlackingStatuses().map(function (s) {
+        if (s && typeof s === 'object') return s.text;
+        if (typeof s === 'string') return s;
+        return '';
+    }).filter(function (t) { return t; });
+};
+
+function _renderSlackingTab(list) {
+    var items = _getSlackingStatuses();
+    if (!items.length) {
+        list.innerHTML = renderEmptyState('还没有摸鱼状态，点「新增」添加');
+        return;
+    }
+    items.forEach(function (item, idx) {
+        var text = (item && item.text) ? item.text : (typeof item === 'string' ? item : '');
+        var div = document.createElement('div');
+        div.className = 'custom-reply-item';
+        div.innerHTML = '<span class="custom-reply-text"></span>' +
+            '<div class="custom-reply-actions">' +
+                '<button class="reply-action-mini edit-btn" title="编辑">' + ICONS.edit + '</button>' +
+                '<button class="reply-action-mini delete-btn" title="删除">' + ICONS.trash + '</button>' +
+            '</div>';
+        div.querySelector('.custom-reply-text').textContent = text;
+        div.querySelector('.delete-btn').onclick = function () { _deleteSlackingItem(idx); };
+        div.querySelector('.edit-btn').onclick = function () { _editSlackingItem(idx, text); };
+        list.appendChild(div);
+    });
+}
+
+function _deleteSlackingItem(idx) {
+    if (!confirm('确定删除这条摸鱼状态吗？')) return;
+    var items = _getSlackingStatuses();
+    items.splice(idx, 1);
+    _saveSlackingStatuses(items);
+    renderReplyLibrary();
+}
+
+function _editSlackingItem(idx, oldText) {
+    var newText = prompt('修改摸鱼状态:', oldText);
+    if (newText === null || !newText.trim()) return;
+    var items = _getSlackingStatuses();
+    var target = items[idx];
+    if (target && typeof target === 'object') target.text = newText.trim();
+    else if (target) items[idx] = newText.trim();
+    _saveSlackingStatuses(items);
+    renderReplyLibrary();
+}
+
+function _showSlackingAddDialog() {
+    var input = prompt('请输入新的摸鱼状态（比如：在偷偷打游戏）:');
+    if (!input || !input.trim()) return;
+    var items = _getSlackingStatuses();
+    var val = input.trim();
+    var exists = items.some(function (s) {
+        var t = (s && typeof s === 'object') ? s.text : s;
+        return t === val;
+    });
+    if (exists) { showNotification('该摸鱼状态已存在', 'warning'); return; }
+    items.push({ id: 's_' + Date.now(), text: val });
+    _saveSlackingStatuses(items);
+    renderReplyLibrary();
+    showNotification('✓ 添加成功', 'success');
 }
 
 function _renderEmojiTab(list, itemsToRender) {
@@ -1401,8 +1510,10 @@ function deleteItem(index) {
     else if (currentSubTab === 'pokes') customPokes.splice(index, 1);
     else if (currentSubTab === 'statuses') customStatuses.splice(index, 1);
     else if (currentSubTab === 'mottos') customMottos.splice(index, 1);
+    else if (currentSubTab === 'motto') customMottos.splice(index, 1);
     else if (currentSubTab === 'intros') customIntros.splice(index, 1);
     else if (currentSubTab === 'period') customPeriodCare.splice(index, 1);
+    else if (currentSubTab === 'checkinBank') customCheckinLines.splice(index, 1);
     if (item && ctx.groups) {
         ctx.groups.forEach(g => { if (g.items) g.items = g.items.filter(t => t !== item); });
     }
@@ -1435,8 +1546,10 @@ function editItem(index, oldText) {
     else if (currentSubTab === 'pokes') customPokes[index] = newText.trim();
     else if (currentSubTab === 'statuses') customStatuses[index] = newText.trim();
     else if (currentSubTab === 'mottos') customMottos[index] = newText.trim();
+    else if (currentSubTab === 'motto') customMottos[index] = newText.trim();
     else if (currentSubTab === 'intros') customIntros[index] = newText.trim();
     else if (currentSubTab === 'period') customPeriodCare[index] = newText.trim();
+    else if (currentSubTab === 'checkinBank') customCheckinLines[index] = newText.trim();
     throttledSaveData();
     renderReplyLibrary();
 }
@@ -2086,7 +2199,7 @@ function _showBatchAddDialog() {
             @keyframes baGroupSlide { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
         </style>
         <div style="flex-shrink:0;font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">批量添加${getCategoryName(currentSubTab)}</div>
-        <div style="flex-shrink:0;font-size:12px;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">每行一条，自动去重</div>
+        <div style="flex-shrink:0;font-size:12px;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">${currentSubTab === 'checkinBank' ? '查岗打卡时他说的话，每行一条，自动去重。可用 {item} 代替任务名（如：我也把{item}搞定啦）' : '每行一条，自动去重'}</div>
 
         <div style="flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;">
             <textarea id="batch-add-input" rows="10" placeholder="在此粘贴内容，每行一条…" style="
@@ -2212,6 +2325,8 @@ function _showBatchAddDialog() {
                 ? customStatuses.some(r => normalizeStringStrict(r) === norm)
                 : currentSubTab === 'period'
                 ? customPeriodCare.some(r => normalizeStringStrict(r) === norm)
+                : currentSubTab === 'checkinBank'
+                ? customCheckinLines.some(r => normalizeStringStrict(r) === norm)
                 : false;
             if (isDup) { skipped++; return; }
             if (currentSubTab === 'custom') { customReplies.push(val); newItems.push(val); }
@@ -2219,6 +2334,7 @@ function _showBatchAddDialog() {
             else if (currentSubTab === 'statuses') { customStatuses.push(val); newItems.push(val); }
             else if (currentSubTab === 'mottos') customMottos.push(val);
             else if (currentSubTab === 'period') customPeriodCare.push(val);
+            else if (currentSubTab === 'checkinBank') customCheckinLines.push(val);
             added++;
         });
         if (_selectedGroupIdx >= 0 && newItems.length > 0 && groups) {
@@ -2365,7 +2481,7 @@ function initReplyLibraryListeners() {
                 }
                 return;
             }
-            if (currentSubTab === 'custom' || currentSubTab === 'pokes' || currentSubTab === 'statuses' || currentSubTab === 'period') {
+            if (currentSubTab === 'custom' || currentSubTab === 'pokes' || currentSubTab === 'statuses' || currentSubTab === 'period' || currentSubTab === 'checkinBank') {
                 _showBatchAddDialog(); return;
             }
             if (currentSubTab === 'surveyBank') {
@@ -2376,6 +2492,10 @@ function initReplyLibraryListeners() {
             }
             if (currentSubTab === 'redpacketBank') {
                 if (typeof window._redpacketShowBankBatchAddDialog === 'function') window._redpacketShowBankBatchAddDialog();
+                return;
+            }
+            if (currentSubTab === 'slacking') {
+                _showSlackingAddDialog();
                 return;
             }
             let input;
@@ -2394,11 +2514,13 @@ function initReplyLibraryListeners() {
                 if (currentSubTab === 'pokes' && customPokes.some(r => normalizeStringStrict(r) === valNorm)) isDup = true;
                 else if (currentSubTab === 'statuses' && customStatuses.some(r => normalizeStringStrict(r) === valNorm)) isDup = true;
                 else if (currentSubTab === 'mottos' && customMottos.some(r => normalizeStringStrict(r) === valNorm)) isDup = true;
+                else if (currentSubTab === 'motto' && customMottos.some(r => normalizeStringStrict(r) === valNorm)) isDup = true;
                 else if (currentSubTab === 'intros' && customIntros.some(r => normalizeStringStrict(r) === valNorm)) isDup = true;
                 if (isDup) { showNotification('该内容已存在', 'warning'); return; }
                 if (currentSubTab === 'pokes') customPokes.unshift(val);
                 else if (currentSubTab === 'statuses') customStatuses.unshift(val);
                 else if (currentSubTab === 'mottos') customMottos.unshift(val);
+                else if (currentSubTab === 'motto') customMottos.unshift(val);
                 else if (currentSubTab === 'intros') customIntros.unshift(val);
                 throttledSaveData(); renderReplyLibrary();
                 showNotification('✓ 添加成功', 'success');
@@ -2408,7 +2530,7 @@ function initReplyLibraryListeners() {
 }
 
 function getCategoryName(tabId) {
-    return { custom: '回复', pokes: '拍一拍', statuses: '状态', mottos: '格言', intros: '开场语', period: '相关字卡' }[tabId] || '内容';
+    return { custom: '回复', pokes: '拍一拍', statuses: '状态', mottos: '格言', motto: '个性签名', intros: '开场语', period: '相关字卡', checkinBank: '打卡字卡' }[tabId] || '内容';
 }
 
 function updateTabUI() {

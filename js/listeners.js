@@ -258,14 +258,30 @@ if (target.classList.contains('delete-btn')) {
         const index = messages.findIndex(m => m.id === messageId);
         if (index > -1) {
             const savedScrollTop = DOMElements.chatContainer.scrollTop;
-            messages.splice(index, 1); 
-            throttledSaveData(); 
+            messages.splice(index, 1);
+            throttledSaveData();
             renderMessages(true);
             requestAnimationFrame(() => {
                 DOMElements.chatContainer.scrollTop = savedScrollTop;
             });
             showNotification('消息已删除', 'success');
         }
+    }
+    return;
+}
+if (target.classList.contains('recall-btn')) {
+    // 撤回：消息保留在原位，内容换成"xx撤回了一条消息"的灰色提示条（微信风格）
+    if (confirm('撤回这条消息？')) {
+        message.recalled = true;
+        delete message.reaction; // 气泡都没了，反应小标签跟着去掉
+        message.favorited = false;
+        const savedScrollTop = DOMElements.chatContainer.scrollTop;
+        throttledSaveData();
+        renderMessages(true);
+        requestAnimationFrame(() => {
+            DOMElements.chatContainer.scrollTop = savedScrollTop;
+        });
+        showNotification('已撤回', 'success', 1500);
     }
     return;
 }
