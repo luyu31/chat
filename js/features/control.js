@@ -44,6 +44,12 @@
     var _todayLockCount = 0;
     var _todayDate = '';
 
+    // 用户改的昵称（设置→对方的名字），取不到就用"他"
+    function _partnerName() {
+        var n = (typeof settings !== 'undefined' && settings.partnerName) || '';
+        return (n && n !== '对方') ? n : '他';
+    }
+
     // ── 数据读写（照抄 checkin.js 的 load/save） ──────────────────────
     function load() {
         try {
@@ -175,13 +181,11 @@
         +   '<div id="ctrl-difficulty" style="margin-top:14px;"></div>'
         +   '<div id="ctrl-passphrases" style="margin-top:14px;"></div>'
         +   '<div style="display:flex;gap:8px;margin-top:14px;">'
-        +     '<button type="button" id="ctrl-lock-now" style="flex:1;padding:10px;border:none;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;background:var(--accent-color,#c5a47e);color:#fff;">让梦角封锁我一次</button>'
-        +     '<button type="button" id="ctrl-lock-partner" style="flex:1;padding:10px;border:none;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;background:#9a86e8;color:#fff;">把梦角锁起来</button>'
+        +     '<button type="button" id="ctrl-lock-now" style="flex:1;padding:10px;border:none;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;background:var(--accent-color,#c5a47e);color:#fff;">封锁我一次</button>'
+        +     '<button type="button" id="ctrl-lock-partner" style="flex:1;padding:10px;border:none;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;background:#9a86e8;color:#fff;">把他锁起来</button>'
         +     '<button type="button" id="ctrl-close" class="modal-btn modal-btn-secondary" style="flex:0 0 auto;">关闭</button>'
         +   '</div>'
-        +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;">'
-        +     '难度影响梦角查岗的语气和随机封锁的频率；熟练度通过完成查岗、解锁暗号积累。'
-        +   '</div>'
+        +   '<div id="ctrl-footer-hint" style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;"></div>'
         + '</div>';
         document.body.appendChild(m);
 
@@ -298,7 +302,7 @@
 
         var html = '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin-bottom:8px;">自定义暗号</div>';
         if (userBank.length === 0) {
-            html += '<div style="font-size:12px;color:var(--text-secondary,#aaa);padding:8px 0;">还没有自定义暗号，梦角会用内置暗号考你</div>';
+            html += '<div style="font-size:12px;color:var(--text-secondary,#aaa);padding:8px 0;">还没有自定义暗号，' + _partnerName() + '会用内置暗号考你</div>';
         } else {
             html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">';
             userBank.forEach(function (p, i) {
@@ -344,8 +348,20 @@
         renderPassphrases();
     }
 
+    // 按钮/说明里的名字跟着用户改的昵称走（弹窗是缓存的，每次打开都要重刷）
+    function _applyNames() {
+        var name = _partnerName();
+        var lockNow = document.getElementById('ctrl-lock-now');
+        var lockPartner = document.getElementById('ctrl-lock-partner');
+        var hint = document.getElementById('ctrl-footer-hint');
+        if (lockNow) lockNow.textContent = '让' + name + '封锁我一次';
+        if (lockPartner) lockPartner.textContent = '把' + name + '锁起来';
+        if (hint) hint.textContent = '难度影响' + name + '查岗的语气和随机封锁的频率；熟练度通过完成打卡、解锁暗号积累。';
+    }
+
     function open() {
         buildModal();
+        _applyNames();
         _renderAll();
         var m = document.getElementById('control-modal');
         if (m) {

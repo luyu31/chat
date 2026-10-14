@@ -238,7 +238,7 @@
         m.innerHTML = `
         <div class="modal-content" style="max-width:400px;width:90vw;">
             <div class="modal-title">
-                <i class="fas fa-clipboard-check"></i><span>查岗 · 双向打卡</span>
+                <i class="fas fa-clipboard-check"></i><span>双向打卡</span>
             </div>
             <div id="checkin-summary" style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;"></div>
             <div id="checkin-slacking" style="font-size:11px;color:var(--accent-color,#c5a47e);margin-bottom:8px;"></div>

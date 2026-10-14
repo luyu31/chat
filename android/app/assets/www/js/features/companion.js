@@ -709,7 +709,7 @@
         // 梦角自选时间（从 inviteTimes 池里随机选一个）
         const inviteTime = pickRandom(cfg.inviteTimes || [25]);
 
-        // 拼接邀请文案：智能处理"陪你"是否已经在台词里 + rest 特殊处理
+        // 拼接邀请文案：处理"陪你"是否已经在台词里 + rest 特殊处理
         let line;
         if (inviteTime === 'rest') {
             // 睡觉的"好好休息"模式：单独一句更自然
@@ -2878,7 +2878,7 @@
         const inviteTime = pickRandom(candidateTimes);
         const timeText = `${inviteTime} 分钟`;
 
-        // 拼接文案：跟 showIncomingCompanion 一样的智能拼接
+        // 拼接文案：跟 showIncomingCompanion 一样的拼接逻辑
         let line;
         if (/陪你|陪着你/.test(baseLine)) {
             line = `${baseLine.replace(/[？！?!]$/, '')} ${timeText}`;

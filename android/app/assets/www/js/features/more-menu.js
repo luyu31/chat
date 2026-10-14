@@ -69,10 +69,21 @@
         {
             id: 'checkin',
             iconClass: 'fas fa-clipboard-check',
-            label: '查岗',
+            label: '双向打卡',
             ready: true,
             action: function () {
                 if (window.Checkin) window.Checkin.open();
+                else if (typeof showNotification === 'function')
+                    showNotification('双向打卡加载中，稍后再试～', 'info', 2000);
+            }
+        },
+        {
+            id: 'visit',
+            iconClass: 'fas fa-eye',
+            label: '查岗',
+            ready: true,
+            action: function () {
+                if (window.Visit) window.Visit.open();
                 else if (typeof showNotification === 'function')
                     showNotification('查岗功能加载中，稍后再试～', 'info', 2000);
             }
