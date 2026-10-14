@@ -5,17 +5,19 @@
  * 每天第一次打开时用"日期字符串"当种子的伪随机（seededRandom）
  * 抽一个当天的状态，当天内保持不变，零点后重抽；
  * 「偷看一下」有 60% 概率被他抓包（60 分钟冷却，localStorage 记 lastCaughtAt）；
- * 状态池完全开放：可删、点文字改名、输入框添加，删到只剩一个有保底。
+ * 状态池直接用字卡库的「摸鱼状态」字卡组（reply-library.js 的
+ * window._getSlackingStatusPool），跟查岗共用同一份字卡，
+ * 点「管理状态字卡」直达该字卡组增删改。
  *
  * 对外：window.Peek = { open, getToday }
  */
 (function () {
     'use strict';
 
-    var KEY = 'peekStatus';               // { pool:[], lastRefresh:'YYYY-MM-DD', current, refreshDate, lastCaughtAt }
+    var KEY = 'peekStatus';               // { lastRefresh:'YYYY-MM-DD', current, lastCaughtAt }
     var CAUGHT_COOLDOWN = 60 * 60 * 1000; // 被抓包后的冷却：60 分钟
 
-    // ── 内置状态池（默认灌入，用户可增删改） ──────────────────────
+    // ── 兜底状态池（字卡库没加载/被清空时才用） ──────────────────────
     var DEFAULT_POOL = [
         '在偷偷打瞌睡',
         '开小差中被抓包',
@@ -56,6 +58,16 @@
         return arr[Math.floor(Math.random() * arr.length)];
     }
 
+    // ── 状态池：优先字卡库的「摸鱼状态」字卡组，兜底用内置默认 ──────────────────────
+    function _getPool() {
+        var pool = [];
+        if (typeof window._getSlackingStatusPool === 'function') {
+            try { pool = window._getSlackingStatusPool(); } catch (e) {}
+        }
+        if (!Array.isArray(pool) || !pool.length) pool = DEFAULT_POOL.slice();
+        return pool;
+    }
+
     // ── 日期字符串种子伪随机：同一天种子相同，抽出的状态全天稳定 ──────────────────────
     function seededRandom(seedStr) {
         // FNV-1a 先把日期字符串揉成整数
@@ -76,14 +88,13 @@
     // ── 今日状态：每天第一次取时抽签，当天内不再变（lastRefresh 记日期） ──────────────────────
     function getToday() {
         var d = load();
-        // 池子不存在/被删空：回灌默认池
-        if (!Array.isArray(d.pool) || !d.pool.length) d.pool = DEFAULT_POOL.slice();
+        var pool = _getPool();
         var today = todayStr();
-        if (d.lastRefresh !== today || !d.current) {
+        // 当天没抽过，或者昨天抽的那条已经不在字卡池里了 → 重抽
+        if (d.lastRefresh !== today || !d.current || pool.indexOf(d.current) === -1) {
             var rnd = seededRandom(today);
-            d.current = d.pool[Math.floor(rnd() * d.pool.length)];
+            d.current = pool[Math.floor(rnd() * pool.length)];
             d.lastRefresh = today;
-            d.refreshDate = today;
             save(d);
         }
         return d.current;
@@ -136,79 +147,36 @@
             +   '</div>'
             +   '<div style="flex:1;min-width:0;">'
             +     '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);">' + _partnerName() + '</div>'
-            +     '<div style="font-size:17px;font-weight:700;color:var(--text-primary,#333);line-height:1.4;margin-top:2px;">' + status + '</div>'
+            +     '<div style="font-size:17px;font-weight:700;color:var(--text-primary,#333);line-height:1.4;margin-top:2px;" id="peek-status-text"></div>'
             +   '</div>'
             + '</div>'
-            + '<div style="font-size:11px;color:var(--text-secondary,#999);margin:8px 0 12px 2px;">今日状态 · 每天 0 点刷新</div>';
+            + '<div style="font-size:11px;color:var(--text-secondary,#999);margin:8px 0 12px 2px;">今日状态 · 每天 0 点刷新 · 字卡来自「摸鱼状态」字卡组</div>';
+        var textEl = document.getElementById('peek-status-text');
+        if (textEl) textEl.textContent = status;
     }
 
-    // ── 状态池管理区：chips 可删可改名 + 输入框添加（control.js 暗号库同款风格） ──────────────────────
-    function renderChips() {
+    // ── 字卡组管理区：显示当前条数 + 直达「摸鱼状态」字卡组编辑 ──────────────────────
+    function renderPoolBox() {
         var box = document.getElementById('peek-pool-box');
         if (!box) return;
-        var d = load();
-        if (!Array.isArray(d.pool) || !d.pool.length) { d.pool = DEFAULT_POOL.slice(); save(d); }
-        var pool = d.pool;
-
-        var html = '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin-bottom:8px;">状态池</div>';
-        html += '<div id="peek-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">';
-        pool.forEach(function (p, i) {
-            html += '<span style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;'
-                + 'background:var(--secondary-bg,#f5f5f5);font-size:12px;color:var(--text-primary,#333);cursor:pointer;" title="点击改名">'
-                + p
-                + '<i class="fas fa-times peek-del" data-idx="' + i + '" style="cursor:pointer;color:var(--text-secondary,#ccc);font-size:10px;"></i>'
-                + '</span>';
-        });
-        html += '</div>';
-        html += '<div style="display:flex;gap:6px;">'
-            + '<input id="peek-add-input" type="text" placeholder="添加状态，如：在给你织围巾" style="flex:1;padding:8px 10px;border:1px solid var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-primary,#333);outline:none;" />'
-            + '<button type="button" id="peek-add-btn" style="padding:8px 12px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;">添加</button>'
+        var count = _getPool().length;
+        box.innerHTML =
+            '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
+            +   '<span style="font-size:12px;color:var(--text-secondary,#888);">状态字卡共 ' + count + ' 条</span>'
+            +   '<button type="button" id="peek-manage-cards" style="padding:7px 12px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;">'
+            +     '<i class="fas fa-comment-dots"></i> 管理状态字卡'
+            +   '</button>'
             + '</div>';
-        box.innerHTML = html;
-
-        // 添加（去重）
-        box.querySelector('#peek-add-btn').addEventListener('click', function () {
-            var input = box.querySelector('#peek-add-input');
-            var val = (input && input.value ? input.value : '').trim();
-            if (!val) return;
-            var d2 = load();
-            if (!Array.isArray(d2.pool)) d2.pool = [];
-            if (d2.pool.indexOf(val) !== -1) {
-                if (typeof showNotification === 'function') showNotification('这个状态已经在池子里了', 'warning');
-                return;
-            }
-            d2.pool.push(val);
-            save(d2);
-            renderChips();
-        });
-
-        // 删除（至少留一个，否则今天的卡片没东西可抽）
-        box.querySelectorAll('.peek-del').forEach(function (icon) {
-            icon.addEventListener('click', function (e) {
-                e.stopPropagation();
-                var idx = parseInt(icon.getAttribute('data-idx'), 10);
-                var d2 = load();
-                if (d2.pool.length <= 1) {
-                    if (typeof showNotification === 'function') showNotification('至少得留一个状态', 'warning');
-                    return;
-                }
-                d2.pool.splice(idx, 1);
-                save(d2);
-                renderChips();
-            });
-        });
-
-        // 点 chip 文字改名（当天已抽出的状态不受影响，明天才用新池子）
-        box.querySelectorAll('#peek-chips > span').forEach(function (chip, i) {
-            chip.addEventListener('click', function () {
-                var d2 = load();
-                var n = prompt('修改状态文字', d2.pool[i]);
-                if (n && n.trim() && n.trim() !== d2.pool[i]) {
-                    d2.pool[i] = n.trim();
-                    save(d2);
-                    renderChips();
-                }
-            });
+        box.querySelector('#peek-manage-cards').addEventListener('click', function () {
+            // 直达氛围感配置的「摸鱼状态」字卡 tab；先关掉摸鱼弹窗，避免字卡库被盖在下面
+            try {
+                var peekModal = document.getElementById('peek-modal');
+                if (peekModal && typeof hideModal === 'function') hideModal(peekModal);
+                if (typeof currentMajorTab !== 'undefined') { currentMajorTab = 'atmosphere'; currentSubTab = 'slacking'; }
+                if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
+                var libModal = document.getElementById('custom-replies-modal');
+                if (libModal && typeof showModal === 'function') showModal(libModal);
+            } catch (e) { console.warn('[peek] 打开摸鱼状态字卡失败:', e); }
         });
     }
 
@@ -228,6 +196,10 @@
             _partnerSay(pick(CAUGHT_LINES));
             if (typeof showNotification === 'function') showNotification('糟糕，被他发现了');
         } else {
+            // 安全偷看：刷新出一条他此刻的随机状态（不破坏今日固定状态）
+            var pool = _getPool();
+            var textEl = document.getElementById('peek-status-text');
+            if (textEl && pool.length) textEl.textContent = pick(pool);
             if (typeof showNotification === 'function') showNotification('偷看成功，他没发现');
         }
     }
@@ -265,14 +237,14 @@
     function open() {
         buildModal();
         renderCard();
-        renderChips();
+        renderPoolBox();
         var m = document.getElementById('peek-modal');
         if (m) {
             if (typeof showModal === 'function') showModal(m); else m.style.display = 'flex';
         }
     }
 
-    // ── 启动：DOMContentLoaded 自动初始化（灌默认池 + 抽今日状态） ──────────────────────
+    // ── 启动：DOMContentLoaded 自动初始化（抽今日状态） ──────────────────────
     function init() {
         getToday();
     }

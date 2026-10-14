@@ -78,6 +78,17 @@
             }
         },
         {
+            id: 'peek',
+            iconClass: 'fas fa-binoculars',
+            label: '摸鱼',
+            ready: true,
+            action: function () {
+                if (window.Peek) window.Peek.open();
+                else if (typeof showNotification === 'function')
+                    showNotification('摸鱼功能加载中，稍后再试～', 'info', 2000);
+            }
+        },
+        {
             id: 'ledger',
             iconClass: 'fas fa-wallet',
             label: '记账',

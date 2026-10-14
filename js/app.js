@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         welcomeScreen.classList.add('hidden');
         setTimeout(() => {
             welcomeScreen.style.display = 'none';
-        }, 800);
+        }, 450); // 跟 styles.css 里 .welcome-animation 的 0.45s 过渡同步
     };
 
     const safeAwait = async (promise, fallback = null) => {
@@ -88,8 +88,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         updateLoader('和你在一起的每一天', '100%');
-        // 老用户快速进入（0.4s + 渐隐），首次安装仍保留完整开场
-        setTimeout(hideWelcomeScreen, tourSeen ? 400 : 3500);
+        // 老用户快速进入（0.25s + 渐隐），首次安装也只留短开场（1.2s + 渐隐）
+        setTimeout(hideWelcomeScreen, tourSeen ? 250 : 1200);
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') {
