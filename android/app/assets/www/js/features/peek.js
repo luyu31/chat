@@ -238,6 +238,12 @@
         buildModal();
         renderCard();
         renderPoolBox();
+        // 用摸鱼功能 → 梦角 App 熟练度 +1（每日上限 3 次）
+        try {
+            if (window.PartnerProficiency && typeof window.PartnerProficiency.gainDaily === 'function') {
+                window.PartnerProficiency.gainDaily(1, 'peek', 3);
+            }
+        } catch (e) {}
         var m = document.getElementById('peek-modal');
         if (m) {
             if (typeof showModal === 'function') showModal(m); else m.style.display = 'flex';

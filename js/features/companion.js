@@ -1761,6 +1761,10 @@
                     partnerNote: partnerNote,
                     userNote: ''
                 });
+                // 陪伴结束 → 梦角 App 熟练度 +5（每日上限 4 次）
+                if (window.PartnerProficiency && typeof window.PartnerProficiency.gainDaily === 'function') {
+                    window.PartnerProficiency.gainDaily(5, 'companion', 4);
+                }
             }
         } catch (e) {
             console.warn('[companion] write diary error:', e);

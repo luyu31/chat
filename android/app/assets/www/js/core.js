@@ -2447,6 +2447,12 @@ const addMessage = (message) => {
                     // 记录进"这一轮"候选池，供梦角自动表情反应使用（见 _triggerDelayedReply / simulateReply）
                     window._currentRoundMsgIds = window._currentRoundMsgIds || [];
                     window._currentRoundMsgIds.push(messageData.id);
+                    // 你发消息 → 梦角 App 熟练度 +1（每日上限 15，防刷）
+                    try {
+                        if (window.PartnerProficiency && typeof window.PartnerProficiency.gainDaily === 'function') {
+                            window.PartnerProficiency.gainDaily(1, 'msg', 15);
+                        }
+                    } catch (e) {}
                 }
                 if (type !== 'system') playSound('send');
                 currentReplyTo = null;

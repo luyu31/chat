@@ -111,6 +111,21 @@
         return _getLevel(load().xp);
     }
 
+    // ── 带每日上限的加分（发消息/陪伴/通话等高频行为用，防刷） ──────────────────────
+    // bucket: 行为名（'msg'/'companion'/'call'…），dailyMax: 每天最多计几次
+    function gainDaily(n, bucket, dailyMax) {
+        if (!bucket || !(n > 0)) return;
+        var d = load();
+        var today = _todayStr();
+        if (d.capDate !== today) { d.capDate = today; d.caps = {}; }
+        if (!d.caps || typeof d.caps !== 'object') d.caps = {};
+        var used = d.caps[bucket] || 0;
+        if (dailyMax && used >= dailyMax) return; // 今天这个行为已经给满了
+        d.caps[bucket] = used + 1;
+        _saveData(d);
+        gain(n);
+    }
+
     // ── 每天打开 app（跨自然日）自动 +随机 10~30 XP ──────────────────────
     function _dailyGrow() {
         var d = load();
@@ -202,6 +217,19 @@
         });
         html += '</div>';
 
+        // 熟练度来源说明
+        html += '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin:12px 0 8px;">熟练度怎么涨</div>';
+        html += '<div style="font-size:11px;color:var(--text-secondary,#999);line-height:1.9;padding:10px 12px;'
+            + 'background:var(--secondary-bg,#f5f5f5);border-radius:12px;">'
+            + '每天打开 App +10~30<br>'
+            + '你发消息给他 +1（每日上限 15）<br>'
+            + '一起陪伴结束 +5（每日上限 4 次）<br>'
+            + '视频通话结束 +5（每日上限 3 次）<br>'
+            + '双向打卡完成 +2（每日上限 6 次）<br>'
+            + '用摸鱼 / 查岗 / 帮我抉择等功能 +1~2（各有每日上限）<br>'
+            + '他自己记账 +3、换空间签名 +2'
+            + '</div>';
+
         el.innerHTML = html;
     }
 
@@ -228,6 +256,7 @@
     window.PartnerProficiency = {
         open: open,
         gain: gain,
+        gainDaily: gainDaily,
         getLevel: getLevel
     };
 })();

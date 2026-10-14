@@ -195,6 +195,12 @@
 
     // ─── 我完成一项 → 梦角必然紧跟着一起打卡（像真的情侣互相带动那样）───
     function onMeComplete(item) {
+        // 我完成打卡 → 梦角 App 熟练度 +2（每日上限 6 次）
+        try {
+            if (window.PartnerProficiency && typeof window.PartnerProficiency.gainDaily === 'function') {
+                window.PartnerProficiency.gainDaily(2, 'checkin', 6);
+            }
+        } catch (e) {}
         const daily = getDaily();
         const delay = 1200 + Math.random() * 2600;
         setTimeout(() => {
