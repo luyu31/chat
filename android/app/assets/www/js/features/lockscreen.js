@@ -447,6 +447,18 @@
         };
         save(data);
         _show(passphrase, prompt, data.startedAt, 0);
+        _notifyLock(_getPartnerName(), prompt);
+    }
+
+    // 锁上时给手机发系统通知（App 在后台/息屏时也能及时知道是他锁的）
+    function _notifyLock(name, prompt) {
+        try {
+            if (window.MilkChat && typeof window.MilkChat.notify === 'function') {
+                window.MilkChat.notify(name + '把软件锁了', prompt + '——说对了才给解锁', 'lock');
+            } else if (typeof Notification === 'function') {
+                new Notification(name + '把软件锁了', { body: prompt + '——说对了才给解锁' });
+            }
+        } catch (e) {}
     }
 
     function isActive() {

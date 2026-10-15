@@ -302,11 +302,39 @@
 
     function runSharedCheck() {
         // 每次到点约 40% 概率记一笔，不是到点必记
-        if (shared.enabled && Math.random() < 0.4) generatePartnerExpense();
+        if (shared.enabled && Math.random() < 0.4) {
+            // 开机竞态：ledger 的 loadAll 跑得比聊天模块的 loadData 早时，
+            // 直接 addMessage 会被 loadData 恢复历史时覆盖丢掉（cinema.js 踩过同一个坑）。
+            // 钩 renderMessages（loadData 收尾必调）——首次调用前先攒着，之后再真发。
+            var gen = generatePartnerExpense;
+            if (window._appDataLoaded || _chatReady) {
+                gen();
+            } else {
+                _pendingBootExpense = true;
+            }
+        }
         shared.nextCheckAt = Date.now() + sharedDelayMs();
         saveShared();
         scheduleSharedCheck();
     }
+
+    var _chatReady = false;          // renderMessages 首调 = 聊天数据就绪
+    var _pendingBootExpense = false; // 开机期间攒下的"他记了一笔"
+
+    (function _hookRenderMessagesForLedger() {
+        var origFn = window.renderMessages;
+        if (typeof origFn !== 'function') return;
+        window.renderMessages = function () {
+            if (!_chatReady) {
+                _chatReady = true;
+                if (_pendingBootExpense) {
+                    _pendingBootExpense = false;
+                    setTimeout(function () { generatePartnerExpense(); }, 0);
+                }
+            }
+            return origFn.apply(this, arguments);
+        };
+    })();
 
     // ─── 共同记账：生成他的一笔消费 ─────────────────────────────────
     function pickLedger(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -365,6 +393,10 @@
                 type: 'normal'
             });
             if (typeof playSound === 'function') playSound('message');
+            // 同时弹顶部通知，App 在后台/看别的地方也能及时知道他记账了
+            if (typeof showNotification === 'function') {
+                showNotification(partnerNameLabel() + '刚记了一笔：' + (rec.hidden ? '神秘消费，就不告诉你' : rec.desc + ' ¥' + rec.amount.toFixed(1)), 'info', 3000);
+            }
         } catch (e) { console.warn('[ledger] 共同记账播报失败:', e); }
     }
 

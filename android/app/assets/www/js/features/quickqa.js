@@ -151,6 +151,8 @@
 
     function heAsks() {
         if (_answering) return;
+        // 他自主出题时弹窗可能还没建过——先确保作答区在 DOM 里
+        buildModal();
         var d = load();
         var sec = d.answerSec;
         var parsed = parseQuestion(pick(getQuestionPool()));
@@ -163,6 +165,9 @@
         _say(text, 'him');
 
         renderAnswering();
+        // 弹窗跟着弹出来，倒计时和选项直接摆在眼前
+        var modal = document.getElementById('qa-modal');
+        if (modal) { if (typeof showModal === 'function') showModal(modal); else modal.style.display = 'flex'; }
         if (typeof showNotification === 'function') {
             showNotification(_partnerName() + ' 出题了！限时 ' + sec + ' 秒，快答！');
         }
@@ -336,10 +341,20 @@
             });
             html += '</div>';
         } else {
-            html += '<div style="display:flex;gap:6px;">'
-                +   '<input type="text" id="qa-answer-input" placeholder="快写下你的答案…" style="flex:1;padding:9px 12px;border:1px solid var(--border-color,#ddd);border-radius:10px;font-size:13px;background:transparent;color:var(--text-primary,#333);box-sizing:border-box;">'
-                +   '<button type="button" id="qa-answer-send" style="padding:9px 16px;border:none;border-radius:10px;background:var(--accent-color,#c5a47e);color:#fff;font-size:12px;font-weight:600;cursor:pointer;">答！</button>'
-                + '</div>';
+            // 没写选项的题：自动从其他题里借选项凑成点选（问卷就是要能直接点，不打字）
+            var borrow = [];
+            getQuestionPool().forEach(function (raw) {
+                var p2 = parseQuestion(raw);
+                if (p2.q !== _answering.q) {
+                    p2.options.forEach(function (o) { if (borrow.length < 3) borrow.push(o); });
+                }
+            });
+            html += '<div id="qa-answer-options" style="display:flex;flex-wrap:wrap;gap:6px;">';
+            ['好', '不好', '不知道'].forEach(function (o) { if (borrow.length < 3) borrow.push(o); });
+            borrow.forEach(function (opt) {
+                html += '<button type="button" class="qa-opt-btn" data-v="' + opt.replace(/"/g, '&quot;') + '" style="padding:8px 14px;border-radius:20px;border:1px solid var(--accent-color,#c5a47e);background:transparent;color:var(--accent-color,#c5a47e);font-size:12px;font-weight:600;cursor:pointer;">' + opt.replace(/</g, '&lt;') + '</button>';
+            });
+            html += '</div>';
         }
         html += '</div>';
         box.innerHTML = html;
@@ -361,17 +376,6 @@
         optBtns.forEach(function (b) {
             b.addEventListener('click', function () { answerHim(b.dataset.v); });
         });
-        var sendBtn = box.querySelector('#qa-answer-send');
-        var inputEl = box.querySelector('#qa-answer-input');
-        if (sendBtn && inputEl) {
-            function submit() {
-                var v = (inputEl.value || '').trim();
-                if (!v) { if (typeof showNotification === 'function') showNotification('写点什么再答呀'); return; }
-                answerHim(v);
-            }
-            sendBtn.addEventListener('click', submit);
-            inputEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
-        }
     }
 
     // ── 问答记录 ──────────────────────

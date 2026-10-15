@@ -2499,9 +2499,6 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                     <div class="settings-item" id="proficiency-function" onclick="if(window.PartnerProficiency)window.PartnerProficiency.open()">
                         <i class="fas fa-chart-line"></i><span>梦角熟练度</span>
                     </div>
-                    <div class="settings-item" id="timezone-function" onclick="if(window.Timezone)window.Timezone.open()">
-                        <i class="fas fa-clock"></i><span>时差显示</span>
-                    </div>
                     <div class="settings-item" id="mood-function" style="display:none;">
                         <i class="fas fa-calendar-day"></i><span>心情手账</span>
                     </div>
@@ -3134,7 +3131,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                 <div class="content-list-area" id="custom-replies-list">
                 </div>
 
-                <div id="announcement-panel" style="display:none; padding:0 16px 80px; overflow-y:auto; flex:1; min-height:0; -webkit-overflow-scrolling:touch;">
+                <div id="announcement-panel" style="display:none; padding:0 16px 80px; overflow-y:auto; overflow-x:hidden; flex:1; min-height:0; min-width:0; width:100%; box-sizing:border-box; -webkit-overflow-scrolling:touch;">
                     <div style="display:flex;flex-direction:column;gap:12px; padding:4px 0 16px;">
 
                         <div style="background:linear-gradient(135deg,rgba(var(--accent-color-rgb),0.12),rgba(var(--accent-color-rgb),0.05));border-radius:14px;padding:14px 16px;border:1px solid rgba(var(--accent-color-rgb),0.2);">

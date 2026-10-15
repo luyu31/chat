@@ -14,15 +14,14 @@
     var KEY = 'controlData';
 
     // ── 难度五档（写死常量） ──────────────────────
-    // dailyProb: 当天触发随机封锁的概率
-    // maxPerDay: 每天最多封锁次数
+    // maxPerDay: 每天最多锁手机的次数上限；什么时候锁纯随机，档位只定上限
     // minLevel:  需要的熟练度等级（等级 = floor(xp/100)+1，封顶 9）
     var DIFFICULTIES = [
-        { level: 1, name: '温柔引导', desc: '他偶尔管管你，语气软软的', dailyProb: 0.05, maxPerDay: 1, minLevel: 1 },
-        { level: 2, name: '日常管教', desc: '日常查岗+偶尔小封锁', dailyProb: 0.20, maxPerDay: 1, minLevel: 1 },
-        { level: 3, name: '认真调教', desc: '催得更紧，封锁变频繁', dailyProb: 0.45, maxPerDay: 1, minLevel: 3 },
-        { level: 4, name: '严厉掌控', desc: '他说什么就是什么', dailyProb: 0.70, maxPerDay: 2, minLevel: 4 },
-        { level: 5, name: '完全臣服', desc: '解锁条件：熟练度 Lv5', dailyProb: 0.90, maxPerDay: 3, minLevel: 5 }
+        { level: 1, name: '温柔引导', desc: '他很少锁你，每天最多 5 次', maxPerDay: 5, minLevel: 1 },
+        { level: 2, name: '日常管教', desc: '日常查岗，每天最多 4 次', maxPerDay: 4, minLevel: 1 },
+        { level: 3, name: '认真调教', desc: '锁得更勤，每天最多 3 次', maxPerDay: 3, minLevel: 3 },
+        { level: 4, name: '严厉掌控', desc: '他说什么就是什么，每天最多 2 次', maxPerDay: 2, minLevel: 4 },
+        { level: 5, name: '完全臣服', desc: '解锁条件：熟练度 Lv5 · 没有次数上限', maxPerDay: Infinity, minLevel: 5 }
     ];
 
     // ── 内置暗号库（不可删除，与用户库合并抽取） ──────────────────────
@@ -347,7 +346,7 @@
         var lockPartner = document.getElementById('ctrl-lock-partner');
         var hint = document.getElementById('ctrl-footer-hint');
         if (lockPartner) lockPartner.textContent = '把' + name + '锁起来';
-        if (hint) hint.textContent = '什么时候锁你的手机由' + name + '自己随机决定，不接受点单；难度影响他查岗的语气和封锁的频率。';
+        if (hint) hint.textContent = '什么时候锁你的手机由' + name + '随机决定，难度只定每天的次数上限；锁上的瞬间会给你发手机通知。';
     }
 
     function open() {
@@ -362,6 +361,7 @@
 
     // ── 随机封锁调度（照抄 redpacket.js scheduler 思路） ──────────────────────
     // 每 30 秒检查 nextLockAt：到点了 + 今天还没锁够 + 页面可见 → 触发封锁
+    // 什么时候锁完全随机（下一轮 40 分钟~5 小时随机），难度档位只决定每天次数上限
     function _checkScheduler() {
         var d = load();
         if (!d.nextLockAt) {
@@ -394,25 +394,14 @@
             return;
         }
 
-        // 4) 日概率判定（当天第一次检查时掷骰子）
-        if (_todayLockCount === 0 && Math.random() > diff.dailyProb) {
-            // 今天不锁，排到明天
-            var tom = new Date();
-            tom.setHours(0, 0, 0, 0);
-            tom.setDate(tom.getDate() + 1);
-            d.nextLockAt = tom.getTime() + Math.random() * 3 * 3600000;
-            _saveData(d);
-            return;
-        }
-
         // 条件全满足，触发封锁！
         _todayLockCount++;
         if (window.LockScreen && typeof window.LockScreen.start === 'function') {
             window.LockScreen.start();
         }
 
-        // 排下一次（1~3 小时后随机）
-        d.nextLockAt = Date.now() + (1 + Math.random() * 2) * 3600000;
+        // 排下一次（40 分钟~5 小时随机，纯看他心情）
+        d.nextLockAt = Date.now() + (40 + Math.random() * 260) * 60 * 1000;
         _saveData(d);
     }
 
