@@ -110,6 +110,17 @@
                     showNotification('记账功能加载中，稍后再试～', 'info', 2000);
             }
         },
+        {
+            id: 'food',
+            iconClass: 'fas fa-utensils',
+            label: '食光记',
+            ready: true,
+            action: function () {
+                if (window.Food) window.Food.open();
+                else if (typeof showNotification === 'function')
+                    showNotification('食光记加载中，稍后再试～', 'info', 2000);
+            }
+        },
         // 占位项，真正的"搞怪"逻辑（右下角道具面板：番茄/鸡蛋/蛋糕/水桶）在
         // js/features/throw-egg.js 里，它加载后会调用 registerItem('throw-egg', ...)
         // 把这项升级成真实功能

@@ -2,16 +2,17 @@
  * quickqa.js — 快问快答（问卷式）
  *
  * 两个玩法：
- *   1. 我问他：从「快问问题」字卡组点选一道题（问题|选项1|选项2|...），
- *      他在限时内回答"我选「xx」"。
- *   2. 他问我：他自己随机决定什么时候出题（不接受我点单），从同一个
- *      问题池抽题考我，我在限时内作答；答得快被夸（夸奖字卡），
- *      超时或太慢被嘲讽（嘲讽字卡）。
+ *   1. 我问他：点开快问快答，当场写问题（选项可填可不填）直接发出去，
+ *      不需要任何预设；他在限时内的随机时刻回答"我选「xx」"。
+ *   2. 他问我：他自己随机决定什么时候出题（不接受我点单），从"他的题库"
+ *      抽题考我，我在限时内作答；答得快被夸（夸奖字卡），
+ *      超时或太慢被嘲讽（嘲讽字卡）。题库=内置中性题+我自己加的题，
+ *      在快问快答弹窗里就能加/删。
  *
  * 回答时限可调：1~120 秒，默认 60 秒。
- * 字卡组（氛围感配置）：快问问题 / 快答夸奖 / 快答嘲讽
+ * 字卡组（氛围感配置）：快答夸奖 / 快答嘲讽
  * 他问我：题目以 quickqa 类型消息直接嵌进聊天流，选项按钮当场点选作答，
- *         不再强制弹窗（弹窗保留，用于管理字卡/时限/看记录）。
+ *         不再强制弹窗（弹窗保留，用于出题/管题库/看记录）。
  * 入口：输入区「+」更多菜单 → 快问快答
  * 存储：localStorage 'quickQAData' { answerSec, nextAskAt, history:[] }
  */
@@ -41,6 +42,15 @@
             '今晚早点睡好不好？|好|再玩五分钟|马上睡|你先睡'
         ]);
     }
+
+    // 没写选项的开放题，他从这些里挑一句回（口语化，不预设任何身份）
+    var OPEN_ANSWERS = [
+        '这题我要想想……先反问一句：你觉得呢？',
+        '我选「听你的」',
+        '嗯……让我想想，先欠着',
+        '这还用问？当然是跟你有关的那个答案',
+        '我选「都可以，重点是跟你一起」'
+    ];
 
     function getPraisePool() {
         return _poolFrom(window._getQAPraisePool, [
@@ -136,7 +146,7 @@
         setTimeout(function () {
             var answer = parsed.options.length
                 ? '我选「' + pick(parsed.options) + '」'
-                : '这题我要想想……先反问一句：你觉得呢？';
+                : pick(OPEN_ANSWERS);
             _say(answer, 'him');
             _record({ ts: Date.now(), who: 'me', q: parsed.q, a: answer });
         }, delay);
@@ -330,8 +340,9 @@
         m.className = 'modal';
         m.id = 'qa-modal';
         m.style.zIndex = '3300';
+        var inpCss = 'width:100%;box-sizing:border-box;padding:9px 11px;border-radius:10px;border:1.5px solid var(--border-color,#ddd);background:var(--primary-bg,transparent);color:var(--text-primary,#333);font-size:13px;outline:none;font-family:var(--font-family);';
         m.innerHTML =
-        '<div class="modal-content" style="max-width:420px;width:90vw;">'
+        '<div class="modal-content" style="max-width:420px;width:90vw;max-height:86vh;overflow-y:auto;">'
         +   '<div class="modal-title"><i class="fas fa-bolt"></i><span>快问快答</span></div>'
         +   '<div id="qa-answering"></div>'
         +   '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin:2px 0 10px;">'
@@ -339,19 +350,27 @@
         +     '<input type="range" id="qa-sec-range" min="1" max="120" step="1" style="width:150px;accent-color:var(--accent-color,#c5a47e);">'
         +     '<span id="qa-sec-val" style="font-size:12px;font-weight:700;color:var(--accent-color,#c5a47e);min-width:38px;text-align:right;">60s</span>'
         +   '</div>'
-        +   '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin-bottom:6px;">我问' + _partnerName() + '（点一道题直接发）</div>'
-        +   '<div id="qa-question-list" style="max-height:34vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;"></div>'
+        +   '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin-bottom:6px;">出题问' + _partnerName() + '（不用预设，想到什么问什么）</div>'
+        +   '<input type="text" id="qa-ask-q" placeholder="想问什么？如：周末想干什么？" maxlength="40" style="' + inpCss + 'margin-bottom:6px;">'
+        +   '<input type="text" id="qa-ask-opts" placeholder="选项用 | 隔开，可不填。如：宅家 | 出去玩 | 都行" maxlength="60" style="' + inpCss + 'margin-bottom:8px;">'
+        +   '<button type="button" id="qa-ask-send" class="modal-btn modal-btn-primary" style="width:100%;padding:10px;font-size:13px;">发出去，等TA答</button>'
+        +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:5px;line-height:1.6;">TA会在时限内挑一个答案回你</div>'
+        +   '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin:14px 0 6px;">TA的题库（TA考你时从中抽题，可自己加）</div>'
+        +   '<div style="display:flex;gap:6px;margin-bottom:8px;">'
+        +     '<input type="text" id="qa-bank-add-input" placeholder="加一道题：问题 | 选项1 | 选项2…" maxlength="80" style="flex:1;min-width:0;padding:8px 10px;border-radius:10px;border:1.5px solid var(--border-color,#ddd);background:var(--primary-bg,transparent);color:var(--text-primary,#333);font-size:12px;outline:none;font-family:var(--font-family);">'
+        +     '<button type="button" id="qa-bank-add-btn" class="modal-btn modal-btn-primary" style="flex:0 0 auto;padding:8px 14px;font-size:12px;">加题</button>'
+        +   '</div>'
+        +   '<div id="qa-bank-list" style="max-height:24vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>'
         +   '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin:12px 0 6px;">问答记录</div>'
-        +   '<div id="qa-history" style="max-height:20vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>'
+        +   '<div id="qa-history" style="max-height:18vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>'
         +   '<div style="display:flex;gap:6px;margin-top:12px;">'
-        +     '<button type="button" class="qa-manage-btn" data-tab="qaQuestions" style="flex:1;padding:9px 6px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:11px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;"><i class="fas fa-circle-question"></i> 问题字卡</button>'
         +     '<button type="button" class="qa-manage-btn" data-tab="qaPraise" style="flex:1;padding:9px 6px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:11px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;"><i class="fas fa-thumbs-up"></i> 夸奖字卡</button>'
         +     '<button type="button" class="qa-manage-btn" data-tab="qaTease" style="flex:1;padding:9px 6px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:11px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;"><i class="fas fa-ghost"></i> 嘲讽字卡</button>'
         +     '<button type="button" id="qa-close" class="modal-btn modal-btn-secondary" style="flex:0 0 auto;">关闭</button>'
         +   '</div>'
         +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;">'
-        +     '我问' + _partnerName() + '：点一道题直接发，他限时作答。<br>'
-        +     '他问我：什么时候考你由他自己随机决定，题目直接出现在聊天流里，点选项即作答。答得快被夸，超时或太慢要被嘲讽。'
+        +     '出题问' + _partnerName() + '：当场写问题发出去，TA限时作答。<br>'
+        +     'TA考你：什么时候出题由TA随机决定，题目直接出现在聊天流里，点选项即作答。答得快被夸，超时或太慢要被嘲讽。'
         +   '</div>'
         + '</div>';
         document.body.appendChild(m);
@@ -361,6 +380,27 @@
             d.answerSec = Math.max(MIN_SEC, Math.min(MAX_SEC, parseInt(this.value, 10) || DEFAULT_SEC));
             save(d);
             m.querySelector('#qa-sec-val').textContent = d.answerSec + 's';
+        });
+
+        // 当场出题：问题 + 可选选项 → 发出去
+        m.querySelector('#qa-ask-send').addEventListener('click', _composeAsk);
+        m.querySelector('#qa-ask-q').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); _composeAsk(); } });
+        m.querySelector('#qa-ask-opts').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); _composeAsk(); } });
+
+        // 题库：加题 + 删除（删除走事件委托）
+        m.querySelector('#qa-bank-add-btn').addEventListener('click', _bankAdd);
+        m.querySelector('#qa-bank-add-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); _bankAdd(); } });
+        m.querySelector('#qa-bank-list').addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-bank-del]');
+            if (!btn) return;
+            var id = btn.getAttribute('data-bank-del');
+            var arr = _bankRaw();
+            var item = null;
+            arr.forEach(function (x) { if (String(x.id) === String(id)) item = x; });
+            if (!item) return;
+            if (!confirm('把这道题从题库里删掉？\n' + parseQuestion(item.text).q)) return;
+            _bankSave(arr.filter(function (x) { return String(x.id) !== String(id); }));
+            renderBankList();
         });
 
         m.querySelectorAll('.qa-manage-btn').forEach(function (b) {
@@ -389,35 +429,91 @@
         } catch (e) { console.warn('[qa] 打开字卡失败:', e); }
     }
 
-    // ── 问题列表（问卷式：问题 + 选项预览，点一行直接发） ──────────────────────
-    function renderQuestionList() {
-        var el = document.getElementById('qa-question-list');
+    // ── 当场出题：问题 + 可选选项，拼成 "问题|选项1|选项2" 发给 askHim ──────────────────────
+    function _composeAsk() {
+        var qEl = document.getElementById('qa-ask-q');
+        var oEl = document.getElementById('qa-ask-opts');
+        if (!qEl) return;
+        var q = String(qEl.value || '').trim().slice(0, 40);
+        if (!q) {
+            if (typeof showNotification === 'function') showNotification('先写个问题吧～', 'info', 1800);
+            qEl.focus();
+            return;
+        }
+        var opts = String((oEl && oEl.value) || '')
+            .split(/[|｜,，、]+/)
+            .map(function (s) { return s.trim(); })
+            .filter(Boolean)
+            .slice(0, 6);
+        qEl.value = '';
+        if (oEl) oEl.value = '';
+        askHim(opts.length ? q + '|' + opts.join('|') : q);
+    }
+
+    // ── 他的题库：直接读写字卡库的存储（customQAQuestions），弹窗里加/删 ──────────────────────
+    var BANK_KEY = 'customQAQuestions';
+
+    function _bankRaw() {
+        // 先摸一次池子，确保字卡库已把内置题初始化进存储
+        try { if (typeof window._getQAQuestionPool === 'function') window._getQAQuestionPool(); } catch (e) {}
+        var arr = null;
+        try { arr = JSON.parse(localStorage.getItem(BANK_KEY)); } catch (e) {}
+        if (!Array.isArray(arr)) arr = [];
+        return arr.map(function (it, i) {
+            if (it && typeof it === 'object') return { id: it.id != null ? it.id : ('b_' + i), text: String(it.text || '') };
+            return { id: 's_' + i, text: String(it || '') };
+        }).filter(function (x) { return x.text.trim(); });
+    }
+
+    function _bankSave(arr) {
+        try {
+            localStorage.setItem(BANK_KEY, JSON.stringify(arr.map(function (x) { return { id: x.id, text: x.text }; })));
+        } catch (e) {}
+    }
+
+    function _bankAdd() {
+        var input = document.getElementById('qa-bank-add-input');
+        if (!input) return;
+        var v = String(input.value || '').trim();
+        if (!v) return;
+        var arr = _bankRaw();
+        if (arr.some(function (x) { return x.text === v; })) {
+            if (typeof showNotification === 'function') showNotification('题库里已经有这道题啦', 'info', 1800);
+            return;
+        }
+        if (arr.length >= 100) {
+            if (typeof showNotification === 'function') showNotification('题库最多 100 道，先删几道吧', 'info', 2000);
+            return;
+        }
+        arr.push({ id: 'b_' + Date.now() + '_' + Math.floor(Math.random() * 1000), text: v });
+        _bankSave(arr);
+        input.value = '';
+        renderBankList();
+        if (typeof showNotification === 'function') showNotification('已加进题库 ✓ ' + _partnerName() + '考你时会抽到它', 'success', 2000);
+    }
+
+    function renderBankList() {
+        var el = document.getElementById('qa-bank-list');
         if (!el) return;
-        var pool = getQuestionPool();
-        if (!pool.length) {
-            el.innerHTML = '<div style="font-size:11px;color:var(--text-secondary,#bbb);text-align:center;padding:8px;">问题池是空的，去「问题字卡」加几道吧</div>';
+        var arr = _bankRaw();
+        if (!arr.length) {
+            el.innerHTML = '<div style="font-size:11px;color:var(--text-secondary,#bbb);text-align:center;padding:8px;">题库是空的，加几道题TA才会来考你</div>';
             return;
         }
         el.innerHTML = '';
-        pool.forEach(function (raw) {
-            var parsed = parseQuestion(raw);
-            var btn = document.createElement('button');
-            btn.type = 'button';
-            btn.style.cssText = 'text-align:left;padding:10px 12px;border-radius:12px;border:1px solid var(--border-color,#ddd);'
-                + 'background:var(--primary-bg,transparent);cursor:pointer;';
-            var inner = '<div style="font-size:13px;font-weight:600;color:var(--text-primary,#333);">' + parsed.q.replace(/</g, '&lt;') + '</div>';
-            if (parsed.options.length) {
-                inner += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">'
-                    + parsed.options.map(function (o) {
-                        return '<span style="padding:3px 9px;border-radius:12px;font-size:10.5px;'
-                            + 'background:rgba(var(--accent-color-rgb,197,164,126),.12);color:var(--accent-color,#c5a47e);">'
-                            + o.replace(/</g, '&lt;') + '</span>';
-                    }).join('')
-                    + '</div>';
-            }
-            btn.innerHTML = inner;
-            btn.addEventListener('click', function () { askHim(raw); });
-            el.appendChild(btn);
+        // 新加的排前面
+        arr.slice().reverse().forEach(function (x) {
+            var parsed = parseQuestion(x.text);
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid var(--border-color,#ddd);background:var(--primary-bg,transparent);';
+            row.innerHTML = '<div style="flex:1;min-width:0;">'
+                + '<div style="font-size:12px;font-weight:600;color:var(--text-primary,#333);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + parsed.q.replace(/</g, '&lt;') + '</div>'
+                + (parsed.options.length
+                    ? '<div style="font-size:10.5px;color:var(--text-secondary,#aaa);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + parsed.options.join(' / ').replace(/</g, '&lt;') + '</div>'
+                    : '<div style="font-size:10.5px;color:var(--text-secondary,#bbb);margin-top:2px;">没写选项，到时候凑选项</div>')
+                + '</div>'
+                + '<button type="button" data-bank-del="' + String(x.id).replace(/"/g, '&quot;') + '" title="删除" style="flex-shrink:0;width:24px;height:24px;border:none;border-radius:50%;background:transparent;color:var(--text-secondary,#aaa);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;"><i class="fas fa-times"></i></button>';
+            el.appendChild(row);
         });
     }
 
@@ -509,7 +605,7 @@
         m.querySelector('#qa-sec-range').value = String(d.answerSec);
         m.querySelector('#qa-sec-val').textContent = d.answerSec + 's';
         renderAnswering();
-        renderQuestionList();
+        renderBankList();
         renderHistory();
         // 用快问快答 → 梦角 App 熟练度 +1（每日上限 3 次）
         try {

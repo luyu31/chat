@@ -28,11 +28,11 @@
         { name: '通讯', icon: 'fa-phone',             rgb: '6,182,212',    words: ['话费', '流量', '月租'] },
         { name: '居住', icon: 'fa-house',             rgb: '16,185,129',   words: ['房租', '水电', '水费', '电费', '燃气', '物业', '宽带', '取暖'] },
         { name: '交通', icon: 'fa-bus',               rgb: '59,130,246',   words: ['打车', '出租', '滴滴', '地铁', '公交', '单车', '哈啰', '加油', '油费', '火车', '高铁', '动车', '机票', '飞机', '停车', '过路', '轮渡', '车票'] },
-        { name: '医疗', icon: 'fa-briefcase-medical', rgb: '239,68,68',    words: ['药', '医院', '看病', '挂号', '体检', '诊所', '维生素', '口罩', '就诊'] },
+        { name: '医疗', icon: 'fa-briefcase-medical', rgb: '239,68,68',    words: ['药', '医院', '看病', '挂号', '体检', '诊所', '维生素', '口罩', '就诊', '创可贴', '体温计', '碘伏', '棉签', '纱布'] },
         { name: '学习', icon: 'fa-book',              rgb: '99,102,241',   words: ['书', '课本', '课程', '培训', '文具', '打印', '复印', '资料', '学费', '网课'] },
         { name: '娱乐', icon: 'fa-gamepad',           rgb: '139,92,246',   words: ['电影', '游戏', '充值', '会员', '视频', '音乐', 'KTV', 'ktv', '演出', '演唱会', '门票', '旅游', '景点', '游乐园', '密室', '剧本杀', '直播', '打赏'] },
-        { name: '餐饮', icon: 'fa-utensils',          rgb: '249,115,22',   words: ['外卖', '奶茶', '咖啡', '早餐', '早饭', '午餐', '午饭', '晚餐', '晚饭', '宵夜', '夜宵', '烧烤', '火锅', '零食', '水果', '饮料', '吃饭', '食堂', '面包', '蛋糕', '米线', '麻辣烫', '汉堡', '披萨', '寿司', '点心', '小吃', '买菜', '喝', '吃', '餐'] },
-        { name: '购物', icon: 'fa-bag-shopping',      rgb: '236,72,153',   words: ['淘宝', '京东', '拼多多', '超市', '便利店', '衣服', 'T恤', '鞋', '裤', '裙', '袜', '化妆品', '护肤', '口红', '香水', '纸巾', '日用', '百货', '购物', '买'] },
+        { name: '餐饮', icon: 'fa-utensils',          rgb: '249,115,22',   words: ['外卖', '奶茶', '咖啡', '早餐', '早饭', '午餐', '午饭', '晚餐', '晚饭', '宵夜', '夜宵', '烧烤', '火锅', '零食', '水果', '饮料', '吃饭', '食堂', '面包', '蛋糕', '米线', '麻辣烫', '汉堡', '披萨', '寿司', '点心', '小吃', '买菜', '炸鸡', '烤肉', '螺蛳粉', '饺子', '馄饨', '关东煮', '烤鱼', '喝', '吃', '餐'] },
+        { name: '购物', icon: 'fa-bag-shopping',      rgb: '236,72,153',   words: ['淘宝', '京东', '拼多多', '超市', '便利店', '衣服', 'T恤', '鞋', '裤', '裙', '袜', '化妆品', '护肤', '口红', '香水', '纸巾', '日用', '百货', '购物', '卫生巾', '护垫', '棉条', '洗发水', '沐浴露', '牙膏', '牙刷', '毛巾', '洗衣液', '湿巾', '理发', '美甲', '网购', '快递', '买'] },
         { name: '其他', icon: 'fa-ellipsis',          rgb: '156,163,175',  words: [] }
     ];
 
@@ -44,8 +44,8 @@
     // B: 消费动词 + 数字（无单位）：花了30 / 买奶茶15 / 充了100 / 支付25
     //    负向先行：排除量词（买了2个）、时间（15分钟）、序号（3号）、大数（30万）
     var RE_VERB = /(?:花了|花费|消费了?|付了|支付了?|付|充值|充了|充|买了|买)[^\d¥￥]{0,10}?(\d+(?:\.\d{1,2})?)(?!\d)(?![个件只双张次趟杯瓶盒本份支条头页倍分秒点时号天日月年岁遍下折万亿千百万])/;
-    // C: 常见消费词 + 数字结尾（口语速记）：外卖27.5 / 奶茶15 / 地铁6
-    var RE_NOUN = /(外卖|奶茶|咖啡|打车|地铁|公交|话费|房租|水电|加油|早餐|午饭|晚餐|宵夜|电影|门票|停车|火车票|机票)[^\d]{0,4}(\d+(?:\.\d{1,2})?)\s*$/;
+    // C: 常见消费词 + 数字结尾（口语速记）：外卖27.5 / 奶茶15 / 卫生巾30 / 地铁6
+    var RE_NOUN = /(外卖|奶茶|咖啡|打车|地铁|公交|话费|房租|水电|加油|早餐|午饭|晚餐|宵夜|电影|门票|停车|火车票|机票|卫生巾|护垫|纸巾|零食|水果|理发|日用品|快递|炸鸡|烤肉|网购|会员)[^\d]{0,4}(\d+(?:\.\d{1,2})?)\s*$/;
 
     // 描述清洗：从金额前文里剔除的时间/助词/动词/量词等虚词（长的优先）
     var FILLERS = ['刚刚', '刚才', '今天', '昨天', '现在', '我们', '花了', '花费', '买了', '付了', '支付', '充值', '充了', '消费', '用了', '上午', '中午', '下午', '晚上', '今晚', '一', '二', '两', '三', '四', '五', '几', '我', '又', '再', '去', '跟', '和', '在', '给', '的', '了', '个', '件', '只', '张', '杯', '碗', '份', '支', '条', '买', '付', '充', '用'];
@@ -66,8 +66,16 @@
         return '其他';
     }
 
+    // 自定义类别的配色池（按添加顺序轮流取）
+    var CAT_PALETTE = ['236,72,153', '14,165,233', '34,197,94', '250,204,21', '168,85,247', '251,146,60', '20,184,166', '217,70,239'];
+
     function catByName(name) {
         for (var i = 0; i < CATS.length; i++) if (CATS[i].name === name) return CATS[i];
+        for (var j = 0; j < cfg.customCats.length; j++) {
+            if (cfg.customCats[j] === name) {
+                return { name: name, icon: 'fa-tag', rgb: CAT_PALETTE[j % CAT_PALETTE.length] };
+            }
+        }
         return CATS[CATS.length - 1];
     }
 
@@ -148,7 +156,7 @@
 
     // ─── 存储（localforage 优先，缺失时退回 localStorage） ─────────────
     var records = [];                 // 内存缓存，[{id,ts,amount,category,desc,source}]
-    var cfg = { auto: true };
+    var cfg = { auto: true, customCats: [] };   // customCats：用户自增的记账类别（名字数组）
     var _loaded = false;
     var _saveTimer = null;
     var _seen = {};                   // 已处理过的用户消息 id，防重复
@@ -162,13 +170,23 @@
         nextCheckAt: null             // 调度器持久化字段（照 redpacket.js 那套）
     };
 
-    // 内置消费选项（写死常量）：hidden=true 的记账时不显示买了什么
+    // 内置消费选项（写死常量）：hidden=true 的记账时不显示买了什么。
+    // 覆盖尽量多的日常开销（含卫生巾等日用品），共同记账时他才会真的"什么都会买"
     var BUILTIN_CONSUMER_OPTIONS = [
         { id: 'eat',      label: '吃饭',         icon: '🍚', hidden: false },
         { id: 'milktea',  label: '奶茶',         icon: '🧋', hidden: false },
-        { id: 'taxi',     label: '打车',         icon: '🚕', hidden: false },
-        { id: 'coffee',   label: '咖啡',         icon: '☕', hidden: false },
         { id: 'takeout',  label: '外卖',         icon: '🍜', hidden: false },
+        { id: 'coffee',   label: '咖啡',         icon: '☕', hidden: false },
+        { id: 'taxi',     label: '打车',         icon: '🚕', hidden: false },
+        { id: 'snack',    label: '零食',         icon: '🍿', hidden: false },
+        { id: 'fruit',    label: '水果',         icon: '🍎', hidden: false },
+        { id: 'pad',      label: '卫生巾',       icon: '🩸', hidden: false },
+        { id: 'grocery',  label: '日用品',       icon: '🧻', hidden: false },
+        { id: 'shopping', label: '网购',         icon: '📦', hidden: false },
+        { id: 'haircut',  label: '理发',         icon: '💇', hidden: false },
+        { id: 'vip',      label: '会员充值',     icon: '🎬', hidden: false },
+        { id: 'medicine', label: '药品',         icon: '💊', hidden: false },
+        { id: 'transit',  label: '地铁公交',     icon: '🚇', hidden: false },
         { id: 'mystery',  label: '神秘消费',     icon: '🎁', hidden: true },
         { id: 'surprise', label: '小惊喜',       icon: '🌷', hidden: true },
         { id: 'sneaky',   label: '偷偷买了什么', icon: '🙈', hidden: true }
@@ -217,7 +235,15 @@
         storageGet(KEY_SETTINGS, function (v) {
             if (v && typeof v === 'object' && v !== null) {
                 if (typeof v.auto === 'boolean') cfg.auto = v.auto;
+                if (Array.isArray(v.customCats)) {
+                    cfg.customCats = v.customCats
+                        .filter(function (n) { return typeof n === 'string' && n.trim(); })
+                        .map(function (n) { return n.trim().slice(0, 6); })
+                        .filter(function (n, i, a) { return a.indexOf(n) === i; })
+                        .slice(0, 20);
+                }
             }
+            fillCatSelect(); // 弹窗已经开着的话（兜底路径）同步一次下拉
         });
     }
     function saveSoon() {
@@ -572,8 +598,9 @@
                             '<input type="number" class="ledger-input" id="ledger-f-amount" placeholder="金额" step="0.01" min="0.01" style="width:96px;flex-shrink:0;">' +
                         '</div>' +
                         '<div class="ledger-form-row">' +
-                            '<select class="ledger-input" id="ledger-f-cat" style="flex:1;"></select>' +
-                            '<input type="date" class="ledger-input" id="ledger-f-date" style="width:150px;flex-shrink:0;">' +
+                            '<select class="ledger-input" id="ledger-f-cat" style="flex:1;min-width:0;"></select>' +
+                            '<button type="button" id="ledger-f-cat-del" title="删除选中的自定义类别" style="display:none;flex-shrink:0;width:34px;height:34px;border:1px solid var(--border-color,#ddd);border-radius:10px;background:transparent;color:#e53935;cursor:pointer;font-size:12px;align-items:center;justify-content:center;"><i class="fas fa-trash-can"></i></button>' +
+                            '<input type="date" class="ledger-input" id="ledger-f-date" style="width:138px;flex-shrink:0;">' +
                         '</div>' +
                         '<div class="ledger-form-row" style="justify-content:flex-end;">' +
                             '<button type="button" id="ledger-f-cancel" class="modal-btn modal-btn-secondary" style="padding:7px 14px;font-size:12px;">取消</button>' +
@@ -588,12 +615,40 @@
                 '</div>';
             document.body.appendChild(m);
 
-            // 分类下拉选项
-            var sel = m.querySelector('#ledger-f-cat');
-            CATS.forEach(function (c) {
-                var op = document.createElement('option');
-                op.value = c.name; op.textContent = c.name;
-                sel.appendChild(op);
+            // 分类下拉：内置 + 自定义 + 「新增类别」入口；选自定义类时旁边亮出删除按钮
+            fillCatSelect();
+            m.querySelector('#ledger-f-cat').addEventListener('change', function () {
+                if (this.value === '__new__') {
+                    var name = prompt('新类别名称（1~6个字，如：宠物、追星、猫粮）：');
+                    if (name != null) name = String(name).trim().slice(0, 6);
+                    if (!name) { this.value = '其他'; syncCatDelBtn(); return; }
+                    var exists = CATS.some(function (c) { return c.name === name; }) || cfg.customCats.indexOf(name) > -1;
+                    if (exists) {
+                        if (typeof showNotification === 'function') showNotification('已经有这个类别啦', 'info', 1800);
+                        this.value = name; syncCatDelBtn(); return;
+                    }
+                    if (cfg.customCats.length >= 20) {
+                        if (typeof showNotification === 'function') showNotification('自定义类别最多 20 个，先删几个吧', 'info', 2000);
+                        this.value = '其他'; syncCatDelBtn(); return;
+                    }
+                    cfg.customCats.push(name);
+                    saveCfg();
+                    fillCatSelect(name);
+                    if (typeof showNotification === 'function') showNotification('已新增类别「' + name + '」', 'success', 1600);
+                } else {
+                    syncCatDelBtn();
+                }
+            });
+            m.querySelector('#ledger-f-cat-del').addEventListener('click', function () {
+                var sel = document.getElementById('ledger-f-cat');
+                if (!sel) return;
+                var name = sel.value;
+                if (cfg.customCats.indexOf(name) === -1) return;
+                if (!confirm('删除自定义类别「' + name + '」？\n已有记录不会丢，只是类别样式会按「其他」显示')) return;
+                cfg.customCats = cfg.customCats.filter(function (n) { return n !== name; });
+                saveCfg();
+                fillCatSelect('其他');
+                if (typeof showNotification === 'function') showNotification('已删除类别「' + name + '」', 'info', 1800);
             });
 
             // 关闭 / 点击遮罩关闭
@@ -741,6 +796,32 @@
         var m = document.getElementById('ledger-shared-opts-modal');
         if (typeof showModal === 'function') showModal(m);
         else m.style.display = 'flex';
+    }
+
+    // 填充分类下拉（内置 + 自定义 + 新增入口），keep：要保留选中的值
+    function fillCatSelect(keep) {
+        var sel = document.getElementById('ledger-f-cat');
+        if (!sel) return;
+        var prev = (keep != null) ? keep : sel.value;
+        var html = '';
+        CATS.forEach(function (c) { html += '<option value="' + escapeHtml(c.name) + '">' + escapeHtml(c.name) + '</option>'; });
+        if (cfg.customCats.length) {
+            html += '<optgroup label="自定义">';
+            cfg.customCats.forEach(function (n) { html += '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; });
+            html += '</optgroup>';
+        }
+        html += '<option value="__new__">＋ 新增类别…</option>';
+        sel.innerHTML = html;
+        sel.value = prev;
+        if (!sel.value) sel.value = '其他';   // 原来的值不在列表里了（比如刚被删）
+        syncCatDelBtn();
+    }
+
+    function syncCatDelBtn() {
+        var sel = document.getElementById('ledger-f-cat');
+        var btn = document.getElementById('ledger-f-cat-del');
+        if (!sel || !btn) return;
+        btn.style.display = cfg.customCats.indexOf(sel.value) > -1 ? 'flex' : 'none';
     }
 
     function findRec(id) {
@@ -920,6 +1001,7 @@
             desc.value = r.desc || '';
             amount.value = r.amount;
             cat.value = r.category;
+            if (!cat.value) cat.value = '其他';   // 类别可能已被删
             var d = new Date(r.ts);
             date.value = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
         } else {
@@ -930,6 +1012,7 @@
             var n = new Date();
             date.value = n.getFullYear() + '-' + pad2(n.getMonth() + 1) + '-' + pad2(n.getDate());
         }
+        syncCatDelBtn();
         form.style.display = 'block';
         if (typeof form.scrollIntoView === 'function') form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -960,7 +1043,7 @@
             if (isNaN(ts)) ts = Date.now();
         }
         var descV = String(desc.value || '').trim().slice(0, 20);
-        var catV = catByName(cat.value).name;
+        var catV = (!cat.value || cat.value === '__new__') ? '其他' : catByName(cat.value).name;
 
         if (_editingId) {
             var r = findRec(_editingId);

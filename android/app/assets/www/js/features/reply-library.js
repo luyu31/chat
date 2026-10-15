@@ -1059,6 +1059,7 @@ var _locationBank = _makeObjectBank('customPartnerLocations', [
 window._getPartnerLocationPool = _locationBank.pool;
 
 // ─── 快问快答 · 问题字卡（格式：问题|选项1|选项2|...，问卷式点选） ───────────────────────────────
+// 题目全部中性化：不预设对方的身份/性别/称呼，任何梦角都问得出口
 var _qaQuestionBank = _makeObjectBank('customQAQuestions', [
     { id: 'q_1', text: '今天想我了没？|想了|特别想|一直在想|才不想' },
     { id: 'q_2', text: '周末想跟我干什么？|宅家贴贴|出门逛街|看电影|吃好吃的' },
@@ -1068,10 +1069,35 @@ var _qaQuestionBank = _makeObjectBank('customQAQuestions', [
     { id: 'q_6', text: '先有鸡还是先有蛋？|鸡|蛋|不知道|先有你' },
     { id: 'q_7', text: '吵架了谁先低头？|我先|你先|石头剪刀布|不存在吵架' },
     { id: 'q_8', text: '奶茶要几分糖？|全糖|七分|半糖|无糖' },
-    { id: 'q_9', text: '更喜欢我叫你什么？|宝贝|老公|哥哥|名字' },
-    { id: 'q_10', text: '我生气了你会怎么哄？|抱抱|说好话|买好吃的|陪你到消气' }
+    { id: 'q_9', text: '更喜欢我怎么称呼你？|宝贝|亲爱的|叫名字|随你叫' },
+    { id: 'q_10', text: '我生气了你会怎么哄？|抱抱|说好话|买好吃的|陪你到消气' },
+    { id: 'q_11', text: '今天过得怎么样？|很好|还行|有点累|想你了' },
+    { id: 'q_12', text: '现在最想吃什么？|火锅|烧烤|奶茶|随便你点' }
 ]);
 window._getQAQuestionPool = _qaQuestionBank.pool;
+
+// 旧版内置题「更喜欢我叫你什么？|宝贝|老公|哥哥|名字」预设了对方身份，
+// 存量数据统一迁移成中性题，避免身份错位出戏（只做精确匹配替换，用户改过的题不动）
+(function () {
+    try {
+        var OLD = '更喜欢我叫你什么？|宝贝|老公|哥哥|名字';
+        var NEW = '更喜欢我怎么称呼你？|宝贝|亲爱的|叫名字|随你叫';
+        var raw = localStorage.getItem('customQAQuestions');
+        if (!raw) return;
+        var arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return;
+        var changed = false;
+        arr = arr.map(function (it) {
+            if (it && typeof it === 'object') {
+                if (it.text === OLD) { it.text = NEW; changed = true; }
+                return it;
+            }
+            if (it === OLD) { changed = true; return { id: 'q_9_fix', text: NEW }; }
+            return it;
+        });
+        if (changed) localStorage.setItem('customQAQuestions', JSON.stringify(arr));
+    } catch (e) {}
+})();
 
 // ─── 快问快答 · 夸奖字卡（你答得快时他说的话） ───────────────────────────────
 var _qaPraiseBank = _makeObjectBank('customQAPraise', [
