@@ -293,11 +293,28 @@ function renderReplyLibrary() {
             ? '还没有打卡字卡<br><span style="font-size:11px;opacity:.7;">关心妹妹里他说的每句话都会优先从这里抽，可用 {item} 代替任务名</span>'
             : (q ? `未找到"${q}"` : '列表空空如也');
         list.innerHTML = renderEmptyState(emptyText);
+        // 空列表也给批量入口（pokes/statuses/mottos/intros/period/checkinBank 等字符串组）
+        if (!q && _getAtmosphereArrayRef()) {
+            const bar = document.createElement('div');
+            bar.style.cssText = 'margin-bottom:10px;';
+            bar.innerHTML = '<button type="button" style="width:100%;padding:8px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;font-family:var(--font-family);"><i class="fas fa-list-check"></i> 批量增删</button>';
+            bar.querySelector('button').onclick = _showAtmosphereBatchDialog;
+            list.insertBefore(bar, list.firstChild);
+        }
         return;
     }
 
     if (_tabHasGroups()) {
         _renderCardViewWithGroups(list, filtered);
+        // 分组卡片视图也放批量增删入口（拍一拍/对方状态/自定义回复共用）
+        var gBatch = document.createElement('div');
+        gBatch.style.cssText = 'margin:0 0 8px;';
+        gBatch.innerHTML = '<button type="button" style="width:100%;padding:8px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;font-family:var(--font-family);"><i class="fas fa-list-check"></i> 批量增删</button>';
+        gBatch.querySelector('button').onclick = function () {
+            if (currentSubTab === 'pokes' || currentSubTab === 'statuses') _showAtmosphereBatchDialog();
+        };
+        // 自定义回复有自己的批量工具栏，只给 pokes/statuses 加这个入口
+        if (currentSubTab === 'pokes' || currentSubTab === 'statuses') list.insertBefore(gBatch, list.firstChild);
     } else {
         _renderAtmosphereList(list, filtered);
     }
@@ -865,7 +882,16 @@ function _renderAtmosphereList(list, items) {
         motto:    new Map(customMottos.map((r,i)   => [r, i])),
         intros:   new Map(customIntros.map((r,i)   => [r, i])),
         period:   new Map(customPeriodCare.map((r,i) => [r, i])),
+        checkinBank: new Map(customCheckinLines.map((r,i) => [r, i])),
     };
+
+    // 批量增删入口（拍一拍/对方状态/格言/签名/开场/经期等纯字符串字卡组）
+    const batchBar = document.createElement('div');
+    batchBar.style.cssText = 'margin-bottom:8px;';
+    batchBar.innerHTML = '<button type="button" style="width:100%;padding:8px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;font-family:var(--font-family);"><i class="fas fa-list-check"></i> 批量增删</button>';
+    batchBar.querySelector('button').onclick = function () { _showAtmosphereBatchDialog(); };
+    list.appendChild(batchBar);
+
     const frag = document.createDocumentFragment();
     items.forEach((item, idx) => {
         const realIdx = (indexMaps[currentSubTab] || { get: () => idx }).get(item) ?? idx;
@@ -883,6 +909,49 @@ function _renderAtmosphereList(list, items) {
         frag.appendChild(div);
     });
     list.appendChild(frag);
+}
+
+// 纯字符串 atmosphere 字卡组（拍一拍/状态/格言/签名/开场/经期/打卡）的数组路由
+function _getAtmosphereArrayRef() {
+    switch (currentSubTab) {
+        case 'pokes': return { arr: customPokes, name: '拍一拍' };
+        case 'statuses': return { arr: customStatuses, name: '对方状态' };
+        case 'mottos':
+        case 'motto': return { arr: customMottos, name: '格言/签名' };
+        case 'intros': return { arr: customIntros, name: '开场动画' };
+        case 'period': return { arr: customPeriodCare, name: '经期关怀' };
+        case 'checkinBank': return { arr: customCheckinLines, name: '打卡字卡' };
+        default: return null;
+    }
+}
+
+function _showAtmosphereBatchDialog() {
+    const ref = _getAtmosphereArrayRef();
+    if (!ref) return;
+    const hint = currentSubTab === 'checkinBank' ? '每行一条，可用 {item} 代替任务名，自动去重' : '每行一条，自动去重';
+    _showSimpleBatchDialog({
+        title: ref.name,
+        hint: hint,
+        getItems: function () { return ref.arr.slice(); },
+        add: function (lines) {
+            let added = 0;
+            lines.forEach(function (val) {
+                if (ref.arr.some(function (r) { return normalizeStringStrict(r) === normalizeStringStrict(val); })) return;
+                ref.arr.push(val); added++;
+            });
+            throttledSaveData();
+            return added;
+        },
+        remove: function (texts) {
+            const set = new Set(texts.map(normalizeStringStrict));
+            const before = ref.arr.length;
+            for (let i = ref.arr.length - 1; i >= 0; i--) {
+                if (set.has(normalizeStringStrict(ref.arr[i]))) ref.arr.splice(i, 1);
+            }
+            throttledSaveData();
+            return before - ref.arr.length;
+        }
+    });
 }
 
 // ─── 摸鱼状态（他此刻在干什么）字卡组 ───────────────────────────────
@@ -931,8 +1000,13 @@ window._getSlackingStatusPool = function () {
 
 function _renderSlackingTab(list) {
     var items = _getSlackingStatuses();
+    list.innerHTML =
+        '<div style="margin-bottom:8px;">'
+        + '<button type="button" id="slacking-batch" style="width:100%;padding:8px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;font-family:var(--font-family);"><i class="fas fa-list-check"></i> 批量增删</button>'
+        + '</div>';
+    list.querySelector('#slacking-batch').onclick = _showSlackingBatchDialog;
     if (!items.length) {
-        list.innerHTML = renderEmptyState('还没有摸鱼状态，点「新增」添加');
+        list.innerHTML += renderEmptyState('还没有摸鱼状态，点「新增」添加');
         return;
     }
     items.forEach(function (item, idx) {
@@ -986,6 +1060,41 @@ function _showSlackingAddDialog() {
     showNotification('✓ 添加成功', 'success');
 }
 
+// 摸鱼状态批量增删
+function _showSlackingBatchDialog() {
+    _showSimpleBatchDialog({
+        title: '摸鱼状态',
+        hint: '每行一条（如：在认真看书），自动去重',
+        getItems: function () {
+            return _getSlackingStatuses().map(function (s) {
+                return s && typeof s === 'object' ? s.text : String(s || '');
+            }).filter(Boolean);
+        },
+        add: function (lines) {
+            var items = _getSlackingStatuses();
+            var existing = {};
+            items.forEach(function (s) { existing[s && typeof s === 'object' ? s.text : s] = 1; });
+            var added = 0;
+            lines.forEach(function (val) {
+                if (existing[val]) return;
+                existing[val] = 1;
+                items.push({ id: 's_' + Date.now() + '_' + Math.floor(Math.random() * 100000), text: val });
+                added++;
+            });
+            _saveSlackingStatuses(items);
+            return added;
+        },
+        remove: function (texts) {
+            var set = {}; texts.forEach(function (t) { set[t] = 1; });
+            var items = _getSlackingStatuses();
+            var kept = items.filter(function (s) { return !set[s && typeof s === 'object' ? s.text : String(s || '')]; });
+            var removed = items.length - kept.length;
+            _saveSlackingStatuses(kept);
+            return removed;
+        }
+    });
+}
+
 // ─── 通用 {id,text} 对象字卡组工厂（他的位置 / 他的快答共用） ───────────────────────────────
 // 结构跟摸鱼状态一致：单独一套渲染（对象结构），不走字符串数组的批量管理/分组逻辑
 function _makeObjectBank(storageKey, builtin) {
@@ -1011,8 +1120,19 @@ function _makeObjectBank(storageKey, builtin) {
         },
         render: function (list, what) {
             var items = get();
+            list.innerHTML =
+                '<div style="margin-bottom:8px;">'
+                + '<button type="button" id="obj-bank-batch" style="width:100%;padding:8px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;font-family:var(--font-family);"><i class="fas fa-list-check"></i> 批量增删</button>'
+                + '</div>';
+            var batchBtn = list.querySelector('#obj-bank-batch');
+            if (batchBtn) batchBtn.onclick = function () {
+                var hint = (what.indexOf('问题') > -1 || what.indexOf('题库') > -1)
+                    ? '每行一道题，格式：问题|选项1|选项2…（选项可不写）'
+                    : '每行一条，自动去重';
+                _openObjBatch(what, hint);
+            };
             if (!items.length) {
-                list.innerHTML = renderEmptyState('还没有' + what + '，点「新增」添加');
+                list.innerHTML += renderEmptyState('还没有' + what + '，点「新增」添加');
                 return;
             }
             items.forEach(function (item, idx) {
@@ -1049,8 +1169,64 @@ function _makeObjectBank(storageKey, builtin) {
             if (exists) { showNotification('该' + what + '已存在', 'warning'); return; }
             arr.push({ id: 'b_' + Date.now() + '_' + Math.floor(Math.random() * 1000), text: val });
             saveList(arr); renderReplyLibrary(); showNotification('✓ 添加成功', 'success');
+        },
+        // 批量增删（所有对象字卡组共用通用面板）
+        batch: function (what, hint) {
+            var bank = { get: get, save: saveList };
+            _showSimpleBatchDialog({
+                title: what,
+                hint: hint || '每行一条，自动去重',
+                getItems: function () {
+                    return bank.get().map(function (s) {
+                        return s && typeof s === 'object' ? s.text : String(s || '');
+                    }).filter(Boolean);
+                },
+                add: function (lines) {
+                    var arr = bank.get();
+                    var existing = {};
+                    arr.forEach(function (s) { var t = (s && typeof s === 'object') ? s.text : s; existing[t] = 1; });
+                    var added = 0;
+                    lines.forEach(function (val) {
+                        if (existing[val]) return;
+                        existing[val] = 1;
+                        arr.push({ id: 'b_' + Date.now() + '_' + Math.floor(Math.random() * 100000), text: val });
+                        added++;
+                    });
+                    bank.save(arr);
+                    return added;
+                },
+                remove: function (texts) {
+                    var set = {};
+                    texts.forEach(function (t) { set[t] = 1; });
+                    var arr = bank.get();
+                    var kept = arr.filter(function (s) {
+                        var t = s && typeof s === 'object' ? s.text : String(s || '');
+                        return !set[t];
+                    });
+                    var removed = arr.length - kept.length;
+                    bank.save(kept);
+                    return removed;
+                }
+            });
         }
     };
+}
+
+// 对象字卡组 tab → 对应 bank 实例（批量增删路由用）
+function _getObjectBankByTab(subTab) {
+    var map = {
+        locationBank: (typeof _locationBank !== 'undefined') ? _locationBank : null,
+        qaQuestions: (typeof _qaQuestionBank !== 'undefined') ? _qaQuestionBank : null,
+        qaPraise: (typeof _qaPraiseBank !== 'undefined') ? _qaPraiseBank : null,
+        qaTease: (typeof _qaTeaseBank !== 'undefined') ? _qaTeaseBank : null,
+        peekCaught: (typeof _peekCaughtBank !== 'undefined') ? _peekCaughtBank : null,
+        foodReact: (typeof _foodReactBank !== 'undefined') ? _foodReactBank : null
+    };
+    return map[subTab] || null;
+}
+function _openObjBatch(what, hint) {
+    var bank = _getObjectBankByTab(currentSubTab);
+    if (bank && bank.batch) bank.batch(what, hint);
 }
 
 // ─── 他的位置（摸鱼里展示「他现在在哪」）字卡组 ───────────────────────────────
@@ -1159,6 +1335,97 @@ var _foodReactBank = _makeObjectBank('customFoodReactions', [
     { id: 'fr_10', text: '大半夜看这个，你得负责' }
 ]);
 window._getFoodReactPool = _foodReactBank.pool;
+
+// ─── 通用批量增删面板（所有字卡组共用：每行一条批量添加 + 勾选批量删除） ───────────────────────────────
+// opts: { title, hint, getItems:()=>string[], add(lines)->新增条数, remove(texts)->删除条数 }
+function _showSimpleBatchDialog(opts) {
+    const overlay = _makeOverlay();
+    const panel = document.createElement('div');
+    panel.style.cssText = 'background:var(--secondary-bg);border-radius:22px;padding:22px;width:92%;max-width:420px;max-height:88vh;'
+        + 'display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.45);animation:popIn .22s cubic-bezier(.34,1.56,.64,1);';
+    panel.innerHTML =
+        '<style>@keyframes popIn{from{opacity:0;transform:scale(.93)}to{opacity:1;transform:scale(1)}}</style>'
+        + '<div style="flex-shrink:0;font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:4px;">批量管理 · ' + opts.title + '</div>'
+        + '<div style="flex-shrink:0;font-size:11px;color:var(--text-secondary);margin-bottom:12px;line-height:1.6;">' + (opts.hint || '每行一条，自动去重') + '</div>'
+        + '<textarea id="sb-add-input" rows="5" placeholder="每行一条，粘贴后点批量添加…" style="width:100%;box-sizing:border-box;padding:11px 13px;border:1.5px solid var(--border-color);border-radius:13px;background:var(--primary-bg);color:var(--text-primary);font-size:13px;font-family:var(--font-family);outline:none;resize:vertical;line-height:1.6;"></textarea>'
+        + '<div style="flex-shrink:0;display:flex;align-items:center;gap:8px;margin:8px 0 12px;">'
+        +   '<span id="sb-add-count" style="font-size:11px;color:var(--text-secondary);">0 条</span>'
+        +   '<button id="sb-add-btn" style="margin-left:auto;padding:8px 18px;border:none;border-radius:11px;background:var(--accent-color);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font-family);">批量添加</button>'
+        + '</div>'
+        + '<div style="flex-shrink:0;display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+        +   '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);cursor:pointer;"><input type="checkbox" id="sb-all"> 全选</label>'
+        +   '<span id="sb-sel-count" style="font-size:11px;color:var(--text-secondary);">已选 0</span>'
+        +   '<button id="sb-del-btn" style="margin-left:auto;padding:7px 14px;border:1px solid rgba(229,57,53,.4);border-radius:11px;background:rgba(229,57,53,.08);color:#e53935;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-family);">删除选中</button>'
+        + '</div>'
+        + '<div id="sb-list" style="flex:1;overflow-y:auto;min-height:80px;display:flex;flex-direction:column;gap:6px;"></div>'
+        + '<div style="flex-shrink:0;margin-top:12px;display:flex;justify-content:flex-end;">'
+        +   '<button id="sb-close" style="padding:10px 26px;border:1.5px solid var(--border-color);border-radius:13px;background:none;color:var(--text-secondary);font-size:13px;cursor:pointer;font-family:var(--font-family);">完成</button>'
+        + '</div>';
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    const ta = panel.querySelector('#sb-add-input');
+    const addCount = panel.querySelector('#sb-add-count');
+    ta.addEventListener('input', () => {
+        addCount.textContent = ta.value.split('\n').filter(function (l) { return l.trim(); }).length + ' 条';
+    });
+
+    function renderList() {
+        const box = panel.querySelector('#sb-list');
+        const items = opts.getItems();
+        box.innerHTML = '';
+        if (!items.length) {
+            box.innerHTML = '<div style="text-align:center;font-size:12px;color:var(--text-secondary,#aaa);padding:16px;">还没有内容，在上面添加吧</div>';
+        }
+        items.forEach(function (text) {
+            const row = document.createElement('label');
+            row.style.cssText = 'display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:10px;border:1px solid var(--border-color,#ddd);background:var(--primary-bg,transparent);cursor:pointer;';
+            row.innerHTML = '<input type="checkbox" class="sb-item-check" style="flex-shrink:0;width:16px;height:16px;accent-color:var(--accent-color,#c5a47e);">'
+                + '<span style="flex:1;min-width:0;font-size:12.5px;color:var(--text-primary,#333);word-break:break-all;line-height:1.5;"></span>';
+            row.querySelector('span').textContent = text;
+            box.appendChild(row);
+        });
+        updateSel();
+    }
+    function checkedTexts() {
+        return Array.prototype.map.call(panel.querySelectorAll('.sb-item-check:checked'), function (c) {
+            return c.closest('label').querySelector('span').textContent;
+        });
+    }
+    function updateSel() {
+        panel.querySelector('#sb-sel-count').textContent = '已选 ' + checkedTexts().length;
+        var all = panel.querySelectorAll('.sb-item-check');
+        panel.querySelector('#sb-all').checked = all.length > 0 && checkedTexts().length === all.length;
+    }
+    panel.querySelector('#sb-list').addEventListener('change', updateSel);
+    panel.querySelector('#sb-all').addEventListener('change', function () {
+        panel.querySelectorAll('.sb-item-check').forEach(function (c) { c.checked = this.checked; }, this);
+        updateSel();
+    });
+
+    panel.querySelector('#sb-add-btn').addEventListener('click', function () {
+        const lines = ta.value.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+        if (!lines.length) { showNotification('先在框里每行写一条', 'warning'); return; }
+        const added = opts.add(lines);
+        ta.value = ''; addCount.textContent = '0 条';
+        renderList();
+        renderReplyLibrary();
+        showNotification('✓ 批量添加 ' + added + ' 条' + (added < lines.length ? '，重复的已跳过' : ''), 'success');
+    });
+    panel.querySelector('#sb-del-btn').addEventListener('click', function () {
+        const texts = checkedTexts();
+        if (!texts.length) { showNotification('先勾选要删的条目', 'info'); return; }
+        if (!confirm('确定删除选中的 ' + texts.length + ' 条？')) return;
+        const removed = opts.remove(texts);
+        renderList();
+        renderReplyLibrary();
+        showNotification('已删除 ' + removed + ' 条', 'success');
+    });
+    panel.querySelector('#sb-close').onclick = function () { overlay.remove(); };
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+    renderList();
+}
 
 function _renderEmojiTab(list, itemsToRender) {
     if (itemsToRender.length === 0 && customEmojis.length === 0) {

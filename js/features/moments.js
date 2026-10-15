@@ -47,12 +47,27 @@ const _mUid   = p  => (p||'id') + '_' + Date.now() + '_' + Math.random().toStrin
 const _mPName = () => (typeof settings !== 'undefined' && settings.partnerName) || '梦角';
 const _mMName = () => (typeof settings !== 'undefined' && settings.myName)      || '我';
 
+// 拼字卡：尊重每条字卡原有标点，不额外强加感叹号/句号；句间空格自然衔接
+function _mJoinCards(pool, n) {
+    const used = new Set();
+    const parts = [];
+    for (let i = 0; i < n; i++) {
+        let s = '', guard = 0;
+        while (guard++ < 12) {
+            const idx = Math.floor(Math.random() * pool.length);
+            s = pool[idx];
+            if (s && String(s).trim() && (pool.length <= n || !used.has(idx))) { used.add(idx); break; }
+        }
+        if (s && String(s).trim()) parts.push(String(s).trim());
+    }
+    return parts.join(' ');
+}
+
 function _mPostText() {
     const pool = [...(window._customReplies || customReplies || [])];
     if (!pool.length) return null;
-    let t = ''; const n = 3 + Math.floor(Math.random() * 3);
-    for (let i = 0; i < n; i++) { const s = pool[Math.floor(Math.random()*pool.length)]; t += s + (Math.random()<.2?'！':Math.random()<.2?'……':'。'); }
-    return _mMixEmoji(t);
+    const n = 3 + Math.floor(Math.random() * 3);
+    return _mMixEmoji(_mJoinCards(pool, n));
 }
 function _mPickStickers() {
     if (Math.random() >= 0.40) return [];
@@ -72,8 +87,7 @@ function _mCmtContent() {
         let t;
         if (!_csSettings.cmtCombineCards) { t = textPool[Math.floor(Math.random() * textPool.length)]; } // 开关关闭：老效果，只抽1句
         else {
-            t = ''; const n = 1 + Math.floor(Math.random() * 3); // 开关打开：1~3句拼接，跟发动态的拼句逻辑一致，但句数少一点
-            for (let i = 0; i < n; i++) { const s = textPool[Math.floor(Math.random()*textPool.length)]; t += s + (Math.random()<.2?'！':Math.random()<.2?'……':'。'); }
+            t = _mJoinCards(textPool, 1 + Math.floor(Math.random() * 3)); // 1~3句拼接，不额外强加标点
         }
         return _mMixEmoji(t);
     };

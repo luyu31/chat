@@ -585,7 +585,6 @@
             background-position: center center;
             background-repeat: no-repeat;
             transition: background-color 0.5s ease;
-            will-change: transform;
         }
 
         .header {
@@ -593,9 +592,9 @@
             padding-top: env(safe-area-inset-top, 0px);
             border-bottom: 1px solid var(--border-color);
             background-color: var(--header-bg);
-            opacity: 0.82;
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            opacity: 0.92;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             box-shadow: 0 1px 0 rgba(0,0,0,0.06);
             z-index: 10;
             flex-shrink: 0;
@@ -895,11 +894,16 @@
             background-color: transparent;
             scrollbar-width: none;
             -ms-overflow-style: none;
-            scroll-behavior: smooth;
+            /* 手动划拉必须是 auto：smooth 会和触摸惯性打架产生滞涩感，
+               需要平滑的程序滚动由 JS 显式传 behavior:'smooth' */
+            scroll-behavior: auto;
             width: 100%;
             box-sizing: border-box;
-            will-change: scroll-position;
+            /* 不常驻合成层：Android WebView 上整层纹理化反而更耗、更卡；
+               -webkit-overflow-scrolling:touch 自带惯性 */
+            overscroll-behavior: contain;
             -webkit-overflow-scrolling: touch;
+            touch-action: pan-y;
         }
         .chat-container::-webkit-scrollbar {
             display: none;
@@ -911,8 +915,9 @@
             display: flex;
             max-width: 85%;
             margin-bottom: 12px;
-            animation: messageAppear 0.4s ease-out forwards;
-            opacity: 0;
+            /* 默认不播入场动画：全量重渲染/历史消息直接显示，避免整个列表闪烁掉帧；
+               只有真正新到的最后一条消息带 .msg-enter 才播一次短动画 */
+            opacity: 1;
             position: relative;
             gap: 10px;
             align-items: var(--avatar-align, flex-end);
@@ -920,6 +925,9 @@
             -webkit-user-select: none;
             user-select: none;
             -webkit-touch-callout: none;
+        }
+        .message-wrapper.msg-enter {
+            animation: messageAppear 0.22s ease-out forwards;
         }
         .message-avatar {
             width: var(--in-chat-avatar-size);

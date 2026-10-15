@@ -1231,7 +1231,7 @@ function manageAutoSendTimer() {
             }, 60);
         };
 
-function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
+function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef, animate) {
     const fragment = new DocumentFragment();
     const messageDate = new Date(msg.timestamp).toDateString();
     const prevDate = prevMsg ? new Date(prevMsg.timestamp).toDateString() : null;
@@ -1312,7 +1312,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     }
 
     const wrapper = document.createElement('div');
-    wrapper.className = `message-wrapper ${msg.sender === 'user' ? 'sent' : 'received'}`;
+    wrapper.className = `message-wrapper ${msg.sender === 'user' ? 'sent' : 'received'}` + (animate ? ' msg-enter' : '');
     wrapper.dataset.id = msg.id;
     wrapper.dataset.msgId = msg.id;
 
@@ -2176,7 +2176,7 @@ const addMessage = (message) => {
                 const prevGroupMember = (prevMsg.sender !== 'user' && typeof getGroupMemberForMessage === 'function') ? getGroupMemberForMessage(prevMsg.id) : null;
                 lastSenderRef.current = prevGroupMember ? ('group_' + prevGroupMember.name) : prevMsg.sender;
             }
-            const newMsgFragment = createMessageFragment(message, prevMsg, null, lastSenderRef);
+            const newMsgFragment = createMessageFragment(message, prevMsg, null, lastSenderRef, true);
             const spacer = container.querySelector('div[style*="flex: 1"]');
             if (spacer && spacer === container.lastElementChild) {
                 spacer.before(newMsgFragment);
@@ -2225,7 +2225,7 @@ const addMessage = (message) => {
         lastSenderRef.current = prevGroupMember ? ('group_' + prevGroupMember.name) : prevMsg.sender;
     }
     
-    const newMsgFragment = createMessageFragment(message, prevMsg, null, lastSenderRef);
+    const newMsgFragment = createMessageFragment(message, prevMsg, null, lastSenderRef, true);
     
     const spacer = container.querySelector('div[style*="flex: 1"]');
     if (spacer && spacer === container.lastElementChild) {
@@ -2237,7 +2237,9 @@ const addMessage = (message) => {
     if (msgViewMode !== 'window') displayedMessageCount++;
 
     requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight;
+        // 手动划拉是 auto（跟手不滞涩），这里是"发消息后程序滚到底"，显式给一个短平滑
+        try { container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }); }
+        catch (e) { container.scrollTop = container.scrollHeight; }
     });
 
     throttledSaveData();
@@ -2804,13 +2806,23 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                     // 被屏蔽或无效项直接换下一个，尽量保证每次都产出可用回复
                     let replyText = '';
                     if (settings.combineReplyCards) {
-                        // 拼接字卡：1 ~ combineReplyMaxCards 句随机拼接，句子间随机加标点断句
+                        // 拼接字卡：1 ~ combineReplyMaxCards 句随机拼接。
+                        // 不再强塞感叹号/句号：字卡本身带什么标点就保留什么，
+                        // 没带标点的句子之间用空格自然衔接，避免双标点和违和的标点
                         const maxN = Math.max(1, Math.min(5, parseInt(settings.combineReplyMaxCards, 10) || 3));
                         const n = 1 + Math.floor(Math.random() * maxN);
+                        const usedIdx = new Set();
+                        const parts = [];
                         for (let k = 0; k < n; k++) {
-                            const picked = replyPool[Math.floor(Math.random() * replyPool.length)];
-                            replyText += picked + (Math.random() < .2 ? '！' : Math.random() < .2 ? '……' : '。');
+                            let picked = '', guard = 0;
+                            while (guard++ < 12) {
+                                const idx = Math.floor(Math.random() * replyPool.length);
+                                picked = replyPool[idx];
+                                if (picked && String(picked).trim() && (replyPool.length <= n || !usedIdx.has(idx))) { usedIdx.add(idx); break; }
+                            }
+                            if (picked && String(picked).trim()) parts.push(String(picked).trim());
                         }
+                        replyText = parts.join(' ');
                     } else {
                         // 开关关闭：老逻辑，只抽1句（保留原有的跳过空/无效项重试）
                         for (let t = 0; t < 6; t++) {
