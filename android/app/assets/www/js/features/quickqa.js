@@ -10,6 +10,8 @@
  *
  * 回答时限可调：1~120 秒，默认 60 秒。
  * 字卡组（氛围感配置）：快问问题 / 快答夸奖 / 快答嘲讽
+ * 他问我：题目以 quickqa 类型消息直接嵌进聊天流，选项按钮当场点选作答，
+ *         不再强制弹窗（弹窗保留，用于管理字卡/时限/看记录）。
  * 入口：输入区「+」更多菜单 → 快问快答
  * 存储：localStorage 'quickQAData' { answerSec, nextAskAt, history:[] }
  */
@@ -147,48 +149,95 @@
     }
 
     // ── 玩法二：他问我（他自己决定什么时候问，不接受点单） ──────────────────────
-    var _answering = null; // 进行中的他问我 { q, options, timer, deadline, startTs }
+    // 题目以 quickqa 类型消息嵌进聊天流，选项直接在聊天里点选作答
+    var _answering = null; // 进行中的他问我 { q, options, timer, deadline, startTs, msgId }
+
+    // 题目没写选项时，从其他题借选项凑成点选（问卷就是要能直接点，不打字）
+    function _borrowOptions(excludeQ) {
+        var borrow = [];
+        getQuestionPool().forEach(function (raw) {
+            var p = parseQuestion(raw);
+            if (p.q !== excludeQ) {
+                p.options.forEach(function (o) { if (borrow.length < 3 && borrow.indexOf(o) === -1) borrow.push(o); });
+            }
+        });
+        ['好', '不好', '不知道'].forEach(function (o) { if (borrow.length < 3) borrow.push(o); });
+        return borrow;
+    }
+
+    // 把作答状态写回聊天流里那条 quickqa 消息并重渲染（气泡随之收起变成结果态）
+    function _markQaMsg(msgId, patch) {
+        try {
+            if (msgId == null || typeof messages === 'undefined' || !Array.isArray(messages)) return;
+            var m = messages.find(function (x) { return String(x.id) === String(msgId); });
+            if (!m) return;
+            Object.keys(patch).forEach(function (k) { m[k] = patch[k]; });
+            if (typeof renderMessages === 'function') renderMessages();
+            if (typeof throttledSaveData === 'function') throttledSaveData();
+        } catch (e) {}
+    }
 
     function heAsks() {
         if (_answering) return;
-        // 他自主出题时弹窗可能还没建过——先确保作答区在 DOM 里
-        buildModal();
         var d = load();
         var sec = d.answerSec;
         var parsed = parseQuestion(pick(getQuestionPool()));
         if (!parsed.q) return;
-        _answering = { q: parsed.q, options: parsed.options, deadline: Date.now() + sec * 1000, startTs: Date.now() };
+        var options = parsed.options.length ? parsed.options.slice() : _borrowOptions(parsed.q);
 
-        var text = parsed.options.length
-            ? '换我来考你！' + parsed.q + '（' + parsed.options.join(' / ') + '）'
-            : '换我来考你！' + parsed.q;
-        _say(text, 'him');
+        var msg = {
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            sender: _partnerName(),
+            text: '',
+            timestamp: new Date(),
+            status: 'received',
+            favorited: false,
+            note: null,
+            replyTo: null,
+            type: 'quickqa',
+            qaQ: parsed.q,
+            qaOptions: options,
+            qaState: 'active',
+            qaDeadline: Date.now() + sec * 1000
+        };
+        _answering = { q: parsed.q, options: options, deadline: msg.qaDeadline, startTs: Date.now(), msgId: msg.id };
 
-        renderAnswering();
-        // 弹窗跟着弹出来，倒计时和选项直接摆在眼前
-        var modal = document.getElementById('qa-modal');
-        if (modal) { if (typeof showModal === 'function') showModal(modal); else modal.style.display = 'flex'; }
+        if (typeof addMessage === 'function') {
+            addMessage(msg);
+            if (typeof playSound === 'function') playSound('message');
+        } else {
+            // 极端兜底：聊天流不可用时退回纯文本
+            _say('换我来考你！' + parsed.q + (options.length ? '（' + options.join(' / ') + '）' : ''), 'him');
+        }
+
+        renderAnswering(); // 弹窗正好开着的话，弹窗里的作答区同步一份
         if (typeof showNotification === 'function') {
             showNotification(_partnerName() + ' 出题了！限时 ' + sec + ' 秒，快答！');
         }
 
-        _answering.timer = setTimeout(function () {
-            if (!_answering) return;
-            _say(pick(getTeasePool()), 'him');
-            _record({ ts: Date.now(), who: 'him', q: _answering.q, a: null });
-            _answering = null;
-            renderAnswering();
-            renderHistory();
-        }, sec * 1000);
+        _answering.timer = setTimeout(_onAnswerTimeout, sec * 1000);
+    }
+
+    function _onAnswerTimeout() {
+        if (!_answering) return;
+        var q = _answering.q;
+        var msgId = _answering.msgId;
+        _answering = null;
+        _markQaMsg(msgId, { qaState: 'timeout' });
+        renderAnswering();
+        _say(pick(getTeasePool()), 'him');
+        _record({ ts: Date.now(), who: 'him', q: q, a: null });
     }
 
     function answerHim(answer) {
         if (!_answering) return;
         clearTimeout(_answering.timer);
         var q = _answering.q;
+        var msgId = _answering.msgId;
         var sec = load().answerSec;
         var elapsed = Math.round((Date.now() - _answering.startTs) / 1000);
         _answering = null;
+        _markQaMsg(msgId, { qaState: 'answered', qaAnswer: answer });
         renderAnswering();
 
         _say(answer, 'me');
@@ -197,6 +246,62 @@
             _say(elapsed <= sec / 2 ? pick(getPraisePool()) : pick(getTeasePool()), 'him');
         }, 900 + Math.random() * 1200);
         _record({ ts: Date.now(), who: 'him', q: q, a: answer });
+    }
+
+    // 聊天流气泡上的选项按钮点击入口（事件委托，重渲染后依然可用）
+    function answerInline(msgId, answer) {
+        if (!_answering || String(_answering.msgId) !== String(msgId)) return;
+        answerHim(answer);
+    }
+
+    // ── 聊天流里的 quickqa 气泡渲染（createMessageFragment 委托到这里） ──────────────────────
+    function _esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function renderBubbleHTML(msg) {
+        var qHtml = _esc(msg.qaQ || '');
+        var opts = Array.isArray(msg.qaOptions) ? msg.qaOptions : [];
+        var html = '<div style="min-width:170px;max-width:250px;">'
+            + '<div style="font-size:11px;font-weight:700;color:var(--accent-color,#c5a47e);margin-bottom:4px;">'
+            + '<i class="fas fa-bolt"></i> ' + _esc(_partnerName()) + '考你</div>'
+            + '<div style="font-size:14px;font-weight:600;color:var(--text-primary,#333);margin-bottom:8px;line-height:1.5;">' + qHtml + '</div>';
+
+        var active = msg.qaState === 'active' && _answering && String(_answering.msgId) === String(msg.id);
+
+        if (active) {
+            // 待作答：选项直接摆在这里点
+            html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+            opts.forEach(function (o) {
+                html += '<button type="button" class="qa-inline-opt" data-qa-msg="' + _esc(msg.id) + '" data-qa-opt="' + _esc(o) + '"'
+                    + ' style="padding:7px 14px;border-radius:20px;border:1px solid var(--accent-color,#c5a47e);background:transparent;'
+                    + 'color:var(--accent-color,#c5a47e);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-family);">'
+                    + _esc(o) + '</button>';
+            });
+            html += '</div>'
+                + '<div style="margin-top:8px;font-size:11px;color:var(--text-secondary,#999);">限时作答 · 剩余 <span class="qa-inline-cd" style="font-weight:700;color:var(--accent-color,#c5a47e);">--</span> 秒</div>';
+        } else if (msg.qaState === 'answered') {
+            // 已作答：高亮选中的那个
+            var shown = opts.length ? opts : [msg.qaAnswer];
+            html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+            shown.forEach(function (o) {
+                var chosen = o === msg.qaAnswer;
+                html += '<span style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:600;'
+                    + (chosen
+                        ? 'border:1px solid var(--accent-color,#c5a47e);background:rgba(var(--accent-color-rgb,197,164,126),.16);color:var(--accent-color,#c5a47e);'
+                        : 'border:1px solid var(--border-color,#ddd);background:transparent;color:var(--text-secondary,#aaa);')
+                    + '">' + _esc(o) + (chosen ? ' <i class="fas fa-check"></i>' : '') + '</span>';
+            });
+            html += '</div><div style="margin-top:6px;font-size:11px;color:var(--accent-color,#c5a47e);">已作答 ✓</div>';
+        } else {
+            // 超时 / 陈年旧题
+            html += '<div style="font-size:11px;color:var(--text-secondary,#999);">'
+                + (msg.qaState === 'timeout' ? '超时未答，这题算他赢' : '这题已经过去啦') + '</div>';
+        }
+        html += '</div>';
+        return html;
     }
 
     // ── 他的自主发问调度（照 control.js 随机封锁的思路） ──────────────────────
@@ -246,7 +351,7 @@
         +   '</div>'
         +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;">'
         +     '我问' + _partnerName() + '：点一道题直接发，他限时作答。<br>'
-        +     '他问我：什么时候考你由他自己决定，不接受点单。答得快被夸，超时或太慢要被嘲讽。'
+        +     '他问我：什么时候考你由他自己随机决定，题目直接出现在聊天流里，点选项即作答。答得快被夸，超时或太慢要被嘲讽。'
         +   '</div>'
         + '</div>';
         document.body.appendChild(m);
@@ -341,16 +446,9 @@
             });
             html += '</div>';
         } else {
-            // 没写选项的题：自动从其他题里借选项凑成点选（问卷就是要能直接点，不打字）
-            var borrow = [];
-            getQuestionPool().forEach(function (raw) {
-                var p2 = parseQuestion(raw);
-                if (p2.q !== _answering.q) {
-                    p2.options.forEach(function (o) { if (borrow.length < 3) borrow.push(o); });
-                }
-            });
+            // 没写选项的题：从其他题借选项凑成点选
+            var borrow = _borrowOptions(_answering.q);
             html += '<div id="qa-answer-options" style="display:flex;flex-wrap:wrap;gap:6px;">';
-            ['好', '不好', '不知道'].forEach(function (o) { if (borrow.length < 3) borrow.push(o); });
             borrow.forEach(function (opt) {
                 html += '<button type="button" class="qa-opt-btn" data-v="' + opt.replace(/"/g, '&quot;') + '" style="padding:8px 14px;border-radius:20px;border:1px solid var(--accent-color,#c5a47e);background:transparent;color:var(--accent-color,#c5a47e);font-size:12px;font-weight:600;cursor:pointer;">' + opt.replace(/</g, '&lt;') + '</button>';
             });
@@ -422,9 +520,26 @@
         if (typeof showModal === 'function') showModal(m); else m.style.display = 'flex';
     }
 
-    // ── 启动：挂上他的自主发问调度 ──────────────────────
+    // ── 启动：挂上他的自主发问调度 + 聊天气泡的选项点击委托 ──────────────────────
     function init() {
         setInterval(_checkAskScheduler, 30000);
+
+        // 聊天流 quickqa 气泡的选项按钮：事件委托，消息重渲染后依然可用
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest && e.target.closest('.qa-inline-opt');
+            if (!btn) return;
+            answerInline(btn.getAttribute('data-qa-msg'), btn.getAttribute('data-qa-opt'));
+        });
+
+        // 聊天流气泡里的倒计时：轻量刷新文本，不触发整棵消息树重渲染
+        setInterval(function () {
+            if (!_answering) return;
+            var left = Math.max(0, Math.ceil((_answering.deadline - Date.now()) / 1000));
+            document.querySelectorAll('.qa-inline-cd').forEach(function (el) {
+                el.textContent = left;
+                el.style.color = left <= 10 ? '#e74c3c' : 'var(--accent-color,#c5a47e)';
+            });
+        }, 500);
     }
 
     if (document.readyState === 'loading') {
@@ -433,5 +548,5 @@
         init();
     }
 
-    window.QuickQA = { open: open, heAsks: heAsks };
+    window.QuickQA = { open: open, heAsks: heAsks, renderBubbleHTML: renderBubbleHTML, answerInline: answerInline };
 })();

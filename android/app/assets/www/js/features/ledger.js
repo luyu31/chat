@@ -7,8 +7,8 @@
  * 管理弹窗：月度汇总（分类条形图）、按日分组流水、手动记一笔/修改/删除、
  * 聊天自动记账开关、共同记账开关 + 消费选项管理。
  *
- * 共同记账：开启后梦角每 6~12 小时有约 40% 概率自己记一笔消费（调度器照抄
- * redpacket.js 的 nextCheckAt 持久化模式），播报到聊天流并计入账本汇总；
+ * 共同记账：开启后他完全随机地自己记上一笔（什么时候记、一次记几张都不定，
+ * 调度器照抄 redpacket.js 的 nextCheckAt 持久化模式），播报到聊天流并计入账本汇总；
  * 每条流水带 author 标记（我/他），消费选项分内置+自定义、可勾选"隐藏明细"；
  * 隐藏项记账时不显示买了什么，只显示"神秘消费 ¥xx"。
  *
@@ -283,15 +283,15 @@
 
     // ─── 共同记账：调度器（照抄 cinema.js / redpacket.js 的 nextCheckAt 持久化模式） ───
     // setTimeout + 把 nextCheckAt 存进 sharedLedger，不是 setInterval 轮询：
-    // 页面关掉时间照走，下次打开发现过期就先补一笔再顺延 4~8 小时；
-    // 过期很久（比如好几天没开 app）也只补一笔，不搞"补课轰炸"刷屏
-    function sharedDelayMs() { return (6 + Math.random() * 6) * 3600000; }   // 6~12 小时
+    // 页面关掉时间照走，下次打开发现过期就先补一笔再顺延；
+    // 什么时候记完全随机——下一次间隔均匀分布在一个很宽的范围里，摸不到规律
+    function sharedDelayMs() { return (10 + Math.random() * 470) * 60000; }   // 10 分钟~8 小时，完全随机
 
     function scheduleSharedCheck() {
         clearTimeout(_sharedTimer);
         if (!shared.enabled) return;
         if (!shared.nextCheckAt) {
-            // 第一次开启：从现在起 4~8 小时后才买第一单，别装上就秒买，像真人在慢慢生活
+            // 第一次开启：完全随机地隔一段时间才买第一单，别装上就秒买，像真人在慢慢生活
             shared.nextCheckAt = Date.now() + sharedDelayMs();
             saveShared();
         }
@@ -301,25 +301,35 @@
     }
 
     function runSharedCheck() {
-        // 每次到点约 40% 概率记一笔，不是到点必记
-        if (shared.enabled && Math.random() < 0.4) {
-            // 开机竞态：ledger 的 loadAll 跑得比聊天模块的 loadData 早时，
-            // 直接 addMessage 会被 loadData 恢复历史时覆盖丢掉（cinema.js 踩过同一个坑）。
-            // 钩 renderMessages（loadData 收尾必调）——首次调用前先攒着，之后再真发。
-            var gen = generatePartnerExpense;
-            if (window._appDataLoaded || _chatReady) {
-                gen();
-            } else {
-                _pendingBootExpense = true;
-            }
+        if (shared.enabled) {
+            // 这次他随手记几张完全随机（1~3 张），到点必记——随机感全靠随机间隔，
+            // 不搞"到点再掷骰子"那套概率配置
+            var n = 1 + Math.floor(Math.random() * 3);
+            for (var i = 0; i < n; i++) _spawnPartnerExpense(i);
         }
         shared.nextCheckAt = Date.now() + sharedDelayMs();
         saveShared();
         scheduleSharedCheck();
     }
 
+    // 单笔消费的落-chat流时机：第一张立刻，其余的隔随机几秒陆续冒出来，像真人一条条记
+    function _spawnPartnerExpense(idx) {
+        var fire = function () {
+            // 开机竞态：ledger 的 loadAll 跑得比聊天模块的 loadData 早时，
+            // 直接 addMessage 会被 loadData 恢复历史时覆盖丢掉（cinema.js 踩过同一个坑）。
+            // 钩 renderMessages（loadData 收尾必调）——首次调用前先攒着，之后再真发。
+            if (window._appDataLoaded || _chatReady) {
+                generatePartnerExpense();
+            } else {
+                _pendingBootExpense++;
+            }
+        };
+        if (idx === 0) fire();
+        else setTimeout(fire, 800 + idx * 1500 + Math.random() * 1500);
+    }
+
     var _chatReady = false;          // renderMessages 首调 = 聊天数据就绪
-    var _pendingBootExpense = false; // 开机期间攒下的"他记了一笔"
+    var _pendingBootExpense = 0;     // 开机期间攒下的"他记了一笔"张数
 
     (function _hookRenderMessagesForLedger() {
         var origFn = window.renderMessages;
@@ -327,9 +337,12 @@
         window.renderMessages = function () {
             if (!_chatReady) {
                 _chatReady = true;
-                if (_pendingBootExpense) {
-                    _pendingBootExpense = false;
-                    setTimeout(function () { generatePartnerExpense(); }, 0);
+                if (_pendingBootExpense > 0) {
+                    var n = _pendingBootExpense;
+                    _pendingBootExpense = 0;
+                    for (var i = 0; i < n; i++) {
+                        setTimeout(function () { generatePartnerExpense(); }, i * 1200);
+                    }
                 }
             }
             return origFn.apply(this, arguments);
@@ -534,7 +547,6 @@
                         '<button type="button" class="ledger-toggle-btn" id="ledger-shared-toggle"></button>' +
                         '<div style="flex:1;min-width:0;">' +
                             '<div style="font-size:13px;font-weight:700;color:var(--text-primary);">共同记账</div>' +
-                            '<div class="ledger-hint">开启后他每 6~12 小时有概率自己记一笔（偶尔是🔒隐藏的神秘消费，不显示明细）</div>' +
                         '</div>' +
                         '<button type="button" id="ledger-shared-opts-btn" title="消费选项管理" style="flex-shrink:0;width:34px;height:34px;border:1px solid var(--border-color,#ddd);border-radius:10px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;font-size:13px;"><i class="fas fa-sliders"></i></button>' +
                     '</div>' +
@@ -648,7 +660,6 @@
         m.innerHTML =
             '<div class="modal-content" style="max-width:400px;width:90vw;max-height:80vh;overflow-y:auto;">' +
                 '<div class="modal-title"><i class="fas fa-sliders"></i><span>消费选项</span></div>' +
-                '<div class="ledger-hint" style="margin:0 0 4px;">他每 6~12 小时有概率从这些选项里记一笔；🔒隐藏的不会显示买了什么。</div>' +
                 '<div class="ledger-chips" id="ledger-opts-chips"></div>' +
                 '<div class="ledger-form-row" style="margin-top:10px;">' +
                     '<input type="text" class="ledger-input" id="ledger-add-opt-input" placeholder="新增选项（如：游戏点卡）" maxlength="12" style="flex:1;">' +
@@ -767,7 +778,7 @@
     function toggleShared() {
         shared.enabled = !shared.enabled;
         if (shared.enabled) {
-            // 刚打开就重排 4~8 小时后的一单，别把上次"欠的"立刻买出来吓人
+            // 刚打开就重排一单，别把上次"欠的"立刻买出来吓人
             shared.nextCheckAt = Date.now() + sharedDelayMs();
             if (typeof showNotification === 'function') showNotification('共同记账已开启，他会时不时自己记上一笔', 'info', 2200);
         } else {

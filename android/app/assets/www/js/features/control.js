@@ -1,10 +1,11 @@
 /**
  * control.js — 操控面板（难度 + 熟练度 + 随机封锁调度）
  *
- * 五档难度影响梦角查岗的语气和随机封锁的频率。
- * 熟练度（XP）通过完成查岗、解锁暗号、陪伴等积累，升级后解锁更高难度。
+ * 六档难度影响梦角查岗的语气和随机封锁的频率上限，全部直接可选，不需要解锁。
+ * 熟练度（XP）通过完成查岗、解锁暗号、陪伴等积累（只作展示，不卡难度）。
  * 随机封锁调度照抄 redpacket.js 的 scheduler 思路：
  *   nextLockAt 持久化 → 30秒轮询 → 到点且条件满足就触发 LockScreen.start()。
+ * 什么时候锁完全随机，不配置任何概率。
  *
  * 存储：localStorage key 'controlData'（跟 checkin.js 一致的 load/save 模式）
  */
@@ -13,15 +14,15 @@
 
     var KEY = 'controlData';
 
-    // ── 难度五档（写死常量） ──────────────────────
+    // ── 难度六档（写死常量，全部直接可选、不用解锁） ──────────────────────
     // maxPerDay: 每天最多锁手机的次数上限；什么时候锁纯随机，档位只定上限
-    // minLevel:  需要的熟练度等级（等级 = floor(xp/100)+1，封顶 9）
     var DIFFICULTIES = [
-        { level: 1, name: '温柔引导', desc: '他很少锁你，每天最多 5 次', maxPerDay: 5, minLevel: 1 },
-        { level: 2, name: '日常管教', desc: '日常查岗，每天最多 4 次', maxPerDay: 4, minLevel: 1 },
-        { level: 3, name: '认真调教', desc: '锁得更勤，每天最多 3 次', maxPerDay: 3, minLevel: 3 },
-        { level: 4, name: '严厉掌控', desc: '他说什么就是什么，每天最多 2 次', maxPerDay: 2, minLevel: 4 },
-        { level: 5, name: '完全臣服', desc: '解锁条件：熟练度 Lv5 · 没有次数上限', maxPerDay: Infinity, minLevel: 5 }
+        { level: 1, name: '温柔引导', desc: '他很少锁你，每天最多 5 次', maxPerDay: 5 },
+        { level: 2, name: '日常管教', desc: '日常查岗，每天最多 10 次', maxPerDay: 10 },
+        { level: 3, name: '认真调教', desc: '锁得更勤，每天最多 15 次', maxPerDay: 15 },
+        { level: 4, name: '严厉掌控', desc: '他说什么就是什么，每天最多 20 次', maxPerDay: 20 },
+        { level: 5, name: '完全臣服', desc: '没有次数上限，他想锁就锁', maxPerDay: Infinity },
+        { level: 6, name: '看他心情', desc: '完全随机 · 没有上限 · 什么时候锁全看他的心情', maxPerDay: Infinity }
     ];
 
     // ── 内置暗号库（不可删除，与用户库合并抽取） ──────────────────────
@@ -155,6 +156,8 @@
     // ── 获取查岗语气风格（给后续 checkin 联动用） ──────────────────────
     function getNagStyle() {
         var diff = _getDifficultyCfg().level;
+        // 看他心情：连语气都随机， soft / normal / strict 抽到哪个是哪个
+        if (diff === 6) return ['soft', 'normal', 'strict'][Math.floor(Math.random() * 3)];
         if (diff <= 2) return 'soft';
         if (diff <= 3) return 'normal';
         return 'strict';
@@ -233,32 +236,25 @@
         el.innerHTML = html;
     }
 
-    // ── 渲染难度选择 ──────────────────────
+    // ── 渲染难度选择（六档全部直接可选，不用解锁） ──────────────────────
     function renderDifficulty() {
         var el = document.getElementById('ctrl-difficulty');
         if (!el) return;
         var d = load();
-        var curLevel = _getLevel(d.xp);
 
         var html = '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin-bottom:8px;">难度等级</div>';
         DIFFICULTIES.forEach(function (diff) {
-            var unlocked = curLevel >= diff.minLevel;
             var selected = d.difficulty === diff.level;
             var bg = selected ? 'background:rgba(var(--accent-color-rgb,197,164,126),.14);border-color:var(--accent-color,#c5a47e);'
                 : 'background:var(--primary-bg,transparent);border:1px solid var(--border-color,#e8e8e8);';
             html += '<div class="ctrl-diff-row" data-level="' + diff.level + '" '
-                + 'style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;margin-bottom:6px;cursor:'
-                + (unlocked ? 'pointer' : 'not-allowed') + ';' + bg + 'border:1px solid '
+                + 'style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;margin-bottom:6px;cursor:pointer;' + bg + 'border:1px solid '
                 + (selected ? 'var(--accent-color,#c5a47e)' : 'var(--border-color,#e8e8e8)') + ';">'
                 +   '<div style="flex:1;">'
-                +     '<div style="font-size:13px;font-weight:600;color:var(--text-primary,#333);">'
-                +       (unlocked ? '' : '<i class="fas fa-lock" style="font-size:10px;margin-right:4px;color:var(--text-secondary,#ccc);"></i>')
-                +       diff.name
-                +     '</div>'
+                +     '<div style="font-size:13px;font-weight:600;color:var(--text-primary,#333);">' + diff.name + '</div>'
                 +     '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:2px;">' + diff.desc + '</div>'
                 +   '</div>'
                 +   (selected ? '<i class="fas fa-check" style="color:var(--accent-color,#c5a47e);font-size:14px;"></i>' : '')
-                +   (!unlocked && !selected ? '<span style="font-size:10px;color:var(--text-secondary,#ccc);">需 Lv' + diff.minLevel + '</span>' : '')
                 + '</div>';
         });
         el.innerHTML = html;
@@ -268,12 +264,6 @@
             row.addEventListener('click', function () {
                 var level = parseInt(row.getAttribute('data-level'));
                 var diff = DIFFICULTIES.find(function (x) { return x.level === level; });
-                if (curLevel < diff.minLevel) {
-                    if (typeof showNotification === 'function') {
-                        showNotification('熟练度 Lv' + diff.minLevel + ' 才能解锁「' + diff.name + '」', 'info', 2500);
-                    }
-                    return;
-                }
                 var d2 = load();
                 d2.difficulty = level;
                 _saveData(d2);
@@ -361,7 +351,14 @@
 
     // ── 随机封锁调度（照抄 redpacket.js scheduler 思路） ──────────────────────
     // 每 30 秒检查 nextLockAt：到点了 + 今天还没锁够 + 页面可见 → 触发封锁
-    // 什么时候锁完全随机（下一轮 40 分钟~5 小时随机），难度档位只决定每天次数上限
+    // 什么时候锁完全随机，不配置任何概率；难度档位只决定每天的次数上限
+    function _nextLockDelayMs() {
+        // 常规档：20 分钟~6 小时均匀随机；
+        // 「看他心情」连节奏都不让你摸透：2 分钟~10 小时均匀随机
+        if (load().difficulty === 6) return (2 + Math.random() * 598) * 60000;
+        return (20 + Math.random() * 340) * 60000;
+    }
+
     function _checkScheduler() {
         var d = load();
         if (!d.nextLockAt) {
@@ -380,7 +377,7 @@
         // 2) 暗号锁当前激活时不触发
         if (window.LockScreen && typeof window.LockScreen.isActive === 'function' && window.LockScreen.isActive()) return;
 
-        // 3) 今天封锁次数还没到上限
+        // 3) 今天封锁次数还没到上限（无上限档永不触发这条）
         var today = _todayStr();
         if (_todayDate !== today) { _todayDate = today; _todayLockCount = 0; }
         var diff = _getDifficultyCfg();
@@ -400,8 +397,8 @@
             window.LockScreen.start();
         }
 
-        // 排下一次（40 分钟~5 小时随机，纯看他心情）
-        d.nextLockAt = Date.now() + (40 + Math.random() * 260) * 60 * 1000;
+        // 排下一次：完全随机，摸不到规律
+        d.nextLockAt = Date.now() + _nextLockDelayMs();
         _saveData(d);
     }
 

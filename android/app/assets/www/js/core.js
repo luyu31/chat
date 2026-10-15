@@ -1380,10 +1380,14 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     }
 
     const isRedPacket = msg.type === 'redpacket';
+    const isQuickQA = msg.type === 'quickqa';
     const isImageOnly = !msg.text && !!msg.image;
     let content = msg.text ? `<div>${msg.text.replace(/\n/g, '<br>')}</div>` : '';
     if (isRedPacket) {
         content = (window.RedPacket && typeof window.RedPacket.renderBubbleHTML === 'function') ? window.RedPacket.renderBubbleHTML(msg) : '';
+    } else if (isQuickQA) {
+        // 快问快答：题目气泡直接渲染可点选的选项按钮，在聊天流里作答，不用再点进弹窗
+        content = (window.QuickQA && typeof window.QuickQA.renderBubbleHTML === 'function') ? window.QuickQA.renderBubbleHTML(msg) : '';
     } else if (msg.image) {
         // 阶段三B：识别 oss:// 走懒加载；识别 pending:// 走本地 base64 + 上传中角标
         const isCloudImg = typeof msg.image === 'string' && msg.image.indexOf('oss://') === 0;
