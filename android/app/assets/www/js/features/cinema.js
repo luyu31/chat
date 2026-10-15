@@ -2234,11 +2234,9 @@
         _negoUpdateBadges();
     }
 
-    // 第几次回复对应的"梦角同意"概率：第1次70%，第2次90%，第3次及以后100%
+    // 第几次回复对应的"梦角同意"：每次都对半随机，不随次数提高概率
     function _negoAcceptProbability(replyIndex) {
-        if (replyIndex <= 1) return 0.7;
-        if (replyIndex === 2) return 0.9;
-        return 1;
+        return 0.5;
     }
 
     // ── 提醒 + 过期：只在"轮到用户回应"（_negoState.turn === 'user'）时生效 ──
@@ -2567,9 +2565,8 @@
     }
 
     // 挑电影：80% 从心愿单挑没看过的，10% 从"看过的池子"（心愿单勾了已看过的 +
-    // 影评里正式记录的观看历史，这两个合并算一类）挑一个重温，10% 直接说"一起看电影吧"
-    // 不提具体片名。如果骰到的那个方向刚好没数据，再骰一次 50/50：
-    // 50% 换另一个池子接着挑，50% 直接说"一起看电影吧"——两个方向都是对称的规则。
+    // 邀请方向等概率：没看过的 / 看过的重温 / 直接说"一起看电影吧" 三种各 1/3；
+    // 骰到的方向刚好没数据时，再对半换另一个池子或直接邀请
     function _pickMoviePartnerInvite() {
         var notWatchedPool = (_watchlist || []).filter(function (w) { return !w.watched; });
         var watchedPool = (_history || []).concat((_watchlist || []).filter(function (w) { return w.watched; }));
@@ -2580,14 +2577,14 @@
             return '一起看电影';
         }
 
-        var roll = Math.random();
-        if (roll < 0.8) { // 80%：心愿单没看过的
+        var kind = Math.floor(Math.random() * 3);
+        if (kind === 0) { // 心愿单没看过的
             if (notWatchedPool.length > 0) return pickFrom(notWatchedPool);
             return fallbackPick(watchedPool);
-        } else if (roll < 0.9) { // 10%：看过的重温
+        } else if (kind === 1) { // 看过的重温
             if (watchedPool.length > 0) return pickFrom(watchedPool);
             return fallbackPick(notWatchedPool);
-        } else { // 10%：直接邀请，不用管有没有数据
+        } else { // 直接邀请，不用管有没有数据
             return '一起看电影';
         }
     }
@@ -2666,14 +2663,10 @@
     async function _runPartnerInviteCheck() {
         await Promise.all([_wlLoad(), _histLoad(), _negoLoad(), _apptLoad()]);
         // 只有在"没有约定、没有协商中"的时候才可能触发，不然会跟用户自己发的邀请撞车
+        // 到检查点、又没有进行中的约定时就邀请：对半随机，不做递增保底
         var canInvite = _uiState === 'empty' && !(_negoState && _negoState.active);
-        var missed = _partnerInviteState.missedCount || 0;
-        var prob = missed >= 2 ? 1 : 0.7;
-        if (canInvite && Math.random() < prob) {
-            _startPartnerInvite(); // 永远会成功（心愿单/历史都空时用固定文案兜底）
-            _partnerInviteState.missedCount = 0;
-        } else {
-            _partnerInviteState.missedCount = missed + 1;
+        if (canInvite && Math.random() < 0.5) {
+            _startPartnerInvite();
         }
         var days = 5 + Math.random() * 2;
         _partnerInviteState.nextCheckAt = Date.now() + days * 86400000;

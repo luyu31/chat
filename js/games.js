@@ -1595,17 +1595,72 @@ function initComboMenu() {
     function makeStickerItem(src, onClick) {
         const item = document.createElement('div');
         item.className = 'sticker-grid-item';
-        // 阶段三B：识别 oss:// 走懒加载
+        // 阶段三B：识别 oss:// 走云端懒加载；本地图（多为 base64）也延迟到进视口才解码，
+        // 避免打开面板时一次性解几百张大图造成卡顿
         const isCloud = typeof src === 'string' && src.indexOf('oss://') === 0;
         item.innerHTML = `<img loading="lazy">`;
         const imgEl = item.querySelector('img');
         if (isCloud) {
             if (window.CloudMedia) window.CloudMedia.bindLazyImage(imgEl, src);
         } else {
-            imgEl.src = src;
+            _bindLazyLocalImage(imgEl, src);
         }
         item.onclick = (e) => { e.stopPropagation(); onClick(); };
         return item;
+    }
+
+    // 本地/ base64 贴纸懒加载：先放空 img，滚到附近（提前 200px）才赋 src 解码
+    var _stickerIO = null;
+    function _getStickerIO() {
+        if (_stickerIO) return _stickerIO;
+        if (!('IntersectionObserver' in window)) return null;
+        _stickerIO = new IntersectionObserver(function (entries) {
+            entries.forEach(function (en) {
+                if (!en.isIntersecting) return;
+                var img = en.target;
+                if (img && img.dataset.lazySrc) { img.src = img.dataset.lazySrc; img.removeAttribute('data-lazy-src'); }
+                _stickerIO.unobserve(img);
+            });
+        }, { root: document.getElementById('combo-content-area'), rootMargin: '200px 0px' });
+        return _stickerIO;
+    }
+    function _bindLazyLocalImage(imgEl, src) {
+        var io = _getStickerIO();
+        if (io) { imgEl.dataset.lazySrc = src; io.observe(imgEl); }
+        else { imgEl.src = src; }  // 老 WebView 不支持 IO 就直接给
+    }
+
+    // 贴纸格子分批挂载：首批 30 个立即出，其余滚到底再追加，避免一次插几百个图片节点
+    var _STICKER_PAGE = 30;
+    function _appendStickersInBatches(grid, list, buildFn) {
+        var idx = 0;
+        function mountChunk() {
+            var frag = document.createDocumentFragment();
+            var end = Math.min(idx + _STICKER_PAGE, list.length);
+            for (; idx < end; idx++) frag.appendChild(buildFn(list[idx], idx));
+            grid.appendChild(frag);
+            if (idx < list.length) {
+                var sentinel = document.createElement('div');
+                sentinel.style.cssText = 'grid-column:1/-1;height:1px;';
+                grid.appendChild(sentinel);
+                if ('IntersectionObserver' in window) {
+                    var io = new IntersectionObserver(function (es) {
+                        es.forEach(function (e) {
+                            if (!e.isIntersecting) return;
+                            io.disconnect();
+                            sentinel.remove();
+                            mountChunk();
+                        });
+                    }, { root: document.getElementById('combo-content-area'), rootMargin: '300px 0px' });
+                    io.observe(sentinel);
+                } else {
+                    // 不支持 IO：下一帧直接挂剩下的（老设备兜底）
+                    sentinel.remove();
+                    while (idx < list.length) { grid.appendChild(buildFn(list[idx], idx)); idx++; }
+                }
+            }
+        }
+        mountChunk();
     }
 
     window._myStickerActiveGroup = null; // null = 默认分组（或者默认分组为空时，落到第一个真实分组）
@@ -1839,7 +1894,7 @@ function initComboMenu() {
         if (isCloud) {
             if (window.CloudMedia) window.CloudMedia.bindLazyImage(imgEl, src);
         } else {
-            imgEl.src = src;
+            _bindLazyLocalImage(imgEl, src);
         }
         imgEl.onclick = (e) => {
             e.stopPropagation();
@@ -1893,8 +1948,8 @@ function initComboMenu() {
         if (!itemsToShow.length) {
             grid.innerHTML = '<div class="empty-sticker-tip" style="grid-column:1/-1;">这个分组还没有表情</div>';
         }
-        itemsToShow.forEach((entry) => {
-            const item = makeMyStickerItem(entry, () => {
+        _appendStickersInBatches(grid, itemsToShow, (entry) => {
+            return makeMyStickerItem(entry, () => {
                 addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: entry.src, isSticker: true, status: 'sent', type: 'normal' });
                 playSound('send');
                 picker.classList.remove('active');
@@ -1910,7 +1965,6 @@ function initComboMenu() {
                 showNotification('✓ 已删除', 'success');
                 renderMyStickerLibrary();
             });
-            grid.appendChild(item);
         });
         contentArea.appendChild(grid);
     }
@@ -2272,15 +2326,14 @@ function initComboMenu() {
         }
         const grid = document.createElement('div');
         grid.className = 'sticker-grid-view';
-        stickerLibrary.forEach(src => {
-            const item = makeStickerItem(src, () => {
+        _appendStickersInBatches(grid, stickerLibrary, (src) => {
+            return makeStickerItem(src, () => {
                 addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: src, isSticker: true, status: 'sent', type: 'normal' });
                 playSound('send');
                 picker.classList.remove('active');
                 const delayRange = settings.replyDelayMax - settings.replyDelayMin;
                 setTimeout(simulateReply, settings.replyDelayMin + Math.random() * delayRange);
             });
-            grid.appendChild(item);
         });
         contentArea.appendChild(grid);
     }

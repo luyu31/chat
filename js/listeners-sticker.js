@@ -39,11 +39,23 @@
             picker.appendChild(uploadInput);
         }
 
-        // 监听 grid 变化（用户切 tab、添加/删除表情时会 re-render）
-        const observer = new MutationObserver(() => {
-            injectAddButton();
-        });
-        observer.observe(contentArea, { childList: true, subtree: true });
+        // 监听 contentArea 直接子节点变化（切 tab/网格重建时 grid 是直接子节点）。
+        // 不监听 subtree：贴纸网格里每张图插入都会冒泡成一次回调，表情一多就 N 次全量扫描，
+        // 是"打开表情面板卡"的元凶之一；再用 rAF 合并同一帧内的多次变化。
+        var injectRaf = 0;
+        function scheduleInject() {
+            if (injectRaf) return;
+            injectRaf = requestAnimationFrame(function () {
+                injectRaf = 0;
+                observer.disconnect();        // 自己改 DOM 期间先断开，防止自激循环
+                try { injectAddButton(); } finally { observeAgain(); }
+            });
+        }
+        var observer = new MutationObserver(scheduleInject);
+        function observeAgain() {
+            observer.observe(contentArea, { childList: true, subtree: false });
+        }
+        observeAgain();
 
         // 启动时也插一次
         injectAddButton();

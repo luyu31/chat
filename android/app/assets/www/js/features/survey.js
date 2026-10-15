@@ -626,35 +626,30 @@
 
     // ══ 反向问卷（梦角问我）：触发引擎 + 抽题 + 提交回答 ══════════
     //
-    // 触发概率：5-8天随机检查一次；上次触发过 → 这次50%；上次没中 → 这次80%；
-    // 再没中 → 这次100%必中。中了就把 missStreak 清零，重新从50%开始下一轮计时。
+    // 触发节奏：每 5~8 天均匀随机到一个检查点，到点了就触发——
+    // 不用任何概率门槛（旧版 50%→80%→100% 的递增掷骰已移除），
+    // 什么时候下一份问卷只由那个随机间隔决定，完全随机、摸不到规律。
     function _checkAskMeTrigger() {
         if (!_loaded) return;
         var t = _data.askMeTrigger;
         if (!t || Date.now() < t.nextCheckAt) return;
 
         // 开关：聊天设置-节奏tab里的"梦角不主动发问卷"——开启后跳过这次触发，
-        // 但照常重排下一次检查时间（missStreak 不变，开关关闭后从原来的进度继续）
+        // 但照常重排下一次检查时间，开关关闭后从原来的时间点继续
         if (typeof settings !== 'undefined' && settings.surveyNoAskEnabled) {
             t.nextCheckAt = Date.now() + _randDays(5, 8);
             _save();
             return;
         }
 
-        var prob = t.missStreak === 0 ? 0.5 : (t.missStreak === 1 ? 0.8 : 1);
-        var hit = Math.random() < prob;
-        if (hit) {
-            var batch = _createAskMeBatch();
-            if (batch) {
-                t.missStreak = 0;
-                _queueNotify({ type: 'askme_new', survey: batch });
-                _refreshOpenViews();
-            }
-            // 题库里没有可用题目（比如全被隐藏了）就当这次白抽，missStreak 不变，
-            // 照样往下重新排一次 5-8 天后的检查时间，不会卡住
-        } else {
-            t.missStreak++;
+        var batch = _createAskMeBatch();
+        if (batch) {
+            t.missStreak = 0;
+            _queueNotify({ type: 'askme_new', survey: batch });
+            _refreshOpenViews();
         }
+        // 题库里没有可用题目（比如全被隐藏了）就当这次白抽，
+        // 照样往下重新排一次 5~8 天后的检查时间，不会卡住
         t.nextCheckAt = Date.now() + _randDays(5, 8);
         _save();
     }

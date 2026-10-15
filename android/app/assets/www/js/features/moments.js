@@ -17,22 +17,19 @@ const _CS_SETTINGS_KEY = 'csSpaceSettings';
 // 情侣空间设置（默认值）
 let _csSettings = { dlyMin: 5, dlyMax: 20, savePartnerImg: false, allowReadNoReply: false, readNoReplyChance: 0.2, cmtCombineCards: false, emojiMixEnabled: false };
 
-// 情侣空间"已读不回"判定：关闭开关时必回；开启后按 readNoReplyChance 概率跳过。
-// 统一给"梦角评论新动态"和"梦角回复用户评论"这两处共用。
+// 情侣空间"已读不回"判定：开关关闭时必回；开启后回不回对半随机（不做偏向概率）
 function _mShouldReply() {
     if (!_csSettings.allowReadNoReply) return true;
-    const chance = Math.max(0, Math.min(1, Number(_csSettings.readNoReplyChance) || 0));
-    return Math.random() >= chance;
+    return Math.random() < 0.5;
 }
 
-// 情侣空间"表情混入"：开关打开且表情库不为空时，20%概率把一个表情符号混进文字前面或后面。
-// 跟主聊天"表情混入消息"是完全独立的开关，互不影响，但复用同一个 customEmojis 表情库。
+// 情侣空间"表情混入"：开关打开且表情库不为空时，对半随机把一个表情混进文字前面或后面
 function _mMixEmoji(text) {
     if (!text) return text; // 没有文字内容（比如纯贴纸）不需要混入
     if (!_csSettings.emojiMixEnabled) return text;
     const pool = window.customEmojis || (typeof customEmojis !== 'undefined' ? customEmojis : []);
     if (!pool || !pool.length) return text;
-    if (Math.random() >= 0.2) return text;
+    if (Math.random() < 0.5) return text;
     const emoji = pool[Math.floor(Math.random() * pool.length)];
     return Math.random() < 0.5 ? emoji + ' ' + text : text + ' ' + emoji;
 }
@@ -70,13 +67,24 @@ function _mPostText() {
     return _mMixEmoji(_mJoinCards(pool, n));
 }
 function _mPickStickers() {
-    if (Math.random() >= 0.40) return [];
+    // 带不带贴纸对半随机；带的话再等概率决定 1~3 张
+    if (Math.random() < 0.5) return [];
     const pool = [...(stickerLibrary||[])]; if (!pool.length) return [];
-    const n = 1+Math.floor(Math.random()*3); return pool.sort(()=>Math.random()-.5).slice(0,Math.min(n,pool.length));
+    const n = 1+Math.floor(Math.random()*3); return _shuffle(pool).slice(0,Math.min(n,pool.length));
 }
 
-// 梦角评论内容：纯文字 60% / 文字+贴纸 20% / 纯贴纸 20%
-// 没有字卡也没有贴纸时返回 null，调用方应跳过评论
+// Fisher-Yates 洗牌：每种排列等概率，比 sort(()=>Math.random()-0.5) 均匀
+function _shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+}
+
+// 梦角评论内容：纯文字 / 文字+贴纸 / 纯贴纸 三种形态等概率（素材齐全时）
+// 没有字卡或没有贴纸时自动退化，调用方应跳过空内容
 function _mCmtContent() {
     const textPool   = [...(window._customReplies || customReplies || [])];
     const stickerPool = [...(stickerLibrary || [])];
@@ -96,10 +104,11 @@ function _mCmtContent() {
     if (!hasSticker) return { text: randText(), image: null };
     if (!hasText)    return { text: '', image: randSticker() };
 
-    const r = Math.random();
-    if (r < 0.60) return { text: randText(), image: null };            // 60% 纯文字
-    if (r < 0.80) return { text: randText(), image: randSticker() };   // 20% 文字+贴纸
-    return { text: '', image: randSticker() };                         // 20% 纯贴纸
+    // 三种形态等概率：0 纯文字 / 1 文字+贴纸 / 2 纯贴纸
+    const kind = Math.floor(Math.random() * 3);
+    if (kind === 0) return { text: randText(), image: null };
+    if (kind === 1) return { text: randText(), image: randSticker() };
+    return { text: '', image: randSticker() };
 }
 
 async function loadMomentsData() {
@@ -143,30 +152,31 @@ window._mOpenBell=function(){
 };
 
 // ─── 逻辑 ───
-// 梦角发动态内容：纯文字 40% / 文字+贴纸 40% / 纯贴纸 20%
+// 梦角发动态内容：纯文字 / 文字+贴纸 / 纯贴纸 三种形态等概率（素材齐全时）
 function _mPostContent() {
     const textPool    = [...(window._customReplies || customReplies || [])];
     const stickerPool = [...(stickerLibrary || [])];
     const hasText    = textPool.length > 0;
     const hasSticker = stickerPool.length > 0;
     const randText    = () => _mPostText();
-    const randImgs    = () => { const n=1+Math.floor(Math.random()*3); return stickerPool.sort(()=>Math.random()-.5).slice(0,Math.min(n,stickerPool.length)); };
+    const randImgs    = () => { const n=1+Math.floor(Math.random()*3); return _shuffle(stickerPool).slice(0,Math.min(n,stickerPool.length)); };
 
     if (!hasText && !hasSticker) return null;
     if (!hasSticker) return { text:randText(), images:[] };
     if (!hasText)    return { text:'', images:randImgs() };
 
-    const r = Math.random();
-    if (r < 0.40) return { text:randText(), images:[] };           // 40% 纯文字
-    if (r < 0.60) return { text:'', images:randImgs() };           // 20% 纯贴纸
-    return { text:randText(), images:randImgs() };                 // 40% 文字+贴纸
+    const kind = Math.floor(Math.random() * 3);
+    if (kind === 0) return { text:randText(), images:[] };
+    if (kind === 1) return { text:'', images:randImgs() };
+    return { text:randText(), images:randImgs() };
 }
 
 async function generatePartnerMoment() {
     const now=Date.now();
     const c=_mPostContent(); if(!c) return;const post={id:_mUid('partner'),type:'partner',text:c.text,images:c.images,date:_mToday(),timestamp:now,isNewForUser:true,userLiked:false,partnerLiked:false,pendingLikeTime:null,pendingLikeSilent:false,comments:[],pendingPartnerComment:null};
-    if(Math.random()<0.10){const c=_mCmtContent();if(c)post.pendingPartnerComment={text:c.text,image:c.image,time:now+Math.floor(_mDly()),isSelfComment:true};}
-    if(Math.random()<0.10){post.pendingLikeTime=now+Math.floor(_mDly());post.pendingLikeSilent=true;}
+    // 他发完动态会不会给自己配评论/点赞：各 50% 随机，互不影响
+    if(Math.random()<0.5){const cc=_mCmtContent();if(cc)post.pendingPartnerComment={text:cc.text,image:cc.image,time:now+Math.floor(_mDly()),isSelfComment:true};}
+    if(Math.random()<0.5){post.pendingLikeTime=now+Math.floor(_mDly());post.pendingLikeSilent=true;}
     momentsData.posts.unshift(post); saveMomentsData(); _pushNotif('newPost',post.id);
     // "保存Ta发的图片"这个设置开着的话，把梦角这条动态里的图片也同步进相册——
     // 跟用户自己发动态时走的是同一套同步函数，只是之前只在用户发帖时调用，梦角发帖漏掉了
@@ -212,8 +222,9 @@ async function _checkAction(){
         const KEY=getStorageKey(_M_COOLDOWN_KEY),now=Date.now();
         const next=await localforage.getItem(KEY);if(next!==null&&now<next)return;
         await localforage.setItem(KEY,now+_M_CD_MIN+Math.random()*(_M_CD_MAX-_M_CD_MIN));
-        if(Math.random()<0.40){if(typeof window._generatePartnerLetter==='function')window._generatePartnerLetter();}
-        if(Math.random()<0.70){await generatePartnerMoment();}
+        // 写不写信、发不发动态各自对半随机，互不影响
+        if(Math.random()<0.5){if(typeof window._generatePartnerLetter==='function')window._generatePartnerLetter();}
+        if(Math.random()<0.5){await generatePartnerMoment();}
     }catch(e){console.warn('[Moments] _checkAction 失败',e);}
 }
 
