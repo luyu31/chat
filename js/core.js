@@ -2622,8 +2622,8 @@ if (!isBatchMode && type === 'normal') {
             const delayRange = settings.replyDelayMax - settings.replyDelayMin;
             const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
 
-            const chance = Math.max(0, Math.min(1, Number(settings.readNoReplyChance) || 0));
-            const shouldIgnore = settings.allowReadNoReply && (Math.random() < chance);
+            // 已读不回：开关打开后回不回对半随机（不做偏向概率）；开关关闭时必回
+            const shouldIgnore = settings.allowReadNoReply && (Math.random() < 0.5);
 
             // 只在有真实用户消息时才更新已读状态
             if (isUserMessage) {
@@ -2704,7 +2704,8 @@ if (!isBatchMode && type === 'normal') {
                 _updateReadReceiptsDOM(); throttledSaveData();
             }
 
-if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
+            // 换不换人格：对半随机（多人格配置存在时）
+if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.5) {
                 const currentPool = [
                     ...partnerPersonas
                 ];
@@ -2721,10 +2722,12 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                      throttledSaveData();
                 }
             }
-            // ── 对方拍一拍 和 梦角搞怪：两套判定各掷各的骰子（各 3%），互不排斥，
-            //    有可能同一次同时出现；只要其中任何一个触发了，这次就不再走普通回复 ──
-            const _doPoke = Math.random() < 0.03;
-            const _doThrow = Math.random() < 0.03 && window.ThrowEgg && typeof window.ThrowEgg.partnerThrow === 'function';
+            // ── 对方拍一拍 / 梦角搞怪彩蛋：四种结果等概率（各 25%）——
+            //    普通回复 / 只拍一拍 / 只搞怪 / 两个一起来；不配置偏向概率，
+            //    既保证大部分时候正常聊天，又让两个惊喜都有均等机会 ──
+            const _surprise = Math.floor(Math.random() * 4);
+            const _doPoke = _surprise === 1 || _surprise === 3;
+            const _doThrow = (_surprise === 2 || _surprise === 3) && window.ThrowEgg && typeof window.ThrowEgg.partnerThrow === 'function';
             if (_doPoke) {
                 // 调用提取的通用函数（同时供 /测试拍一拍 指令使用）
                 if (typeof window._triggerPartnerPoke === 'function') window._triggerPartnerPoke();
@@ -2744,7 +2747,8 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 });
             }
 
-            const replyCount = Math.random() < 0.75 ? 1: (Math.random() < 0.95 ? 2: 3);
+            // 回复几条：1 条还是 2~3 条对半随机；选多条时 2 条/3 条再等概率
+            const replyCount = Math.random() < 0.5 ? 1 : (Math.random() < 0.5 ? 2 : 3);
             if (!customReplies || customReplies.length === 0) {
                 showNotification('回复库为空，请先到「自定义回复」中添加内容', 'info', 3500);
                 return;
@@ -2780,7 +2784,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
             //    跟引用回复、表情混入消息都是各自独立摇骰子，互不影响 ──
             const roundCandidateIds = (window._currentRoundMsgIds || []).slice();
             window._currentRoundMsgIds = []; // 这一轮即将被回复，清空计数，下一次发消息重新算一轮
-            if (settings.autoReactionEnabled !== false && !window._companionSilentTrigger && roundCandidateIds.length > 0 && Math.random() < 0.2) {
+            if (settings.autoReactionEnabled !== false && !window._companionSilentTrigger && roundCandidateIds.length > 0 && Math.random() < 0.5) {
                 if (!customEmojis || customEmojis.length === 0) {
                     showNotification('自定义 Emoji 库为空，梦角暂时没法给消息加反应', 'info', 3000);
                 } else {
@@ -2844,11 +2848,13 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         if (raw) disabledStickerItems = new Set(JSON.parse(raw));
                     } catch (e) {}
                     const enabledStickerPool = (stickerLibrary || []).filter(s => !disabledStickerItems.has(s));
-                    const shouldSendSticker = enabledStickerPool.length > 0 && Math.random() < 0.2;
+                    // 这条回复带不带贴纸：对半随机（没有可用贴纸时自然不带）
+                    const shouldSendSticker = enabledStickerPool.length > 0 && Math.random() < 0.5;
 
                     let finalText = replyText;
                     let separateEmoji = null;
-                    if (customEmojis && customEmojis.length > 0 && Math.random() < 0.2) {
+                    // 混不混自定义表情：对半随机；混的话前置/后置再对半
+                    if (customEmojis && customEmojis.length > 0 && Math.random() < 0.5) {
                         const emoji = customEmojis[Math.floor(Math.random() * customEmojis.length)];
                         if (settings.emojiMixEnabled !== false) {
                             finalText = Math.random() < 0.5
@@ -2868,7 +2874,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         status: 'received',
                         favorited: false,
                         note: null,
-                        replyTo: (i === 0 && recentUserMsgs.length > 0 && Math.random() < 0.3)
+                        replyTo: (i === 0 && recentUserMsgs.length > 0 && Math.random() < 0.5)
                             ? (function(){ const m = recentUserMsgs[Math.floor(Math.random() * recentUserMsgs.length)]; return { id: m.id, text: m.text, sender: m.sender }; })()
                             : null,
                         type: 'normal'

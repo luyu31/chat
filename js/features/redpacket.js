@@ -193,11 +193,9 @@
         return Math.max(1, amount);
     }
 
-    // isSpecial：这次是不是节日/纪念日/经期关怀这类"特殊场合"的红包——是的话彩蛋池概率吃80%，
-    // 不是（普通兜底触发）就还是50%
+    // 彩蛋金额还是四档普通金额：对半随机，普通场合和特殊场合都一样，不做偏向
     function generatePartnerAmount(isSpecial) {
-        var eggProb = isSpecial ? 0.8 : 0.5;
-        if (Math.random() < eggProb) return _drawEggAmount();
+        if (Math.random() < 0.5) return _drawEggAmount();
         return _drawTierAmount();
     }
 
@@ -319,9 +317,9 @@
         '<path d="M12612.5 9030L12466 9179.5" stroke="#FFC97C" stroke-width="22" stroke-linecap="round"/>' +
         '</svg>';
 
-    // ── 领取/退回判定（文档 3.1：用户 → 梦角，90%/10%骰子） ──────────────────────
+    // ── 领取/退回判定（对半随机：领或不领各 50%，不做偏向概率） ──────────────────────
     function _rollOutcome(record) {
-        var willReceive = Math.random() < 0.9;
+        var willReceive = Math.random() < 0.5;
         record.willReceive = willReceive;
         if (willReceive) {
             var hours = 0.5 + Math.random() * (3 - 0.5);
@@ -881,10 +879,10 @@
         return true;
     }
 
-    // 80%概率带一个表情包，从"对方表情库"(stickerLibrary，纯字符串数组)里随机抽；
+    // 对半随机带一个表情包，从"对方表情库"(stickerLibrary，纯字符串数组)里随机抽；
     // 库是空的就不带，不会因为抽不到东西而出错或者硬凑
     function _drawPartnerSticker() {
-        if (Math.random() >= 0.8) return null;
+        if (Math.random() < 0.5) return null;
         var pool = (typeof stickerLibrary !== 'undefined' && Array.isArray(stickerLibrary)) ? stickerLibrary : [];
         if (!pool.length) return null;
         return pool[Math.floor(Math.random() * pool.length)];

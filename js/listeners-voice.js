@@ -7,7 +7,8 @@
 (function () {
     'use strict';
 
-    const FAKE_VOICE_PROBABILITY = 0.20;
+    // 开关打开后，他的每条文字消息变不变语音对半随机（不做偏向概率）
+    const FAKE_VOICE_PROBABILITY = 0.50;
     const FAKE_VOICE_KEY = 'fakeVoiceEnabled';
 
     function _isFakeVoiceOn() {
@@ -136,7 +137,7 @@
         observer.observe(chatContainer, { childList: true });
         chatContainer.querySelectorAll('.message-wrapper').forEach(renderVoiceIfNeeded);
 
-        // ─────────── 对方文本消息 → 20% 概率改成伪语音 ───────────
+        // ─────────── 对方文本消息 → 对半随机改成伪语音 ───────────
         function maybeFakeVoiceForPartner(wrapper) {
             if (!wrapper.classList.contains('received')) return;
             const msgId = wrapper.dataset.msgId || wrapper.dataset.id;
