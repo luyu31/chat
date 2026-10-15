@@ -153,9 +153,11 @@ function _renderListContentOnly() {
         else if (currentSubTab === 'statuses') itemsToRender = customStatuses;
         else if (currentSubTab === 'slacking') { _renderSlackingTab(list); return; }
         else if (currentSubTab === 'locationBank') { _locationBank.render(list, '位置字卡'); return; }
-        else if (currentSubTab === 'qaQuestions') { _qaQuestionBank.render(list, '快问问题'); return; }
+        else if (currentSubTab === 'qaQuestions') { _qaQuestionBank.render(list, 'TA的题库'); return; }
         else if (currentSubTab === 'qaPraise') { _qaPraiseBank.render(list, '夸奖字卡'); return; }
         else if (currentSubTab === 'qaTease') { _qaTeaseBank.render(list, '嘲讽字卡'); return; }
+        else if (currentSubTab === 'peekCaught') { _peekCaughtBank.render(list, '偷看被抓包反应'); return; }
+        else if (currentSubTab === 'foodReact') { _foodReactBank.render(list, '食光反应'); return; }
         else if (currentSubTab === 'mottos') itemsToRender = customMottos;
         else if (currentSubTab === 'motto') itemsToRender = customMottos;
         else if (currentSubTab === 'intros') itemsToRender = customIntros;
@@ -260,9 +262,11 @@ function renderReplyLibrary() {
         else if (currentSubTab === 'statuses') itemsToRender = customStatuses;
         else if (currentSubTab === 'slacking') { _renderSlackingTab(list); return; }
         else if (currentSubTab === 'locationBank') { _locationBank.render(list, '位置字卡'); return; }
-        else if (currentSubTab === 'qaQuestions') { _qaQuestionBank.render(list, '快问问题'); return; }
+        else if (currentSubTab === 'qaQuestions') { _qaQuestionBank.render(list, 'TA的题库'); return; }
         else if (currentSubTab === 'qaPraise') { _qaPraiseBank.render(list, '夸奖字卡'); return; }
         else if (currentSubTab === 'qaTease') { _qaTeaseBank.render(list, '嘲讽字卡'); return; }
+        else if (currentSubTab === 'peekCaught') { _peekCaughtBank.render(list, '偷看被抓包反应'); return; }
+        else if (currentSubTab === 'foodReact') { _foodReactBank.render(list, '食光反应'); return; }
         else if (currentSubTab === 'mottos') itemsToRender = customMottos;
         else if (currentSubTab === 'motto') itemsToRender = customMottos;
         else if (currentSubTab === 'intros') itemsToRender = customIntros;
@@ -304,7 +308,7 @@ function _renderModernToolbar() {
     // 问卷题库这个 tab 是自己单独一套渲染（对象结构，不是纯字符串数组），
     // 不走下面这套批量管理/分组/去重逻辑——那些都是照着字符串数组写的，硬塞进来只会出岔子
     // 摸鱼状态也是 {id,text} 对象结构，单独一套渲染，同样不走通用批量逻辑
-    if (currentMajorTab === 'atmosphere' && (currentSubTab === 'surveyBank' || currentSubTab === 'redpacketBank' || currentSubTab === 'slacking' || currentSubTab === 'locationBank' || currentSubTab === 'qaQuestions' || currentSubTab === 'qaPraise' || currentSubTab === 'qaTease')) {
+    if (currentMajorTab === 'atmosphere' && (currentSubTab === 'surveyBank' || currentSubTab === 'redpacketBank' || currentSubTab === 'slacking' || currentSubTab === 'locationBank' || currentSubTab === 'qaQuestions' || currentSubTab === 'qaPraise' || currentSubTab === 'qaTease' || currentSubTab === 'peekCaught' || currentSubTab === 'foodReact')) {
         if (toolbar) toolbar.style.display = 'none';
         return;
     }
@@ -1119,6 +1123,36 @@ var _qaTeaseBank = _makeObjectBank('customQATease', [
     { id: 't_6', text: '蜗牛都比你快，下次加油吧' }
 ]);
 window._getQATeasePool = _qaTeaseBank.pool;
+
+// ─── 摸鱼 · 偷看被抓包时他的反应字卡组（peek.js 用） ───────────────────────────────
+var _peekCaughtBank = _makeObjectBank('customPeekCaught', [
+    { id: 'pc_1', text: '感觉有人在看我？' },
+    { id: 'pc_2', text: '看什么呢，我脸上有字？' },
+    { id: 'pc_3', text: '……你刚刚是不是在偷看我？' },
+    { id: 'pc_4', text: '再看再看就要收费了哦' },
+    { id: 'pc_5', text: '抓到你了，偷看我的小坏蛋' },
+    { id: 'pc_6', text: '嗯？背后一凉，是不是你在瞄我' },
+    { id: 'pc_7', text: '看多久啦？我都被你看得不好意思了' },
+    { id: 'pc_8', text: '不许偷看！要看看本人，我准了' },
+    { id: 'pc_9', text: '嘿嘿，就知道你忍不住' },
+    { id: 'pc_10', text: '再看我就要开始表演了，你别后悔' }
+]);
+window._getPeekCaughtPool = _peekCaughtBank.pool;
+
+// ─── 食光记 · 推荐给他时他的反应字卡组（food.js 用） ───────────────────────────────
+var _foodReactBank = _makeObjectBank('customFoodReactions', [
+    { id: 'fr_1', text: '好呀，记下了，下次一起去' },
+    { id: 'fr_2', text: '这个可以有，已经被我馋到了' },
+    { id: 'fr_3', text: '听你的，你推荐的都好吃' },
+    { id: 'fr_4', text: '行，就它了，你真会挑' },
+    { id: 'fr_5', text: '嗯嗯，我已经在想加什么菜了' },
+    { id: 'fr_6', text: '你怎么知道我刚好想吃这个' },
+    { id: 'fr_7', text: '哼，这时候馋我？记下了，你请' },
+    { id: 'fr_8', text: '看起来不错……要是你做的就更好了' },
+    { id: 'fr_9', text: '批准了，不过要陪我一起吃才算数' },
+    { id: 'fr_10', text: '大半夜看这个，你得负责' }
+]);
+window._getFoodReactPool = _foodReactBank.pool;
 
 function _renderEmojiTab(list, itemsToRender) {
     if (itemsToRender.length === 0 && customEmojis.length === 0) {
@@ -2664,6 +2698,14 @@ function initReplyLibraryListeners() {
             }
             if (currentSubTab === 'qaTease') {
                 _qaTeaseBank.add('嘲讽字卡', '请输入新的嘲讽台词（比如：蜗牛都比你快）:');
+                return;
+            }
+            if (currentSubTab === 'peekCaught') {
+                _peekCaughtBank.add('偷看抓包反应', '请输入新的抓包反应（比如：被我抓到了吧，小调皮）:');
+                return;
+            }
+            if (currentSubTab === 'foodReact') {
+                _foodReactBank.add('食光反应', '请输入新的食光反应（比如：这个必须安排，你定时间）:');
                 return;
             }
             let input;

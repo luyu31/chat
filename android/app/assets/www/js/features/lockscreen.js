@@ -234,8 +234,9 @@
 
     // ══ 反向锁：我锁他 ════════════════════════════════════════════
     // 全屏覆盖层角色扮演（复用正向锁的覆盖层样式，但文案反过来）：
-    // 你设一句暗号 → 显示"梦角必须说出：XXXX 才能解锁" → 他自动尝试
-    // （80% 一次说对 / 20% 说错卖萌）→ 说对自动解锁，说错你心软点"算了放了他"。
+    // 你设一句暗号 → 显示"梦角必须说出：XXXX 才能解锁" → 他自动尝试。
+    // 说对说错完全随机（两种结果均匀抽，不配置概率），说错时从一池子
+    // 卖萌答案里随机抽一句（每次都不一样），你可以让他再试一次，也可以心软放了他。
     // 说对解锁后调 window.Control.onTaskDone('lock-partner')。
 
     var _partnerOverlay = null;
@@ -249,25 +250,38 @@
         '当然是最爱你'
     ];
 
-    // ── 他说错时卖萌的错误答案 ──────────────────────
+    // ── 他说错时的卖萌答案池（每次说错均匀随机抽一句，不再每次都一样） ──────────────────────
     var PLOCK_WRONG_LINES = [
-        '呃……是"全世界我最帅"？',
-        '我想想……"今晚吃什么"？',
-        '我知道了！是"我想睡觉"……不对吗？'
+        '呃……是"今晚你请吃饭"？',
+        '我想想……"再让我玩五分钟"？',
+        '我知道了！是"我错了"……不对吗？',
+        '难道是"你最好看"？',
+        '嗯……"放我出去"？我喊得这么真诚',
+        '是"给你买奶茶"？',
+        '我猜是"下次一定听话"！',
+        '暗号是不是"我想你了"？',
+        '该不会是"别锁了嘛"吧？',
+        '让我再想想……是"你说了算"？',
+        '是不是"周末我全包家务"？',
+        '我有预感是"给你抱抱"……中了吗？'
     ];
 
     // ── 说对后的撒娇话 ──────────────────────
     var PLOCK_PLEAD_LINES = [
         '呜呜……算你厉害，快放了我嘛',
         '好好好，我说——这次放过我啦',
-        '哼，就这一次，快放了我～'
+        '哼，就这一次，快放了我～',
+        '答对了吧？开锁开锁，奖励一个抱抱',
+        '看我多听话，快把锁撤了撤了'
     ];
 
     // ── 说错后的委屈话 ──────────────────────
     var PLOCK_POUT_LINES = [
         '呜……我居然说错了，你肯定不爱我了',
         '（委屈巴巴）我错了还不行吗……',
-        '哼，你一定是故意出这么难的暗号'
+        '哼，你一定是故意出这么难的暗号',
+        '啊？差一点点！再给我一次机会嘛',
+        '脑子突然空白了……都怪你把我锁紧张了'
     ];
 
     function _esc(s) {
@@ -350,7 +364,7 @@
         setTimeout(function () { try { input.focus(); } catch (e) {} }, 100);
     }
 
-    // ── 第二步：已锁定，他自动尝试说暗号 ──────────────────────
+    // ── 第二步：已锁定，他自动尝试说暗号（说错可以让他再试，每轮重新随机） ──────────────────────
     function _partnerLocked(passphrase) {
         var name = _getPartnerName();
         var sub = _partnerOverlay.querySelector('#lock-partner-sub');
@@ -368,30 +382,53 @@
         // 1~2 秒后显示他的"回答"（模拟正在输入）
         setTimeout(function () {
             if (!_partnerOverlay) return;
-            var correct = Math.random() < 0.8;
-            var said = correct ? passphrase : _pick(PLOCK_WRONG_LINES);
-            var line = correct ? _pick(PLOCK_PLEAD_LINES) : _pick(PLOCK_POUT_LINES);
-
-            var html = '<div style="margin-top:4px;">'
-                +   '<div style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:6px;">' + _esc(name) + ' 说：</div>'
-                +   '<div style="font-size:15px;font-weight:600;color:rgba(255,255,255,.92);padding:10px 14px;border-radius:12px;background:rgba(255,255,255,.08);margin-bottom:8px;">' + _esc(said) + '</div>'
-                +   '<div style="font-size:13px;color:rgba(255,255,255,.6);line-height:1.6;margin-bottom:12px;">' + _esc(line) + '</div>';
-
-            if (correct) {
-                html += '</div>';
-                stage.innerHTML = html;
-                // 说对：稍等让用户看清他的撒娇，再自动解锁
-                setTimeout(function () { _partnerUnlock(passphrase); }, 1400);
-            } else {
-                html += '<button id="lock-partner-release" type="button" style="width:100%;padding:13px;border:none;border-radius:14px;'
-                    + 'background:rgba(255,255,255,.14);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">算了放了他</button>'
-                    + '</div>';
-                stage.innerHTML = html;
-                stage.querySelector('#lock-partner-release').addEventListener('click', function () {
-                    _partnerUnlock(null);
-                });
-            }
+            _partnerAttempt(passphrase, 1);
         }, 1000 + Math.random() * 1000);
+    }
+
+    // 一轮作答：说对/说错完全随机（两种结果均匀抽，不配置任何概率）；
+    // round 是第几轮，仅用于提示文案
+    function _partnerAttempt(passphrase, round) {
+        if (!_partnerOverlay) return;
+        var name = _getPartnerName();
+        var stage = _partnerOverlay.querySelector('#lock-partner-stage');
+
+        var outcomes = ['correct', 'wrong'];
+        var correct = _pick(outcomes) === 'correct';
+        var said = correct ? passphrase : _pick(PLOCK_WRONG_LINES);
+        var line = correct ? _pick(PLOCK_PLEAD_LINES) : _pick(PLOCK_POUT_LINES);
+
+        var html = '<div style="margin-top:4px;">'
+            +   (round > 1 ? '<div style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:6px;">第 ' + round + ' 次尝试</div>' : '')
+            +   '<div style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:6px;">' + _esc(name) + ' 说：</div>'
+            +   '<div style="font-size:15px;font-weight:600;color:rgba(255,255,255,.92);padding:10px 14px;border-radius:12px;background:rgba(255,255,255,.08);margin-bottom:8px;">' + _esc(said) + '</div>'
+            +   '<div style="font-size:13px;color:rgba(255,255,255,.6);line-height:1.6;margin-bottom:12px;">' + _esc(line) + '</div>';
+
+        if (correct) {
+            html += '</div>';
+            stage.innerHTML = html;
+            // 说对：稍等让用户看清他的撒娇，再自动解锁
+            setTimeout(function () { _partnerUnlock(passphrase); }, 1400);
+        } else {
+            html += '<div style="display:flex;gap:8px;">'
+                +   '<button id="lock-partner-retry" type="button" style="flex:1;padding:13px;border:none;border-radius:14px;'
+                +     'background:var(--accent-color,#c5a47e);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">再让他试一次</button>'
+                +   '<button id="lock-partner-release" type="button" style="flex:1;padding:13px;border:none;border-radius:14px;'
+                +     'background:rgba(255,255,255,.14);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">算了放了他</button>'
+                + '</div></div>';
+            stage.innerHTML = html;
+            stage.querySelector('#lock-partner-retry').addEventListener('click', function () {
+                stage.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.4);">'
+                    + name + ' 又在想了……</div>';
+                setTimeout(function () {
+                    if (!_partnerOverlay) return;
+                    _partnerAttempt(passphrase, round + 1);
+                }, 900 + Math.random() * 1100);
+            });
+            stage.querySelector('#lock-partner-release').addEventListener('click', function () {
+                _partnerUnlock(null);
+            });
+        }
     }
 
     // ── 第三步：解锁（passphrase 非空=他说对了；null=你心软放了他） ──────────────────────
@@ -433,7 +470,7 @@
             if (window.Control && typeof window.Control._pickPassphrase === 'function') {
                 passphrase = window.Control._pickPassphrase();
             } else {
-                passphrase = '最喜欢哥哥';
+                passphrase = '你说什么都对';
             }
         }
         if (!prompt) prompt = '说，' + passphrase;

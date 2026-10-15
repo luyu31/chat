@@ -384,12 +384,8 @@
     }
 
     function generatePartnerExpense() {
-        // 抽签池 = 内置 + 自定义；hidden 权重低一点（1:3），更少被抽到
-        var pool = [];
-        BUILTIN_CONSUMER_OPTIONS.concat(shared.consumerOptions || []).forEach(function (o) {
-            var w = o.hidden ? 1 : 3;
-            for (var i = 0; i < w; i++) pool.push(o);
-        });
+        // 抽签池 = 内置 + 自定义，每一项等概率，完全随机——不做任何权重/概率配置
+        var pool = BUILTIN_CONSUMER_OPTIONS.concat(shared.consumerOptions || []);
         var picked = pickLedger(pool);
         var rec = {
             id: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 100000),

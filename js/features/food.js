@@ -41,18 +41,6 @@
         '今晚{f}怎么样？我来挑地方',
         '馋{f}了，你陪我吃就更好了'
     ];
-    var REACT_ACCEPT = [
-        '好呀，记下了，下次一起去',
-        '这个可以有，已经被我馋到了',
-        '听你的，你推荐的都好吃',
-        '行，就它了，你真会挑',
-        '嗯嗯，我已经在想加什么菜了'
-    ];
-    var REACT_TEASE = [
-        '哼，这时候馋我？记下了，你请',
-        '看起来不错……要是你做的就更好了',
-        '批准了，不过要陪我一起吃才算数'
-    ];
     var ME_EATEN = [
         '{m}吃了{f}，记下啦',
         '{m}解决：{f}，还不错',
@@ -64,6 +52,31 @@
         '{m}解决了{f}，和你汇报一下',
         '今天{m}吃的{f}，下次带你来'
     ];
+
+    // 我推荐给他时他的反应兜底池：实际优先用字卡库的「食光反应」字卡组，
+    // 开心/嘴硬全混在一起，抽到哪句算哪句——不做任何概率配比
+    var DEFAULT_REACTS = [
+        '好呀，记下了，下次一起去',
+        '这个可以有，已经被我馋到了',
+        '听你的，你推荐的都好吃',
+        '行，就它了，你真会挑',
+        '嗯嗯，我已经在想加什么菜了',
+        '你怎么知道我刚好想吃这个',
+        '哼，这时候馋我？记下了，你请',
+        '看起来不错……要是你做的就更好了',
+        '批准了，不过要陪我一起吃才算数',
+        '大半夜看这个，你得负责'
+    ];
+
+    function getReactPool() {
+        try {
+            if (typeof window._getFoodReactPool === 'function') {
+                var pool = window._getFoodReactPool();
+                if (Array.isArray(pool) && pool.length) return pool;
+            }
+        } catch (e) {}
+        return DEFAULT_REACTS.slice();
+    }
 
     // ── 工具 ──────────────────────
     function _esc(s) {
@@ -111,7 +124,8 @@
     function _newId() { return 'f_' + Date.now() + '_' + Math.floor(Math.random() * 100000); }
 
     // ── 往聊天流里说话（我 / TA 两种身份，和 quickqa 同一套） ──────────────────────
-    function _say(text, who) {
+    // foodOwn=true 标记"食光记自己产生的消息"，聊天自动记账钩子靠它防重复
+    function _say(text, who, foodOwn) {
         try {
             if (typeof addMessage !== 'function') return;
             addMessage({
@@ -123,7 +137,8 @@
                 favorited: false,
                 note: null,
                 replyTo: null,
-                type: 'normal'
+                type: 'normal',
+                foodOwn: !!foodOwn
             });
             if (typeof playSound === 'function') playSound(who === 'me' ? 'send' : 'message');
         } catch (e) {}
@@ -136,9 +151,9 @@
         var d = load();
         d.entries.unshift({ id: _newId(), ts: Date.now(), kind: 'recommend', author: 'me', what: what, meal: '' });
         save(d);
-        _say(_pick(ME_RECO).replace(/\{f\}/g, what), 'me');
-        // TA 隔一会儿回一句反应（多数时候开心接受，偶尔嘴硬一下）
-        var react = Math.random() < 0.8 ? _pick(REACT_ACCEPT) : _pick(REACT_TEASE);
+        _say(_pick(ME_RECO).replace(/\{f\}/g, what), 'me', true);
+        // TA 隔一会儿回一句反应：反应池整池均匀随机，不区分接受/嘴硬，不做概率配比
+        var react = _pick(getReactPool());
         setTimeout(function () { _say(react, 'him'); }, 1000 + Math.random() * 1800);
         _gain(2);
         renderList();
@@ -167,10 +182,109 @@
         d.entries.unshift({ id: _newId(), ts: Date.now(), kind: 'eaten', author: author, what: what, meal: meal });
         save(d);
         var tpl = author === 'me' ? _pick(ME_EATEN) : _pick(HIM_EATEN);
-        _say(tpl.replace(/\{m\}/g, meal).replace(/\{f\}/g, what), author);
+        _say(tpl.replace(/\{m\}/g, meal).replace(/\{f\}/g, what), author, true);
         _gain(1);
         renderList();
         return true;
+    }
+
+    // ── 聊天自动记录：「今天晚上吃了炸鸡」「中午吃的螺蛳粉」→ 自动入食光 ──────────────────────
+    var _seenChat = {};
+
+    var MEAL_RULES = [
+        ['夜宵', /夜宵|宵夜/],
+        ['早餐', /早餐|早饭|早点|今早|早上\s*吃/],
+        ['午餐', /午餐|午饭|中饭|中午\s*吃/],
+        ['晚餐', /晚餐|晚饭|今晚|晚上\s*吃|夜里\s*吃|半夜\s*吃/],
+        ['加餐', /下午茶|加餐|下午\s*吃/]
+    ];
+
+    // 问句/计划/否定 → 不是在汇报"吃了"，不记
+    var SKIP_RE = /[?？]$|吃(?:什么|啥|点啥|啥好)|吃(?:了)?(?:没|吗|么|过没)|想\s*吃|没吃|不吃|还没|要不要|去吃|待会|待会儿|等会|明天|下次|约|陪(?:我|你)|带(?:我|你)|谁请|好吃|难吃|吃腻|吃过了[?？]?\s*$/;
+
+    function detectMeal(text) {
+        for (var i = 0; i < MEAL_RULES.length; i++) {
+            if (MEAL_RULES[i][1].test(text)) return MEAL_RULES[i][0];
+        }
+        return _nowMeal();
+    }
+
+    // 从句中抠出食物名；返回 {what, meal} 或 null
+    function detectEaten(text) {
+        if (!text) return null;
+        text = String(text).trim();
+        if (!text || text.length > 60) return null;
+        if (SKIP_RE.test(text)) return null;
+
+        var what = null;
+        var m;
+        // 1) 吃了X / 吃的X / 吃的是X
+        m = text.match(/吃(?:了|的是|的)?(.+?)\s*[。.!！~～…]*$/);
+        if (m) what = m[1];
+        // 2) 「晚饭是火锅」「晚餐解决了黄焖鸡」「夜宵：烧烤」
+        if (!what) {
+            m = text.match(/(?:早餐|早饭|午餐|午饭|中饭|晚餐|晚饭|夜宵|宵夜|下午茶)\s*(?:是|为|有|解决了?|搞定了?|安排了?|吃的是|吃了)?\s*[:：]?\s*(.+?)\s*[。.!！~～…]*$/);
+            if (m) what = m[1];
+        }
+        if (!what) return null;
+
+        what = what
+            // 开头的量词/虚词（"个汉堡""一碗面"）；注意"包"不能放进来——包子会被误杀
+            .replace(/^[了的是为有个些点份碗顿盘杯串袋盒]+/, '')
+            .replace(/[呢啊呀哦啦嘛呐的了吧呗~～\s。，,.!！?？…]+$/g, '')
+            .replace(/^(?:一点|一些|好多|好多好多)/, '')
+            .trim();
+        // 抠完还是虚词/含疑问指代，就不记
+        if (!what || what.length > 12) return null;
+        if (/[你我他她它们谁什哪几多吗呢嘛么吧]|这个|那个|东西|外卖到|饭没|饭了吗/.test(what)) {
+            // "饭"本身是合法的（吃了饭），但"东西"不是
+            if (what !== '饭') return null;
+        }
+        return { what: what, meal: detectMeal(text) };
+    }
+
+    // ── 聊天流里插入食光确认卡片（system 消息，居中灰条，照 ledger 的样式） ──────────────────────
+    function insertFoodCard(hit) {
+        try {
+            if (typeof addMessage !== 'function') return;
+            addMessage({
+                id: Date.now() + Math.random(),
+                sender: null,
+                type: 'system',
+                text: '<i class="fas fa-utensils" style="margin-right:4px;"></i>已记食光 · ' + _esc(hit.meal) + ' · ' + _esc(hit.what),
+                timestamp: new Date(),
+                status: 'received',
+                favorited: false,
+                note: null,
+                replyTo: null
+            });
+        } catch (e) {}
+    }
+
+    function handleUserMessage(msg) {
+        if (!msg || msg.sender !== 'user' || msg.type !== 'normal') return;
+        if (msg.foodOwn || msg.image) return;
+        var text = msg.text;
+        if (!text) return;
+        var key = String(msg.id || '');
+        if (key) {
+            if (_seenChat[key]) return;
+            _seenChat[key] = 1;
+            if (Object.keys(_seenChat).length > 5000) _seenChat = {};
+        }
+        // 只说「食光记/吃什么」之类的打开指令 → 直接打开弹窗
+        if (/^\s*(?:食光记|食光)\s*$/.test(text)) { setTimeout(open, 100); return; }
+
+        var hit = detectEaten(text);
+        if (!hit) return;
+        var d = load();
+        d.entries.unshift({ id: _newId(), ts: Date.now(), kind: 'eaten', author: 'me', what: hit.what, meal: hit.meal, source: 'chat' });
+        save(d);
+        setTimeout(function () {
+            insertFoodCard(hit);
+            var modal = document.getElementById('food-modal');
+            if (modal && modal.style.display === 'flex') renderList();
+        }, 350);
     }
 
     // ── 弹窗 UI ──────────────────────
@@ -230,6 +344,7 @@
             +   '<div id="food-list" style="max-height:26vh;overflow-y:auto;"></div>'
 
             +   '<div class="food-btn-row" style="margin-top:12px;">'
+            +     '<button type="button" id="food-manage-react" style="flex:1;padding:9px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;"><i class="fas fa-comment-dots"></i> 管理反应字卡</button>'
             +     '<button type="button" id="food-close" class="modal-btn modal-btn-secondary" style="flex:1;">关闭</button>'
             +   '</div>'
             +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:8px;line-height:1.7;">推荐和记录都会出现在聊天里，翻记录就像翻一起吃过的日子</div>'
@@ -238,6 +353,15 @@
 
         m.querySelector('#food-close').addEventListener('click', function () {
             if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none';
+        });
+        m.querySelector('#food-manage-react').addEventListener('click', function () {
+            try {
+                if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none';
+                if (typeof currentMajorTab !== 'undefined') { currentMajorTab = 'atmosphere'; currentSubTab = 'foodReact'; }
+                if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
+                var libModal = document.getElementById('custom-replies-modal');
+                if (libModal && typeof showModal === 'function') showModal(libModal);
+            } catch (e) {}
         });
         m.addEventListener('click', function (e) {
             if (e.target === m) { if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none'; }
@@ -368,5 +492,20 @@
         if (typeof showModal === 'function') showModal(m); else m.style.display = 'flex';
     }
 
-    window.Food = { open: open };
+    // 链式包裹 window._onUserMessage（和 ledger.js 同款叠加，不能覆盖别的模块）
+    function wrapUserHook() {
+        var prev = window._onUserMessage;
+        window._onUserMessage = function (m) {
+            try { handleUserMessage(m); } catch (e) { console.warn('[food]', e); }
+            if (typeof prev === 'function') { try { prev(m); } catch (e2) { console.warn('[food:prev]', e2); } }
+        };
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () { setTimeout(wrapUserHook, 0); });
+    } else {
+        setTimeout(wrapUserHook, 60);
+    }
+
+    window.Food = { open: open, detect: detectEaten };
 })();

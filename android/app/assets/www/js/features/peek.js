@@ -4,10 +4,11 @@
  * 跟查岗互补：查岗是他查你，摸鱼是你看他。
  * 每天第一次打开时用"日期字符串"当种子的伪随机（seededRandom）
  * 抽一个当天的状态，当天内保持不变，零点后重抽；
- * 「偷看一下」有 60% 概率被他抓包（60 分钟冷却，localStorage 记 lastCaughtAt）；
+ * 「偷看一下」抓不抓包完全随机（两种结果各占一半，不配置概率，
+ * 60 分钟冷却，localStorage 记 lastCaughtAt）；
  * 状态池直接用字卡库的「摸鱼状态」字卡组（reply-library.js 的
  * window._getSlackingStatusPool），跟查岗共用同一份字卡，
- * 点「管理状态字卡」直达该字卡组增删改。
+ * 被抓包的反应来自「偷看抓包」字卡组，两个都能点「管理」直达增删改。
  *
  * 对外：window.Peek = { open, getToday }
  */
@@ -43,13 +44,22 @@
         '在楼下遛弯'
     ];
 
-    // ── 被抓包时他的反应台词（随机 4 条） ──────────────────────
+    // ── 被抓包时他的反应兜底池：优先字卡库的「偷看抓包」字卡组 ──────────────────────
     var CAUGHT_LINES = [
         '感觉有人在看我？',
         '看什么呢，我脸上有字？',
         '……你刚刚是不是在偷看我？',
         '再看再看就要收费了哦'
     ];
+
+    function _getCaughtPool() {
+        var pool = [];
+        if (typeof window._getPeekCaughtPool === 'function') {
+            try { pool = window._getPeekCaughtPool(); } catch (e) {}
+        }
+        if (!Array.isArray(pool) || !pool.length) pool = CAUGHT_LINES.slice();
+        return pool;
+    }
 
     // ── 存取 ──────────────────────
     function load() {
@@ -199,14 +209,17 @@
         box.innerHTML =
             '<div style="display:flex;flex-direction:column;gap:8px;">'
             +   '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
-            +     '<span style="font-size:12px;color:var(--text-secondary,#888);">状态字卡 ' + _getPool().length + ' 条 · 位置字卡 ' + _getLocationPool().length + ' 条</span>'
+            +     '<span style="font-size:12px;color:var(--text-secondary,#888);">状态字卡 ' + _getPool().length + ' 条 · 位置字卡 ' + _getLocationPool().length + ' 条 · 抓包反应 ' + _getCaughtPool().length + ' 条</span>'
             +   '</div>'
-            +   '<div style="display:flex;gap:8px;">'
-            +     '<button type="button" id="peek-manage-cards" style="flex:1;padding:7px 12px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;">'
+            +   '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+            +     '<button type="button" id="peek-manage-cards" style="flex:1;min-width:100px;padding:7px 12px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;">'
             +       '<i class="fas fa-comment-dots"></i> 管理状态字卡'
             +     '</button>'
-            +     '<button type="button" id="peek-manage-locations" style="flex:1;padding:7px 12px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;">'
+            +     '<button type="button" id="peek-manage-locations" style="flex:1;min-width:100px;padding:7px 12px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;">'
             +       '<i class="fas fa-location-dot"></i> 管理位置字卡'
+            +     '</button>'
+            +     '<button type="button" id="peek-manage-caught" style="flex:1;min-width:100px;padding:7px 12px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;">'
+            +       '<i class="fas fa-eye"></i> 管理抓包反应'
             +     '</button>'
             +   '</div>'
             + '</div>';
@@ -215,6 +228,9 @@
         });
         box.querySelector('#peek-manage-locations').addEventListener('click', function () {
             _openCardLibrary('locationBank', '[peek] 打开位置字卡失败:');
+        });
+        box.querySelector('#peek-manage-caught').addEventListener('click', function () {
+            _openCardLibrary('peekCaught', '[peek] 打开抓包反应字卡失败:');
         });
     }
 
@@ -230,7 +246,7 @@
         } catch (e) { console.warn(warnTag, e); }
     }
 
-    // ── 偷看一下：60% 被他抓包（60 分钟冷却），40% 安全偷看 ──────────────────────
+    // ── 偷看一下：抓不抓包完全随机（两个结果均匀抽，不配置任何概率） ──────────────────────
     function peekHim() {
         var d = load();
         var now = Date.now();
@@ -239,11 +255,12 @@
             if (typeof showNotification === 'function') showNotification('刚被他抓包过，一小时后再偷看吧');
             return;
         }
-        if (Math.random() < 0.6) {
-            // 被发现了：他在聊天流里回头"看你"
+        var caught = pick(['caught', 'safe']);
+        if (caught === 'caught') {
+            // 被发现了：他在聊天流里回头"看你"，反应从字卡组均匀随机
             d.lastCaughtAt = now;
             save(d);
-            _partnerSay(pick(CAUGHT_LINES));
+            _partnerSay(pick(_getCaughtPool()));
             if (typeof showNotification === 'function') showNotification('糟糕，被他发现了');
         } else {
             // 安全偷看：刷新出一条他此刻的随机状态和位置（不破坏今日固定状态）
