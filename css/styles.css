@@ -1841,7 +1841,7 @@
             z-index: 2000;
             align-items: center;
             justify-content: center;
-            backdrop-filter: blur(8px);
+            backdrop-filter: blur(4px);
             animation: modalBgFadeIn 0.3s ease;
         }
         @keyframes modalBgFadeIn {
@@ -3387,12 +3387,12 @@
             justify-content: center;
             z-index: 9999;
             overflow: hidden;
-            transition: all 1.6s cubic-bezier(0.7, 0, 0.3, 1);
+            transition: opacity 0.45s ease, transform 0.45s ease, filter 0.45s ease;
         }
         .welcome-animation.hidden {
             opacity: 0;
-            transform: scale(1.08);
-            filter: blur(40px) brightness(2);
+            transform: scale(1.04);
+            filter: blur(6px);
             pointer-events: none;
         }
 
@@ -5021,11 +5021,21 @@
             background-color: var(--secondary-bg);
             gap: 12px;
             border-bottom: 1px solid var(--border-color);
-            flex-shrink: 0; 
+            flex-shrink: 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .reply-tabs::-webkit-scrollbar {
+            display: none;
+        }
+        .reply-tab-btn {
+            flex: 1 0 auto;
+            white-space: nowrap;
         }
 
         .reply-tab-btn {
-            flex: 1;
             padding: 10px 0;
             border-radius: 20px;
 
@@ -7528,12 +7538,15 @@
 
         .content-list-area {
     flex: 1;
-    overflow-y: auto !important; 
+    overflow-y: auto !important;
     overflow-x: hidden;
     padding: 15px;
-    padding-bottom: 80px !important; 
+    padding-bottom: 80px !important;
     background-color: var(--primary-bg);
-    height: 0; 
+    height: 0;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
     -webkit-overflow-scrolling: touch; 
         }
 

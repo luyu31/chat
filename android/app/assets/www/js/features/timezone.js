@@ -19,7 +19,7 @@
 
     // ── 数据读写（照抄 control.js 的 load/save） ──────────────────────
     function _defaultData() {
-        return { enabled: true, offsetHours: 0 };
+        return { enabled: true, mode: 'same', offsetHours: 0 };
     }
 
     function load() {
@@ -30,6 +30,8 @@
             // 补齐字段 + 校验偏移范围（老数据兼容）
             if (typeof d.enabled !== 'boolean') d.enabled = true;
             if (typeof d.offsetHours !== 'number') d.offsetHours = 0;
+            // 老版本数据迁移：没有 mode 字段的，按偏移是否为 0 猜一个
+            if (d.mode !== 'same' && d.mode !== 'random') d.mode = d.offsetHours ? 'random' : 'same';
             d.offsetHours = _clampOffset(d.offsetHours);
             return d;
         } catch (e) {
@@ -63,10 +65,24 @@
         return _pad(date.getMonth() + 1) + '/' + _pad(date.getDate());
     }
 
-    // ── 梦角时间 = 本地时间 + offsetHours ──────────────────────
+    // ── 随机时区：从 [-12..-1] + [1..14] 里随机抽一个（0 = 同时区，属于模式一，不参与随机） ──────────────────────
+    function _rollRandomOffset() {
+        var candidates = [];
+        for (var h = MIN_OFFSET; h <= MAX_OFFSET; h++) { if (h !== 0) candidates.push(h); }
+        return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+
+    // ── 梦角时间 = 本地时间 + offsetHours（same 模式恒为 0） ──────────────────────
     function getPartnerTime() {
         var d = load();
-        return new Date(Date.now() + d.offsetHours * 3600000);
+        var offset = d.mode === 'random' ? d.offsetHours : 0;
+        return new Date(Date.now() + offset * 3600000);
+    }
+
+    // ── 当前生效的偏移（给胶囊显示用） ──────────────────────
+    function _effectiveOffset() {
+        var d = load();
+        return d.mode === 'random' ? d.offsetHours : 0;
     }
 
     function isEnabled() {
@@ -138,10 +154,11 @@
         }
         var name = (typeof settings !== 'undefined' && settings.partnerName) || '梦角';
         var pt = getPartnerTime();
+        var offset = _effectiveOffset();
         badge.style.display = 'inline-flex';
         badge.innerHTML = '<i class="fas fa-clock" style="font-size:9px;"></i>'
             + name + ' · ' + _fmtTime(pt)
-            + '<span style="opacity:.75;">（' + _fmtOffsetCompact(d.offsetHours) + '）</span>';
+            + '<span style="opacity:.75;">（' + _fmtOffsetCompact(offset) + '）</span>';
     }
 
     // ── 每 60 秒刷新胶囊（只在 enabled 时更新） ──────────────────────
@@ -183,13 +200,20 @@
         +     '<button type="button" id="tz-toggle-btn" style="padding:6px 14px;border:none;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;"></button>'
         +   '</div>'
         +   '<div>'
-        +     '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin-bottom:6px;">时差偏移</div>'
-        +     '<input type="range" id="tz-offset-range" min="-12" max="14" step="0.5" value="0" style="width:100%;accent-color:var(--accent-color,#c5a47e);">'
+        +     '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin-bottom:6px;">他的时区（二选一）</div>'
+        +     '<div style="display:flex;gap:8px;">'
+        +       '<button type="button" id="tz-mode-same" style="flex:1;padding:10px 0;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;">'
+        +         '<i class="fas fa-handshake" style="margin-right:5px;font-size:11px;"></i>和我时间一样'
+        +       '</button>'
+        +       '<button type="button" id="tz-mode-random" style="flex:1;padding:10px 0;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;">'
+        +         '<i class="fas fa-dice" style="margin-right:5px;font-size:11px;"></i>随机时差'
+        +       '</button>'
+        +     '</div>'
         +     '<div id="tz-offset-desc" style="font-size:12px;color:var(--text-primary,#333);margin:6px 0 2px;"></div>'
         +   '</div>'
         +   '<div id="tz-preview" style="display:flex;gap:10px;margin-top:14px;"></div>'
         +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:12px;line-height:1.7;">'
-        +     '梦角的时间每天会自动刷新（其实就是自然日期前进，偏移固定）。时差只是趣味展示，不影响任何功能。'
+        +     '只有两种模式：他和你同时区，或者一个随机时区。随机时差不能手动调，再点一次「随机时差」会重新掷一个。'
         +   '</div>'
         +   '<div style="display:flex;gap:8px;margin-top:14px;">'
         +     '<button type="button" id="tz-close" class="modal-btn modal-btn-secondary" style="flex:1;">关闭</button>'
@@ -209,9 +233,19 @@
             render();
         });
 
-        m.querySelector('#tz-offset-range').addEventListener('input', function () {
+        // 模式切换：same = 同时区；random = 随机掷一个时差（重复点 = 重新掷）
+        m.querySelector('#tz-mode-same').addEventListener('click', function () {
             var d = load();
-            d.offsetHours = _clampOffset(parseFloat(this.value) || 0);
+            d.mode = 'same';
+            d.offsetHours = 0;
+            _saveData(d);
+            render();
+            _updateBadge();
+        });
+        m.querySelector('#tz-mode-random').addEventListener('click', function () {
+            var d = load();
+            d.mode = 'random';
+            d.offsetHours = _rollRandomOffset();
             _saveData(d);
             render();
             _updateBadge();
@@ -230,11 +264,26 @@
             btn.style.color = d.enabled ? '#fff' : 'var(--text-secondary,#999)';
         }
 
-        var range = m.querySelector('#tz-offset-range');
-        if (range) range.value = String(d.offsetHours);
+        // 两个模式按钮的高亮状态（浅色样式，跟深浅主题都兼容）
+        var sameBtn = m.querySelector('#tz-mode-same');
+        var randomBtn = m.querySelector('#tz-mode-random');
+        [sameBtn, randomBtn].forEach(function (b) {
+            if (!b) return;
+            b.style.borderColor = 'var(--border-color,#ddd)';
+            b.style.background = 'transparent';
+            b.style.color = 'var(--text-primary,#333)';
+        });
+        var activeBtn = d.mode === 'random' ? randomBtn : sameBtn;
+        if (activeBtn) {
+            activeBtn.style.borderColor = 'var(--accent-color,#c5a47e)';
+            activeBtn.style.background = 'rgba(var(--accent-color-rgb,197,164,126),.16)';
+            activeBtn.style.color = 'var(--accent-color,#c5a47e)';
+        }
 
         var desc = m.querySelector('#tz-offset-desc');
-        if (desc) desc.textContent = _fmtOffsetDesc(d.offsetHours);
+        if (desc) desc.textContent = d.mode === 'random'
+            ? _fmtOffsetDesc(d.offsetHours) + '（再点一次「随机时差」可重掷）'
+            : '梦角和你同时区，时间完全一样';
 
         // 实时预览：两个时间并排大显示
         var preview = m.querySelector('#tz-preview');

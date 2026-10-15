@@ -882,6 +882,10 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         localStorage.setItem(KEY_POS,  JSON.stringify(S.pos));
         localStorage.setItem(KEY_SIZE, JSON.stringify(S.size));
         sendCallMsg(dur);
+        // 通话结束 → 梦角 App 熟练度 +5（每日上限 3 次，只算真正接通的）
+        if (dur > 1500 && window.PartnerProficiency && typeof window.PartnerProficiency.gainDaily === 'function') {
+            try { window.PartnerProficiency.gainDaily(5, 'call', 3); } catch (e) {}
+        }
         if (typeof showNotification === 'function' && dur > 1500)
             showNotification(`通话结束 · ${fmt(dur)}`, 'info', 3000);
         else if (typeof showNotification === 'function' && dur <= 1500 && dur > 0)

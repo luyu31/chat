@@ -727,6 +727,10 @@ const LIBRARY_CONFIG = {
             { id: 'pokes', name: '拍一拍', mode: 'list' },
             { id: 'statuses', name: '对方状态', mode: 'list' },
             { id: 'slacking', name: '摸鱼状态', mode: 'list' },
+            { id: 'locationBank', name: '他的位置', mode: 'list' },
+            { id: 'qaQuestions', name: '快问问题', mode: 'list' },
+            { id: 'qaPraise', name: '快答夸奖', mode: 'list' },
+            { id: 'qaTease', name: '快答嘲讽', mode: 'list' },
             { id: 'surveyBank', name: '问卷题库', mode: 'list' },
             { id: 'period', name: '经期', mode: 'list' },
             { id: 'checkinBank', name: '打卡', mode: 'list' },
@@ -2447,6 +2451,12 @@ const addMessage = (message) => {
                     // 记录进"这一轮"候选池，供梦角自动表情反应使用（见 _triggerDelayedReply / simulateReply）
                     window._currentRoundMsgIds = window._currentRoundMsgIds || [];
                     window._currentRoundMsgIds.push(messageData.id);
+                    // 你发消息 → 梦角 App 熟练度 +1（每日上限 15，防刷）
+                    try {
+                        if (window.PartnerProficiency && typeof window.PartnerProficiency.gainDaily === 'function') {
+                            window.PartnerProficiency.gainDaily(1, 'msg', 15);
+                        }
+                    } catch (e) {}
                 }
                 if (type !== 'system') playSound('send');
                 currentReplyTo = null;

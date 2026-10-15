@@ -314,8 +314,8 @@
             + 'border-radius:24px;padding:32px 24px;text-align:center;'
             + 'box-shadow:0 20px 60px rgba(0,0,0,.5);">'
             +   '<div style="font-size:34px;margin-bottom:10px;">🔒</div>'
-            +   '<div style="font-size:18px;font-weight:700;color:rgba(255,255,255,.95);margin-bottom:6px;">你锁住了梦角</div>'
-            +   '<div id="lock-partner-sub" style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:18px;line-height:1.6;">你把梦角锁住了，快让他说暗号</div>'
+            +   '<div style="font-size:18px;font-weight:700;color:rgba(255,255,255,.95);margin-bottom:6px;">你锁住了' + _esc(_getPartnerName()) + '</div>'
+            +   '<div id="lock-partner-sub" style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:18px;line-height:1.6;">你把' + _esc(_getPartnerName()) + '锁住了，快让他说暗号</div>'
             +   '<input id="lock-partner-pass-input" type="text" autocomplete="off" placeholder="设一句暗号…" '
             +   'style="width:100%;box-sizing:border-box;padding:14px 16px;border-radius:14px;'
             +   'border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);'
@@ -447,6 +447,18 @@
         };
         save(data);
         _show(passphrase, prompt, data.startedAt, 0);
+        _notifyLock(_getPartnerName(), prompt);
+    }
+
+    // 锁上时给手机发系统通知（App 在后台/息屏时也能及时知道是他锁的）
+    function _notifyLock(name, prompt) {
+        try {
+            if (window.MilkChat && typeof window.MilkChat.notify === 'function') {
+                window.MilkChat.notify(name + '把软件锁了', prompt + '——说对了才给解锁', 'lock');
+            } else if (typeof Notification === 'function') {
+                new Notification(name + '把软件锁了', { body: prompt + '——说对了才给解锁' });
+            }
+        } catch (e) {}
     }
 
     function isActive() {

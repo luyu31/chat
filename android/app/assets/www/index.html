@@ -2499,9 +2499,6 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                     <div class="settings-item" id="proficiency-function" onclick="if(window.PartnerProficiency)window.PartnerProficiency.open()">
                         <i class="fas fa-chart-line"></i><span>梦角熟练度</span>
                     </div>
-                    <div class="settings-item" id="timezone-function" onclick="if(window.Timezone)window.Timezone.open()">
-                        <i class="fas fa-clock"></i><span>时差显示</span>
-                    </div>
                     <div class="settings-item" id="mood-function" style="display:none;">
                         <i class="fas fa-calendar-day"></i><span>心情手账</span>
                     </div>
@@ -3134,7 +3131,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                 <div class="content-list-area" id="custom-replies-list">
                 </div>
 
-                <div id="announcement-panel" style="display:none; padding:0 16px 80px; overflow-y:auto; flex:1; min-height:0; -webkit-overflow-scrolling:touch;">
+                <div id="announcement-panel" style="display:none; padding:0 16px 80px; overflow-y:auto; overflow-x:hidden; flex:1; min-height:0; min-width:0; width:100%; box-sizing:border-box; -webkit-overflow-scrolling:touch;">
                     <div style="display:flex;flex-direction:column;gap:12px; padding:4px 0 16px;">
 
                         <div style="background:linear-gradient(135deg,rgba(var(--accent-color-rgb),0.12),rgba(var(--accent-color-rgb),0.05));border-radius:14px;padding:14px 16px;border:1px solid rgba(var(--accent-color-rgb),0.2);">
@@ -3411,7 +3408,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
     <div class="modal" id="decision-menu-modal">
         <div class="modal-content">
             <div class="modal-title">
-                <i class="fas fa-balance-scale"></i><span>抉择助手</span>
+                <i class="fas fa-balance-scale"></i><span>帮我抉择</span>
             </div>
             <div class="decision-menu-grid">
                 <div class="decision-option-card" id="open-coin-toss">
@@ -3768,11 +3765,14 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
     <script src="js/features/voice-tts.js"></script>
     <script src="js/features/alarm-greet.js"></script>
     <script src="js/features/checkin.js"></script>
+    <script src="js/features/visit.js"></script>
+    <script src="js/features/peek.js"></script>
     <script src="js/features/ledger.js"></script>
     <script src="js/features/lockscreen.js"></script>
     <script src="js/features/control.js"></script>
     <script src="js/features/proficiency.js"></script>
     <script src="js/features/timezone.js"></script>
+    <script src="js/features/quickqa.js"></script>
     <script src="js/features/scene-lines.js"></script>
     <script src="js/features/reading.js"></script>
     <script src="js/features/app-icon.js"></script>
@@ -3870,16 +3870,17 @@ function openMomentsWithTransition(){
   if(!ov){openMomentsModal();return;}
   ov.classList.add('cs-trans-show');
   requestAnimationFrame(function(){requestAnimationFrame(function(){ov.classList.add('cs-trans-visible');});});
+  // 过渡动画提速：原来 800ms+1100ms 的等待压缩到 200ms+380ms，一闪而过
   setTimeout(function(){
     var page=document.getElementById('couple-space-page');
     if(page){page.style.transition='none';}
     openMomentsModal();
     setTimeout(function(){if(page){page.style.transition='';} },150);
-  },800);
+  },200);
   setTimeout(function(){
     ov.classList.remove('cs-trans-visible');
-    setTimeout(function(){ov.classList.remove('cs-trans-show');},500);
-  },1100);
+    setTimeout(function(){ov.classList.remove('cs-trans-show');},280);
+  },380);
 }
 </script>
 </body>

@@ -650,6 +650,71 @@ function _renderPartnerMotto() {
     if (textEl) textEl.textContent = _mTodayMotto();
 }
 
+// ─── 我们俩的时间（时差展示，挂在空间页签名下面） ────────────────────────
+var _csTimeTick = null;
+
+function _csFmtTime(d) {
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function _csRenderTimezone() {
+    var section = document.querySelector('#cs-outer-header .cs-couple-section');
+    if (!section) return;
+    var host = document.getElementById('cs-timezone-block');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'cs-timezone-block';
+        host.style.cssText = 'margin-top:10px;';
+        section.appendChild(host);
+    }
+    var enabled = false, partnerTime = null, offsetDesc = '';
+    try {
+        if (window.Timezone && typeof window.Timezone.getPartnerTime === 'function') {
+            enabled = window.Timezone.isEnabled();
+            if (enabled) {
+                partnerTime = window.Timezone.getPartnerTime();
+                offsetDesc = (window.Timezone._fmtOffsetDesc ? window.Timezone._fmtOffsetDesc(window.Timezone._getOffset ? window.Timezone._getOffset() : 0) : '');
+            }
+        }
+    } catch (e) {}
+    if (!enabled) {
+        host.innerHTML =
+            '<div style="text-align:center;">' +
+                '<button onclick="window.Timezone.open()" style="padding:5px 16px;border-radius:14px;border:1px dashed var(--border-color,#e5e5e5);background:transparent;color:var(--text-secondary,#999);font-size:11px;cursor:pointer;font-family:var(--font-family);"><i class="fas fa-clock" style="margin-right:4px;"></i>开启时差显示</button>' +
+            '</div>';
+        return;
+    }
+    var now = new Date();
+    host.innerHTML =
+        '<div style="display:flex;gap:8px;align-items:stretch;">' +
+            '<div style="flex:1;text-align:center;padding:10px 4px;border-radius:12px;background:var(--secondary-bg,rgba(0,0,0,.04));">' +
+                '<div style="font-size:10px;color:var(--text-secondary,#999);">我</div>' +
+                '<div style="font-size:18px;font-weight:700;color:var(--text-primary,#333);margin-top:2px;">' + _csFmtTime(now) + '</div>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;font-size:13px;color:var(--text-secondary,#bbb);"><i class="fas fa-exchange-alt"></i></div>' +
+            '<div style="flex:1;text-align:center;padding:10px 4px;border-radius:12px;background:rgba(var(--accent-color-rgb,197,164,126),.12);">' +
+                '<div style="font-size:10px;color:var(--text-secondary,#999);">他' + (offsetDesc ? '<span style="font-size:9px;opacity:.8;"> ' + offsetDesc + '</span>' : '') + '</div>' +
+                '<div style="font-size:18px;font-weight:700;color:var(--accent-color,#c5a47e);margin-top:2px;">' + _csFmtTime(partnerTime || now) + '</div>' +
+            '</div>' +
+        '</div>';
+}
+
+// 空间页开着时每 30 秒刷一次时间，关页时清掉定时器（不留后台空转）
+function _csTimezoneTick() {
+    if (_csTimeTick) { clearInterval(_csTimeTick); _csTimeTick = null; }
+    var page = document.getElementById('couple-space-page');
+    if (!page || page.style.display === 'none') return;
+    _csRenderTimezone();
+    _csTimeTick = setInterval(function () {
+        var p = document.getElementById('couple-space-page');
+        if (!p || p.style.display === 'none') {
+            if (_csTimeTick) { clearInterval(_csTimeTick); _csTimeTick = null; }
+            return;
+        }
+        _csRenderTimezone();
+    }, 30000);
+}
+
 // 「让他换个签名」：随机换一条，并给梦角加熟练度（存在性检查）
 window._mChangePartnerMotto = function () {
     var pool = _mMottoPool();
@@ -680,7 +745,7 @@ window.openCoupleSpace=window.openMomentsModal=function(scrollToPostId){
             feedPanel.insertBefore(outerHeader,feedPanel.firstChild);
         }
         page.classList.add('cs-open');
-        _csSetTab('feed');_csRenderFeed();_updateBigAvatars();_renderPartnerMotto();
+        _csSetTab('feed');_csRenderFeed();_updateBigAvatars();_renderPartnerMotto();_csTimezoneTick();
         if(typeof window._annLoadPinned==='function'){
             window._annLoadPinned().then(function(){_updateDaysCounter();});
         }else{_updateDaysCounter();}
@@ -966,20 +1031,13 @@ window.openCsSettings = async function () {
         maxSlider.addEventListener('change', _saveCsSettings);
     }
     if (saveToggle) {
-        // 没连云端存储，这个功能实际用不了——禁用开关并给出说明，
-        // 避免用户开了这个开关却发现贴纸根本存不进相册
-        const ossConnected = !!(window.CloudSync && typeof window.CloudSync.isConnected === 'function' && window.CloudSync.isConnected());
+        // App 版相册已支持本地存储（dataURL 直接存手机本地，不再强制要求云端 OSS），
+        // 这个开关不再需要云端连接门槛，直接可用
         const ossHint = document.getElementById('cs-save-img-oss-hint');
-        if (!ossConnected) {
-            saveToggle.checked = false;
-            saveToggle.disabled = true;
-            if (ossHint) ossHint.style.display = 'block';
-        } else {
-            saveToggle.disabled = false;
-            if (ossHint) ossHint.style.display = 'none';
-            saveToggle.checked = !!_csSettings.savePartnerImg;
-            saveToggle.onchange = () => { _csSettings.savePartnerImg = saveToggle.checked; _saveCsSettings(); };
-        }
+        if (ossHint) ossHint.style.display = 'none';
+        saveToggle.disabled = false;
+        saveToggle.checked = !!_csSettings.savePartnerImg;
+        saveToggle.onchange = () => { _csSettings.savePartnerImg = saveToggle.checked; _saveCsSettings(); };
     }
 
     if (noReplyToggle) {

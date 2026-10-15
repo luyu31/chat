@@ -69,12 +69,34 @@
         {
             id: 'checkin',
             iconClass: 'fas fa-clipboard-check',
-            label: '查岗',
+            label: '双向打卡',
             ready: true,
             action: function () {
                 if (window.Checkin) window.Checkin.open();
                 else if (typeof showNotification === 'function')
+                    showNotification('双向打卡加载中，稍后再试～', 'info', 2000);
+            }
+        },
+        {
+            id: 'visit',
+            iconClass: 'fas fa-eye',
+            label: '查岗',
+            ready: true,
+            action: function () {
+                if (window.Visit) window.Visit.open();
+                else if (typeof showNotification === 'function')
                     showNotification('查岗功能加载中，稍后再试～', 'info', 2000);
+            }
+        },
+        {
+            id: 'peek',
+            iconClass: 'fas fa-binoculars',
+            label: '摸鱼',
+            ready: true,
+            action: function () {
+                if (window.Peek) window.Peek.open();
+                else if (typeof showNotification === 'function')
+                    showNotification('摸鱼功能加载中，稍后再试～', 'info', 2000);
             }
         },
         {
@@ -111,10 +133,14 @@
                     showNotification('操控功能加载中，稍后再试～', 'info', 2000);
             }
         },
-        // 加回"位置"和"快问快答"这两个（凑够6个，两行各3个/4个，看起来不那么空），
-        // 小红书/抖音还是先不加，功能都没做
-        { id: 'location', iconClass: 'fas fa-location-dot', label: '位置', ready: false },
-        { id: 'qa', iconClass: 'fas fa-comments', label: '快问快答', ready: false }
+        // "位置"已经并入摸鱼（摸鱼弹窗里展示他的位置字卡），单独入口撤掉了；
+        // "快问快答"已实现（quickqa.js）。小红书/抖音还是先不加，功能都没做
+        { id: 'qa', iconClass: 'fas fa-bolt', label: '快问快答', ready: true,
+            action: function () {
+                if (window.QuickQA) window.QuickQA.open();
+                else if (typeof showNotification === 'function')
+                    showNotification('快问快答加载中，稍后再试～', 'info', 2000);
+            } }
         // { id: 'xiaohongshu', iconClass: 'fas fa-book', label: '小红书', ready: false },
         // { id: 'douyin', iconClass: 'fab fa-tiktok', label: '抖音', ready: false }
     ];

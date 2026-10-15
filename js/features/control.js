@@ -14,15 +14,14 @@
     var KEY = 'controlData';
 
     // ── 难度五档（写死常量） ──────────────────────
-    // dailyProb: 当天触发随机封锁的概率
-    // maxPerDay: 每天最多封锁次数
+    // maxPerDay: 每天最多锁手机的次数上限；什么时候锁纯随机，档位只定上限
     // minLevel:  需要的熟练度等级（等级 = floor(xp/100)+1，封顶 9）
     var DIFFICULTIES = [
-        { level: 1, name: '温柔引导', desc: '他偶尔管管你，语气软软的', dailyProb: 0.05, maxPerDay: 1, minLevel: 1 },
-        { level: 2, name: '日常管教', desc: '日常查岗+偶尔小封锁', dailyProb: 0.20, maxPerDay: 1, minLevel: 1 },
-        { level: 3, name: '认真调教', desc: '催得更紧，封锁变频繁', dailyProb: 0.45, maxPerDay: 1, minLevel: 3 },
-        { level: 4, name: '严厉掌控', desc: '他说什么就是什么', dailyProb: 0.70, maxPerDay: 2, minLevel: 4 },
-        { level: 5, name: '完全臣服', desc: '解锁条件：熟练度 Lv5', dailyProb: 0.90, maxPerDay: 3, minLevel: 5 }
+        { level: 1, name: '温柔引导', desc: '他很少锁你，每天最多 5 次', maxPerDay: 5, minLevel: 1 },
+        { level: 2, name: '日常管教', desc: '日常查岗，每天最多 4 次', maxPerDay: 4, minLevel: 1 },
+        { level: 3, name: '认真调教', desc: '锁得更勤，每天最多 3 次', maxPerDay: 3, minLevel: 3 },
+        { level: 4, name: '严厉掌控', desc: '他说什么就是什么，每天最多 2 次', maxPerDay: 2, minLevel: 4 },
+        { level: 5, name: '完全臣服', desc: '解锁条件：熟练度 Lv5 · 没有次数上限', maxPerDay: Infinity, minLevel: 5 }
     ];
 
     // ── 内置暗号库（不可删除，与用户库合并抽取） ──────────────────────
@@ -43,6 +42,12 @@
     var _tickInterval = null;
     var _todayLockCount = 0;
     var _todayDate = '';
+
+    // 用户改的昵称（设置→对方的名字），取不到就用"他"
+    function _partnerName() {
+        var n = (typeof settings !== 'undefined' && settings.partnerName) || '';
+        return (n && n !== '对方') ? n : '他';
+    }
 
     // ── 数据读写（照抄 checkin.js 的 load/save） ──────────────────────
     function load() {
@@ -175,13 +180,10 @@
         +   '<div id="ctrl-difficulty" style="margin-top:14px;"></div>'
         +   '<div id="ctrl-passphrases" style="margin-top:14px;"></div>'
         +   '<div style="display:flex;gap:8px;margin-top:14px;">'
-        +     '<button type="button" id="ctrl-lock-now" style="flex:1;padding:10px;border:none;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;background:var(--accent-color,#c5a47e);color:#fff;">让梦角封锁我一次</button>'
-        +     '<button type="button" id="ctrl-lock-partner" style="flex:1;padding:10px;border:none;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;background:#9a86e8;color:#fff;">把梦角锁起来</button>'
+        +     '<button type="button" id="ctrl-lock-partner" style="flex:1;padding:10px;border:none;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;background:#9a86e8;color:#fff;">把他锁起来</button>'
         +     '<button type="button" id="ctrl-close" class="modal-btn modal-btn-secondary" style="flex:0 0 auto;">关闭</button>'
         +   '</div>'
-        +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;">'
-        +     '难度影响梦角查岗的语气和随机封锁的频率；熟练度通过完成查岗、解锁暗号积累。'
-        +   '</div>'
+        +   '<div id="ctrl-footer-hint" style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;"></div>'
         + '</div>';
         document.body.appendChild(m);
 
@@ -190,12 +192,6 @@
         });
         m.addEventListener('click', function (e) {
             if (e.target === m) { if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none'; }
-        });
-        m.querySelector('#ctrl-lock-now').addEventListener('click', function () {
-            if (typeof hideModal === 'function') hideModal(m);
-            if (window.LockScreen && typeof window.LockScreen.start === 'function') {
-                window.LockScreen.start();
-            }
         });
         m.querySelector('#ctrl-lock-partner').addEventListener('click', function () {
             if (typeof hideModal === 'function') hideModal(m);
@@ -298,7 +294,7 @@
 
         var html = '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin-bottom:8px;">自定义暗号</div>';
         if (userBank.length === 0) {
-            html += '<div style="font-size:12px;color:var(--text-secondary,#aaa);padding:8px 0;">还没有自定义暗号，梦角会用内置暗号考你</div>';
+            html += '<div style="font-size:12px;color:var(--text-secondary,#aaa);padding:8px 0;">还没有自定义暗号，' + _partnerName() + '会用内置暗号考你</div>';
         } else {
             html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">';
             userBank.forEach(function (p, i) {
@@ -344,8 +340,18 @@
         renderPassphrases();
     }
 
+    // 按钮/说明里的名字跟着用户改的昵称走（弹窗是缓存的，每次打开都要重刷）
+    function _applyNames() {
+        var name = _partnerName();
+        var lockPartner = document.getElementById('ctrl-lock-partner');
+        var hint = document.getElementById('ctrl-footer-hint');
+        if (lockPartner) lockPartner.textContent = '把' + name + '锁起来';
+        if (hint) hint.textContent = '什么时候锁你的手机由' + name + '随机决定，难度只定每天的次数上限；锁上的瞬间会给你发手机通知。';
+    }
+
     function open() {
         buildModal();
+        _applyNames();
         _renderAll();
         var m = document.getElementById('control-modal');
         if (m) {
@@ -355,6 +361,7 @@
 
     // ── 随机封锁调度（照抄 redpacket.js scheduler 思路） ──────────────────────
     // 每 30 秒检查 nextLockAt：到点了 + 今天还没锁够 + 页面可见 → 触发封锁
+    // 什么时候锁完全随机（下一轮 40 分钟~5 小时随机），难度档位只决定每天次数上限
     function _checkScheduler() {
         var d = load();
         if (!d.nextLockAt) {
@@ -387,25 +394,14 @@
             return;
         }
 
-        // 4) 日概率判定（当天第一次检查时掷骰子）
-        if (_todayLockCount === 0 && Math.random() > diff.dailyProb) {
-            // 今天不锁，排到明天
-            var tom = new Date();
-            tom.setHours(0, 0, 0, 0);
-            tom.setDate(tom.getDate() + 1);
-            d.nextLockAt = tom.getTime() + Math.random() * 3 * 3600000;
-            _saveData(d);
-            return;
-        }
-
         // 条件全满足，触发封锁！
         _todayLockCount++;
         if (window.LockScreen && typeof window.LockScreen.start === 'function') {
             window.LockScreen.start();
         }
 
-        // 排下一次（1~3 小时后随机）
-        d.nextLockAt = Date.now() + (1 + Math.random() * 2) * 3600000;
+        // 排下一次（40 分钟~5 小时随机，纯看他心情）
+        d.nextLockAt = Date.now() + (40 + Math.random() * 260) * 60 * 1000;
         _saveData(d);
     }
 

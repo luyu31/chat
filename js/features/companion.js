@@ -709,7 +709,7 @@
         // 梦角自选时间（从 inviteTimes 池里随机选一个）
         const inviteTime = pickRandom(cfg.inviteTimes || [25]);
 
-        // 拼接邀请文案：智能处理"陪你"是否已经在台词里 + rest 特殊处理
+        // 拼接邀请文案：处理"陪你"是否已经在台词里 + rest 特殊处理
         let line;
         if (inviteTime === 'rest') {
             // 睡觉的"好好休息"模式：单独一句更自然
@@ -735,6 +735,27 @@
         // 把时间存到 dataset 上，接受按钮可以拿到
         overlay.dataset.inviteTime = inviteTime;
         overlay.dataset.inviteMode = mode;
+
+        // 睡觉邀请：让你能在「计时睡觉」和「好好休息」之间选（其它场景没有这个选项）
+        const isRestPicked = inviteTime === 'rest';
+        const sleepToggleHtml = mode === 'sleep' ? `
+                <div style="display:flex;gap:8px;margin-top:6px;">
+                    <button id="ci-mode-timed" data-time="${isRestPicked ? 30 : inviteTime}" style="
+                        flex:1;padding:9px 0;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;
+                        border:1px solid ${isRestPicked ? 'rgba(255,255,255,.15)' : 'var(--accent-color,#c5a47e)'};
+                        background:${isRestPicked ? 'rgba(255,255,255,.06)' : 'rgba(var(--accent-color-rgb,197,164,126),.25)'};
+                        color:#fff;transition:all .15s ease;">
+                        <i class="fas fa-clock" style="margin-right:5px;font-size:11px;"></i>计时 ${isRestPicked ? 30 : inviteTime} 分钟
+                    </button>
+                    <button id="ci-mode-rest" data-time="rest" style="
+                        flex:1;padding:9px 0;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;
+                        border:1px solid ${isRestPicked ? 'var(--accent-color,#c5a47e)' : 'rgba(255,255,255,.15)'};
+                        background:${isRestPicked ? 'rgba(var(--accent-color-rgb,197,164,126),.25)' : 'rgba(255,255,255,.06)'};
+                        color:#fff;transition:all .15s ease;">
+                        <i class="fas fa-moon" style="margin-right:5px;font-size:11px;"></i>好好休息
+                    </button>
+                </div>` : '';
+
         overlay.setAttribute('style', [
             'position:fixed', 'inset:0', 'z-index:99998',
             'background:rgba(15,15,20,0.95)',
@@ -771,6 +792,7 @@
                     <i class="fas ${cfg.icon}" style="color:var(--accent-color, #c5a47e);font-size:18px;"></i>
                     <span style="font-size:14px;">"${line}"</span>
                 </div>
+                ${sleepToggleHtml}
                 <div style="display:flex;gap:44px;margin-top:26px;">
                     <button id="companion-incoming-reject" style="
                         display:flex;flex-direction:column;align-items:center;gap:7px;
@@ -869,14 +891,32 @@
             showCompanionTransition(pickRandom(TRANSITION_LINES.partnerInviteReject));
         });
 
+        // 睡觉邀请的模式切换：计时 / 好好休息
+        const timedBtn = overlay.querySelector('#ci-mode-timed');
+        const restBtn = overlay.querySelector('#ci-mode-rest');
+        if (timedBtn && restBtn) {
+            const applyChoice = (chosen) => {
+                overlay.dataset.inviteTime = chosen;
+                const timedActive = chosen !== 'rest';
+                timedBtn.style.borderColor = timedActive ? 'var(--accent-color,#c5a47e)' : 'rgba(255,255,255,.15)';
+                timedBtn.style.background = timedActive ? 'rgba(var(--accent-color-rgb,197,164,126),.25)' : 'rgba(255,255,255,.06)';
+                restBtn.style.borderColor = timedActive ? 'rgba(255,255,255,.15)' : 'var(--accent-color,#c5a47e)';
+                restBtn.style.background = timedActive ? 'rgba(255,255,255,.06)' : 'rgba(var(--accent-color-rgb,197,164,126),.25)';
+            };
+            timedBtn.addEventListener('click', () => applyChoice(timedBtn.dataset.time));
+            restBtn.addEventListener('click', () => applyChoice('rest'));
+        }
+
         // 接受 → 过渡画面 → 进入陪伴页
         overlay.querySelector('#companion-incoming-accept').addEventListener('click', () => {
             clearTimeout(autoTimer);
             try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
             if (overlay.isConnected) overlay.remove();
+            // 读 dataset（可能被上面的模式切换改过），而不是闭包里的 inviteTime
+            const finalTime = overlay.dataset.inviteTime || inviteTime;
             // 过渡画面：「我在等你……」
             showCompanionTransition(pickRandom(TRANSITION_LINES.partnerInviteAccept), () => {
-                enterWithInviteTime(mode, inviteTime);
+                enterWithInviteTime(mode, finalTime);
             });
         });
     }
@@ -1721,6 +1761,10 @@
                     partnerNote: partnerNote,
                     userNote: ''
                 });
+                // 陪伴结束 → 梦角 App 熟练度 +5（每日上限 4 次）
+                if (window.PartnerProficiency && typeof window.PartnerProficiency.gainDaily === 'function') {
+                    window.PartnerProficiency.gainDaily(5, 'companion', 4);
+                }
             }
         } catch (e) {
             console.warn('[companion] write diary error:', e);
@@ -2878,7 +2922,7 @@
         const inviteTime = pickRandom(candidateTimes);
         const timeText = `${inviteTime} 分钟`;
 
-        // 拼接文案：跟 showIncomingCompanion 一样的智能拼接
+        // 拼接文案：跟 showIncomingCompanion 一样的拼接逻辑
         let line;
         if (/陪你|陪着你/.test(baseLine)) {
             line = `${baseLine.replace(/[？！?!]$/, '')} ${timeText}`;

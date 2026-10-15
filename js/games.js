@@ -1279,6 +1279,12 @@ function doPick() {
         showNotification("请至少添加两个选项", "warning");
         return;
     }
+    // 用帮我抉择（随机抽签）→ 梦角 App 熟练度 +1（每日上限 5 次）
+    try {
+        if (window.PartnerProficiency && typeof window.PartnerProficiency.gainDaily === 'function') {
+            window.PartnerProficiency.gainDaily(1, 'decision', 5);
+        }
+    } catch (e) {}
     const spinBtn = document.getElementById('spin-wheel-btn');
     const resultDisplay = document.getElementById('wheel-result');
     const sendBtn = document.getElementById('send-wheel-result');
@@ -1342,6 +1348,12 @@ function doPick() {
 function handleCoinToss() {
     const overlay = DOMElements.coinTossOverlay;
     if (!overlay) return;
+    // 用帮我抉择（抛硬币）→ 梦角 App 熟练度 +1（每日上限 5 次）
+    try {
+        if (window.PartnerProficiency && typeof window.PartnerProficiency.gainDaily === 'function') {
+            window.PartnerProficiency.gainDaily(1, 'decision', 5);
+        }
+    } catch (e) {}
     overlay.classList.remove('finished');
     overlay.classList.add('visible');
     const resultText = DOMElements.coinResultText;
