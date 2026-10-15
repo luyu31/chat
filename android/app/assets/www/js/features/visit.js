@@ -180,14 +180,14 @@
         m.style.zIndex = '3300';
         m.innerHTML =
         '<div class="modal-content" style="max-width:400px;width:90vw;">'
-        +   '<div class="modal-title"><i class="fas fa-eye"></i><span>查岗 · 他来看你</span></div>'
+        +   '<div class="modal-title"><i class="fas fa-eye"></i><span>关心妹妹 · 他来看你</span></div>'
         +   '<div id="visit-head" style="margin-bottom:10px;"></div>'
         +   '<div id="visit-list" style="display:flex;flex-direction:column;gap:6px;max-height:44vh;overflow-y:auto;padding:2px;"></div>'
         +   '<div style="display:flex;justify-content:flex-end;margin-top:12px;">'
         +     '<button type="button" id="visit-close" class="modal-btn modal-btn-secondary">关闭</button>'
         +   '</div>'
         +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;">'
-        +     '跟摸鱼对应：摸鱼是你去看他，查岗是他来看你。他会趁你不注意偷偷过来，每看一次都会留下记录；'
+        +     '跟摸鱼对应：摸鱼是你去看他，关心妹妹是他来看你。他会趁你不注意偷偷过来，每看一次都会留下记录；'
         +     '如果他来的时候你正好在线，会当场撞见他。'
         +   '</div>'
         + '</div>';

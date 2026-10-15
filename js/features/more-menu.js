@@ -80,12 +80,12 @@
         {
             id: 'visit',
             iconClass: 'fas fa-eye',
-            label: '查岗',
+            label: '关心妹妹',
             ready: true,
             action: function () {
                 if (window.Visit) window.Visit.open();
                 else if (typeof showNotification === 'function')
-                    showNotification('查岗功能加载中，稍后再试～', 'info', 2000);
+                    showNotification('关心妹妹功能加载中，稍后再试～', 'info', 2000);
             }
         },
         {

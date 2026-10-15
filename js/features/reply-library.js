@@ -182,7 +182,7 @@ function _renderListContentOnly() {
     if (filtered.length === 0) {
         const empty = document.createElement('div');
         const emptyText = (!q && currentSubTab === 'checkinBank')
-            ? '还没有打卡字卡<br><span style="font-size:11px;opacity:.7;">查岗里他说的每句话都会优先从这里抽，可用 {item} 代替任务名</span>'
+            ? '还没有打卡字卡<br><span style="font-size:11px;opacity:.7;">关心妹妹里他说的每句话都会优先从这里抽，可用 {item} 代替任务名</span>'
             : (q ? `未找到 "${q}"` : '列表空空如也');
         empty.innerHTML = renderEmptyState(emptyText);
         list.appendChild(empty.firstElementChild || empty);
@@ -290,7 +290,7 @@ function renderReplyLibrary() {
 
     if (filtered.length === 0) {
         const emptyText = (!q && currentSubTab === 'checkinBank')
-            ? '还没有打卡字卡<br><span style="font-size:11px;opacity:.7;">查岗里他说的每句话都会优先从这里抽，可用 {item} 代替任务名</span>'
+            ? '还没有打卡字卡<br><span style="font-size:11px;opacity:.7;">关心妹妹里他说的每句话都会优先从这里抽，可用 {item} 代替任务名</span>'
             : (q ? `未找到"${q}"` : '列表空空如也');
         list.innerHTML = renderEmptyState(emptyText);
         return;
@@ -885,7 +885,7 @@ function _renderAtmosphereList(list, items) {
     list.appendChild(frag);
 }
 
-// ─── 摸鱼状态（查岗「他在干什么」）字卡组 ───────────────────────────────
+// ─── 摸鱼状态（他此刻在干什么）字卡组 ───────────────────────────────
 // 结构 {id, text}，存在 localStorage（state.js 里没有现成的全局数组）
 var _slackingStorageKey = 'customSlackingStatuses';
 var _slackingBuiltin = [
@@ -896,7 +896,7 @@ var _slackingBuiltin = [
     { id: 's_5', text: '在吃零食' },
     { id: 's_6', text: '在开会摸鱼' },
     { id: 's_7', text: '在装忙，其实在等你消息' },
-    { id: 's_8', text: '在偷偷查岗你' }
+    { id: 's_8', text: '在偷偷关心你' }
 ];
 
 // 读取摸鱼状态库；首次使用时写入内置默认，之后用户增删都以 localStorage 为准
@@ -907,6 +907,12 @@ function _getSlackingStatuses() {
         raw = _slackingBuiltin.slice();
         try { localStorage.setItem(_slackingStorageKey, JSON.stringify(raw)); } catch (e) {}
     }
+    // 存量用户迁移：功能改名后把旧状态文案「在偷偷查岗你」换成「在偷偷关心你」
+    var migrated = false;
+    raw.forEach(function (s) {
+        if (s && typeof s === 'object' && s.text === '在偷偷查岗你') { s.text = '在偷偷关心你'; migrated = true; }
+    });
+    if (migrated) { try { localStorage.setItem(_slackingStorageKey, JSON.stringify(raw)); } catch (e) {} }
     return raw;
 }
 
@@ -914,7 +920,7 @@ function _saveSlackingStatuses(list) {
     try { localStorage.setItem(_slackingStorageKey, JSON.stringify(list)); } catch (e) {}
 }
 
-// 供查岗等功能读取：返回纯文本数组
+// 供关心妹妹/摸鱼等功能读取：返回纯文本数组
 window._getSlackingStatusPool = function () {
     return _getSlackingStatuses().map(function (s) {
         if (s && typeof s === 'object') return s.text;
@@ -2385,7 +2391,7 @@ function _showBatchAddDialog() {
             @keyframes baGroupSlide { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
         </style>
         <div style="flex-shrink:0;font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">批量添加${getCategoryName(currentSubTab)}</div>
-        <div style="flex-shrink:0;font-size:12px;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">${currentSubTab === 'checkinBank' ? '查岗打卡时他说的话，每行一条，自动去重。可用 {item} 代替任务名（如：我也把{item}搞定啦）' : '每行一条，自动去重'}</div>
+        <div style="flex-shrink:0;font-size:12px;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">${currentSubTab === 'checkinBank' ? '关心妹妹打卡时他说的话，每行一条，自动去重。可用 {item} 代替任务名（如：我也把{item}搞定啦）' : '每行一条，自动去重'}</div>
 
         <div style="flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;">
             <textarea id="batch-add-input" rows="10" placeholder="在此粘贴内容，每行一条…" style="

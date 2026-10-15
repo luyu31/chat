@@ -285,7 +285,7 @@
         +   '<div style="display:flex;justify-content:flex-end;margin-top:12px;">'
         +     '<button type="button" id="peek-close" class="modal-btn modal-btn-secondary">关闭</button>'
         +   '</div>'
-        +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;">跟查岗互补：查岗是他查你，摸鱼是你看他。今日状态每天 0 点用日期种子抽签，全天不变。</div>'
+        +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;">跟关心妹妹互补：关心妹妹是他来看你，摸鱼是你看他。今日状态每天 0 点用日期种子抽签，全天不变。</div>'
         + '</div>';
         document.body.appendChild(m);
 

@@ -18,7 +18,7 @@
     // maxPerDay: 每天最多锁手机的次数上限；什么时候锁纯随机，档位只定上限
     var DIFFICULTIES = [
         { level: 1, name: '温柔引导', desc: '他很少锁你，每天最多 5 次', maxPerDay: 5 },
-        { level: 2, name: '日常管教', desc: '日常查岗，每天最多 10 次', maxPerDay: 10 },
+        { level: 2, name: '日常管教', desc: '日常关心你，每天最多 10 次', maxPerDay: 10 },
         { level: 3, name: '认真调教', desc: '锁得更勤，每天最多 15 次', maxPerDay: 15 },
         { level: 4, name: '严厉掌控', desc: '他说什么就是什么，每天最多 20 次', maxPerDay: 20 },
         { level: 5, name: '完全臣服', desc: '没有次数上限，他想锁就锁', maxPerDay: Infinity },
