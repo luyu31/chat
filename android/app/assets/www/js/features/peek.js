@@ -31,6 +31,18 @@
         '在挑下次约会的餐厅'
     ];
 
+    // ── 兜底位置池（「他的位置」字卡组没加载/被清空时才用） ──────────────────────
+    var DEFAULT_LOCATIONS = [
+        '在书房看书',
+        '在客厅沙发瘫着',
+        '在厨房煮面',
+        '在阳台吹风',
+        '在公司工位',
+        '在回来的路上',
+        '在卧室补觉',
+        '在楼下遛弯'
+    ];
+
     // ── 被抓包时他的反应台词（随机 4 条） ──────────────────────
     var CAUGHT_LINES = [
         '感觉有人在看我？',
@@ -66,6 +78,25 @@
         }
         if (!Array.isArray(pool) || !pool.length) pool = DEFAULT_POOL.slice();
         return pool;
+    }
+
+    // ── 位置池：优先字卡库的「他的位置」字卡组，兜底用内置默认 ──────────────────────
+    function _getLocationPool() {
+        var pool = [];
+        if (typeof window._getPartnerLocationPool === 'function') {
+            try { pool = window._getPartnerLocationPool(); } catch (e) {}
+        }
+        if (!Array.isArray(pool) || !pool.length) pool = DEFAULT_LOCATIONS.slice();
+        return pool;
+    }
+
+    // ── 他现在在哪：用「日期+小时」当种子，同一小时内稳定，跨小时自然换位置 ──────────────────────
+    function getLocationNow() {
+        var d = new Date();
+        var seed = todayStr() + '-h' + d.getHours();
+        var pool = _getLocationPool();
+        var rnd = seededRandom(seed);
+        return pool[Math.floor(rnd() * pool.length)];
     }
 
     // ── 日期字符串种子伪随机：同一天种子相同，抽出的状态全天稳定 ──────────────────────
@@ -133,7 +164,7 @@
         } catch (e) {}
     }
 
-    // ── 大卡片：头像 + 名字 + 今日状态大字 ──────────────────────
+    // ── 大卡片：头像 + 名字 + 今日状态大字 + 他现在在哪 ──────────────────────
     function renderCard() {
         var el = document.getElementById('peek-card');
         if (!el) return;
@@ -148,36 +179,55 @@
             +   '<div style="flex:1;min-width:0;">'
             +     '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);">' + _partnerName() + '</div>'
             +     '<div style="font-size:17px;font-weight:700;color:var(--text-primary,#333);line-height:1.4;margin-top:2px;" id="peek-status-text"></div>'
+            +     '<div style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--accent-color,#c5a47e);margin-top:5px;">'
+            +       '<i class="fas fa-location-dot" style="font-size:10px;"></i>'
+            +       '<span id="peek-location-text"></span>'
+            +     '</div>'
             +   '</div>'
             + '</div>'
-            + '<div style="font-size:11px;color:var(--text-secondary,#999);margin:8px 0 12px 2px;">今日状态 · 每天 0 点刷新 · 字卡来自「摸鱼状态」字卡组</div>';
+            + '<div style="font-size:11px;color:var(--text-secondary,#999);margin:8px 0 12px 2px;">今日状态每天 0 点刷新 · 位置每小时换 · 字卡来自「摸鱼状态」「他的位置」字卡组</div>';
         var textEl = document.getElementById('peek-status-text');
         if (textEl) textEl.textContent = status;
+        var locEl = document.getElementById('peek-location-text');
+        if (locEl) locEl.textContent = getLocationNow();
     }
 
-    // ── 字卡组管理区：显示当前条数 + 直达「摸鱼状态」字卡组编辑 ──────────────────────
+    // ── 字卡组管理区：显示当前条数 + 直达「摸鱼状态」/「他的位置」字卡组编辑 ──────────────────────
     function renderPoolBox() {
         var box = document.getElementById('peek-pool-box');
         if (!box) return;
-        var count = _getPool().length;
         box.innerHTML =
-            '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
-            +   '<span style="font-size:12px;color:var(--text-secondary,#888);">状态字卡共 ' + count + ' 条</span>'
-            +   '<button type="button" id="peek-manage-cards" style="padding:7px 12px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;">'
-            +     '<i class="fas fa-comment-dots"></i> 管理状态字卡'
-            +   '</button>'
+            '<div style="display:flex;flex-direction:column;gap:8px;">'
+            +   '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
+            +     '<span style="font-size:12px;color:var(--text-secondary,#888);">状态字卡 ' + _getPool().length + ' 条 · 位置字卡 ' + _getLocationPool().length + ' 条</span>'
+            +   '</div>'
+            +   '<div style="display:flex;gap:8px;">'
+            +     '<button type="button" id="peek-manage-cards" style="flex:1;padding:7px 12px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;">'
+            +       '<i class="fas fa-comment-dots"></i> 管理状态字卡'
+            +     '</button>'
+            +     '<button type="button" id="peek-manage-locations" style="flex:1;padding:7px 12px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;">'
+            +       '<i class="fas fa-location-dot"></i> 管理位置字卡'
+            +     '</button>'
+            +   '</div>'
             + '</div>';
         box.querySelector('#peek-manage-cards').addEventListener('click', function () {
-            // 直达氛围感配置的「摸鱼状态」字卡 tab；先关掉摸鱼弹窗，避免字卡库被盖在下面
-            try {
-                var peekModal = document.getElementById('peek-modal');
-                if (peekModal && typeof hideModal === 'function') hideModal(peekModal);
-                if (typeof currentMajorTab !== 'undefined') { currentMajorTab = 'atmosphere'; currentSubTab = 'slacking'; }
-                if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
-                var libModal = document.getElementById('custom-replies-modal');
-                if (libModal && typeof showModal === 'function') showModal(libModal);
-            } catch (e) { console.warn('[peek] 打开摸鱼状态字卡失败:', e); }
+            _openCardLibrary('slacking', '[peek] 打开摸鱼状态字卡失败:');
         });
+        box.querySelector('#peek-manage-locations').addEventListener('click', function () {
+            _openCardLibrary('locationBank', '[peek] 打开位置字卡失败:');
+        });
+    }
+
+    // 直达氛围感配置的指定字卡 tab；先关掉摸鱼弹窗，避免字卡库被盖在下面
+    function _openCardLibrary(subTab, warnTag) {
+        try {
+            var peekModal = document.getElementById('peek-modal');
+            if (peekModal && typeof hideModal === 'function') hideModal(peekModal);
+            if (typeof currentMajorTab !== 'undefined') { currentMajorTab = 'atmosphere'; currentSubTab = subTab; }
+            if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
+            var libModal = document.getElementById('custom-replies-modal');
+            if (libModal && typeof showModal === 'function') showModal(libModal);
+        } catch (e) { console.warn(warnTag, e); }
     }
 
     // ── 偷看一下：60% 被他抓包（60 分钟冷却），40% 安全偷看 ──────────────────────
@@ -196,10 +246,12 @@
             _partnerSay(pick(CAUGHT_LINES));
             if (typeof showNotification === 'function') showNotification('糟糕，被他发现了');
         } else {
-            // 安全偷看：刷新出一条他此刻的随机状态（不破坏今日固定状态）
+            // 安全偷看：刷新出一条他此刻的随机状态和位置（不破坏今日固定状态）
             var pool = _getPool();
             var textEl = document.getElementById('peek-status-text');
             if (textEl && pool.length) textEl.textContent = pick(pool);
+            var locEl = document.getElementById('peek-location-text');
+            if (locEl) locEl.textContent = pick(_getLocationPool());
             if (typeof showNotification === 'function') showNotification('偷看成功，他没发现');
         }
     }

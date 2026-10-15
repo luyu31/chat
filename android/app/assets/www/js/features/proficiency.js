@@ -34,15 +34,6 @@
         '这 app 已经是我家后花园了'
     ];
 
-    // ── 能力解锁（写死 5 个，随等级点亮） ──────────────────────
-    var UNLOCKS = [
-        { name: '主动发红包', level: 3 },
-        { name: '主动记账', level: 4 },
-        { name: '主动查岗', level: 5 },
-        { name: '会催睡觉', level: 6 },
-        { name: '会撒娇要抱抱', level: 8 }
-    ];
-
     // ── 数据读写（照抄 control.js 的 load/save） ──────────────────────
     function _defaultData() {
         return { xp: 0, lastActiveDate: null };
@@ -200,22 +191,13 @@
         html += '<div style="font-size:12px;color:var(--text-primary,#333);line-height:1.7;padding:10px 12px;'
             + 'background:var(--secondary-bg,#f5f5f5);border-radius:12px;margin-bottom:12px;">“' + quote + '”</div>';
 
-        // 能力解锁标签
-        html += '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin-bottom:8px;">能力解锁</div>';
-        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
-        UNLOCKS.forEach(function (u) {
-            var lit = level >= u.level;
-            html += '<span style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;font-size:11px;'
-                + (lit
-                    ? 'background:rgba(var(--accent-color-rgb,197,164,126),.16);color:var(--accent-color,#c5a47e);border:1px solid var(--accent-color,#c5a47e);'
-                    : 'background:transparent;color:var(--text-secondary,#bbb);border:1px dashed var(--border-color,#ddd);')
-                + '">'
-                +   (lit ? '<i class="fas fa-check" style="font-size:9px;"></i>' : '<i class="fas fa-lock" style="font-size:9px;opacity:.6;"></i>')
-                +   u.name
-                +   (lit ? '' : ' <span style="opacity:.7;">Lv' + u.level + '</span>')
-                + '</span>';
-        });
-        html += '</div>';
+        // 说明：熟练度只是成长纪念，不影响任何功能
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;'
+            + 'background:rgba(var(--accent-color-rgb,197,164,126),.10);border:1px solid rgba(var(--accent-color-rgb,197,164,126),.28);'
+            + 'font-size:11px;color:var(--accent-color,#c5a47e);line-height:1.7;margin-bottom:12px;">'
+            + '<i class="fas fa-heart" style="flex-shrink:0;"></i>'
+            + '<span>熟练度只是他的成长纪念，<b>不解锁也不限制任何功能</b>——从一开始他就什么都会，一直陪着你。</span>'
+            + '</div>';
 
         // 熟练度来源说明
         html += '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin:12px 0 8px;">熟练度怎么涨</div>';

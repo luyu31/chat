@@ -68,10 +68,15 @@
         let changed = false;
         items.forEach(it => {
             if (!(it.id in p.times)) {
-                // 从现在起的 15分钟~6小时内随机完成；太晚开 app 时压缩到 5~50 分钟
-                let t = Date.now() + (15 + Math.random() * 345) * 60000;
-                if (t > dayEnd.getTime()) t = Date.now() + (5 + Math.random() * 50) * 60000;
-                p.times[it.id] = t;
+                // 30% 概率他今天压根不做这件事（他不是打卡机器）；
+                // 其余从现在起的 15分钟~6小时内随机完成；太晚开 app 时压缩到 5~50 分钟
+                if (Math.random() < 0.3) {
+                    p.times[it.id] = 0; // 0 = 今天不做（到点检查里 0 是 falsy，天然跳过）
+                } else {
+                    let t = Date.now() + (15 + Math.random() * 345) * 60000;
+                    if (t > dayEnd.getTime()) t = Date.now() + (5 + Math.random() * 50) * 60000;
+                    p.times[it.id] = t;
+                }
                 changed = true;
             }
         });
@@ -165,31 +170,30 @@
             }
         });
 
-        // 2) 查岗：梦角完成了、我还没完成、过了 1.5 小时 → 有概率催我
+        // 2) 查岗催促：他完成了、我还没完成、又过了很久 → 每天最多提醒一次（提醒多了招人烦）
         const nag = (() => {
             let n = load(KEY_NAG, null);
-            if (!n || n.date !== todayStr()) n = { date: todayStr(), counts: {}, lastTs: 0 };
+            if (!n || n.date !== todayStr()) n = { date: todayStr(), counts: {}, lastTs: 0, done: false };
             if (!n.counts) n.counts = {};
             return n;
         })();
-        if (now - nag.lastTs > 25 * 60000) { // 全局：最多每 25 分钟查一次岗
-            getItems().forEach(it => {
-                if (nag.counts[it.id] >= 2) return;
+        if (!nag.done) {
+            for (const it of getItems()) {
                 if (daily.partner[it.id] && !daily.me[it.id]
                     && now - daily.partner[it.id] > 90 * 60000
                     && Math.random() < 0.5) {
-                    nag.counts[it.id] = (nag.counts[it.id] || 0) + 1;
+                    nag.done = true;
                     nag.lastTs = now;
                     save(KEY_NAG, nag);
                     checkinSay(it, [
-                        '查岗！「{item}」还没完成哦，快去！',
-                        '都等你半天了，「{item}」呢？',
+                        '查岗！「{item}」还没完成哦，就提醒这一次！',
+                        '都等你半天了，「{item}」呢？就催这一次',
                         '别想糊弄过去，「{item}」打卡了吗？',
                         '我盯着呢，「{item}」完成没？',
                     ], '（此刻他正在：' + pickSlackingStatus() + '）');
-                    return;
+                    break;
                 }
-            });
+            }
         }
     }
 
@@ -213,8 +217,8 @@
                     '「{item}」双人打卡达成！击掌✋',
                     '你也「{item}」完啦，默契✓',
                 ]);
-            } else if (Math.random() < 0.55) {
-                // 他还没完成 → 55% 概率跟着我一起打（是否打卡是随机的）
+            } else if (Math.random() < 0.45) {
+                // 他还没完成 → 45% 概率跟着我一起打（他也可能今天压根没打算做这项）
                 d.partner[item.id] = Date.now();
                 save(KEY_DAILY, d);
                 checkinSay(item, [

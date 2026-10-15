@@ -152,6 +152,8 @@ function _renderListContentOnly() {
         if (currentSubTab === 'pokes') itemsToRender = customPokes;
         else if (currentSubTab === 'statuses') itemsToRender = customStatuses;
         else if (currentSubTab === 'slacking') { _renderSlackingTab(list); return; }
+        else if (currentSubTab === 'locationBank') { _locationBank.render(list, '位置字卡'); return; }
+        else if (currentSubTab === 'qaAnswers') { _qaAnswerBank.render(list, '快答字卡'); return; }
         else if (currentSubTab === 'mottos') itemsToRender = customMottos;
         else if (currentSubTab === 'motto') itemsToRender = customMottos;
         else if (currentSubTab === 'intros') itemsToRender = customIntros;
@@ -255,6 +257,8 @@ function renderReplyLibrary() {
         if (currentSubTab === 'pokes') itemsToRender = customPokes;
         else if (currentSubTab === 'statuses') itemsToRender = customStatuses;
         else if (currentSubTab === 'slacking') { _renderSlackingTab(list); return; }
+        else if (currentSubTab === 'locationBank') { _locationBank.render(list, '位置字卡'); return; }
+        else if (currentSubTab === 'qaAnswers') { _qaAnswerBank.render(list, '快答字卡'); return; }
         else if (currentSubTab === 'mottos') itemsToRender = customMottos;
         else if (currentSubTab === 'motto') itemsToRender = customMottos;
         else if (currentSubTab === 'intros') itemsToRender = customIntros;
@@ -296,7 +300,7 @@ function _renderModernToolbar() {
     // 问卷题库这个 tab 是自己单独一套渲染（对象结构，不是纯字符串数组），
     // 不走下面这套批量管理/分组/去重逻辑——那些都是照着字符串数组写的，硬塞进来只会出岔子
     // 摸鱼状态也是 {id,text} 对象结构，单独一套渲染，同样不走通用批量逻辑
-    if (currentMajorTab === 'atmosphere' && (currentSubTab === 'surveyBank' || currentSubTab === 'redpacketBank' || currentSubTab === 'slacking')) {
+    if (currentMajorTab === 'atmosphere' && (currentSubTab === 'surveyBank' || currentSubTab === 'redpacketBank' || currentSubTab === 'slacking' || currentSubTab === 'locationBank' || currentSubTab === 'qaAnswers')) {
         if (toolbar) toolbar.style.display = 'none';
         return;
     }
@@ -967,6 +971,101 @@ function _showSlackingAddDialog() {
     renderReplyLibrary();
     showNotification('✓ 添加成功', 'success');
 }
+
+// ─── 通用 {id,text} 对象字卡组工厂（他的位置 / 他的快答共用） ───────────────────────────────
+// 结构跟摸鱼状态一致：单独一套渲染（对象结构），不走字符串数组的批量管理/分组逻辑
+function _makeObjectBank(storageKey, builtin) {
+    function get() {
+        var raw = null;
+        try { raw = JSON.parse(localStorage.getItem(storageKey)); } catch (e) {}
+        if (!Array.isArray(raw)) {
+            raw = builtin.slice();
+            try { localStorage.setItem(storageKey, JSON.stringify(raw)); } catch (e) {}
+        }
+        return raw;
+    }
+    function saveList(list) {
+        try { localStorage.setItem(storageKey, JSON.stringify(list)); } catch (e) {}
+    }
+    return {
+        pool: function () {
+            return get().map(function (s) {
+                if (s && typeof s === 'object') return s.text;
+                if (typeof s === 'string') return s;
+                return '';
+            }).filter(function (t) { return t; });
+        },
+        render: function (list, what) {
+            var items = get();
+            if (!items.length) {
+                list.innerHTML = renderEmptyState('还没有' + what + '，点「新增」添加');
+                return;
+            }
+            items.forEach(function (item, idx) {
+                var text = (item && item.text) ? item.text : (typeof item === 'string' ? item : '');
+                var div = document.createElement('div');
+                div.className = 'custom-reply-item';
+                div.innerHTML = '<span class="custom-reply-text"></span>' +
+                    '<div class="custom-reply-actions">' +
+                        '<button class="reply-action-mini edit-btn" title="编辑">' + ICONS.edit + '</button>' +
+                        '<button class="reply-action-mini delete-btn" title="删除">' + ICONS.trash + '</button>' +
+                    '</div>';
+                div.querySelector('.custom-reply-text').textContent = text;
+                div.querySelector('.delete-btn').onclick = function () {
+                    if (!confirm('确定删除这条' + what + '吗？')) return;
+                    var arr = get(); arr.splice(idx, 1); saveList(arr); renderReplyLibrary();
+                };
+                div.querySelector('.edit-btn').onclick = function () {
+                    var t = prompt('修改' + what + ':', text);
+                    if (t === null || !t.trim()) return;
+                    var arr = get();
+                    if (arr[idx] && typeof arr[idx] === 'object') arr[idx].text = t.trim();
+                    else arr[idx] = t.trim();
+                    saveList(arr); renderReplyLibrary();
+                };
+                list.appendChild(div);
+            });
+        },
+        add: function (what, tip) {
+            var input = prompt(tip);
+            if (!input || !input.trim()) return;
+            var arr = get();
+            var val = input.trim();
+            var exists = arr.some(function (s) { var t = (s && typeof s === 'object') ? s.text : s; return t === val; });
+            if (exists) { showNotification('该' + what + '已存在', 'warning'); return; }
+            arr.push({ id: 'b_' + Date.now() + '_' + Math.floor(Math.random() * 1000), text: val });
+            saveList(arr); renderReplyLibrary(); showNotification('✓ 添加成功', 'success');
+        }
+    };
+}
+
+// ─── 他的位置（摸鱼里展示「他现在在哪」）字卡组 ───────────────────────────────
+var _locationBank = _makeObjectBank('customPartnerLocations', [
+    { id: 'l_1', text: '在书房看书' },
+    { id: 'l_2', text: '在客厅沙发瘫着' },
+    { id: 'l_3', text: '在厨房煮面' },
+    { id: 'l_4', text: '在阳台吹风' },
+    { id: 'l_5', text: '在公司工位' },
+    { id: 'l_6', text: '在健身房举铁' },
+    { id: 'l_7', text: '在便利店买冰的' },
+    { id: 'l_8', text: '在回来的路上' },
+    { id: 'l_9', text: '在卧室补觉' },
+    { id: 'l_10', text: '在楼下遛弯' }
+]);
+window._getPartnerLocationPool = _locationBank.pool;
+
+// ─── 他的快答（快问快答里他答填空题的台词）字卡组 ───────────────────────────────
+var _qaAnswerBank = _makeObjectBank('customQAAnswers', [
+    { id: 'q_1', text: '当然想你了' },
+    { id: 'q_2', text: '这还用问吗' },
+    { id: 'q_3', text: '嗯……让我想想，是想你' },
+    { id: 'q_4', text: '你猜？猜对有奖' },
+    { id: 'q_5', text: '无可奉告（开玩笑的，想你）' },
+    { id: 'q_6', text: '这题我会：想你了' },
+    { id: 'q_7', text: '刚想说就被你抢先问了' },
+    { id: 'q_8', text: '答案跟你有关' }
+]);
+window._getQAAnswerPool = _qaAnswerBank.pool;
 
 function _renderEmojiTab(list, itemsToRender) {
     if (itemsToRender.length === 0 && customEmojis.length === 0) {
@@ -2496,6 +2595,14 @@ function initReplyLibraryListeners() {
             }
             if (currentSubTab === 'slacking') {
                 _showSlackingAddDialog();
+                return;
+            }
+            if (currentSubTab === 'locationBank') {
+                _locationBank.add('位置字卡', '请输入新的位置（比如：在江边散步）:');
+                return;
+            }
+            if (currentSubTab === 'qaAnswers') {
+                _qaAnswerBank.add('快答字卡', '请输入新的快答台词（比如：当然是想你）:');
                 return;
             }
             let input;

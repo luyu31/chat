@@ -966,20 +966,13 @@ window.openCsSettings = async function () {
         maxSlider.addEventListener('change', _saveCsSettings);
     }
     if (saveToggle) {
-        // 没连云端存储，这个功能实际用不了——禁用开关并给出说明，
-        // 避免用户开了这个开关却发现贴纸根本存不进相册
-        const ossConnected = !!(window.CloudSync && typeof window.CloudSync.isConnected === 'function' && window.CloudSync.isConnected());
+        // App 版相册已支持本地存储（dataURL 直接存手机本地，不再强制要求云端 OSS），
+        // 这个开关不再需要云端连接门槛，直接可用
         const ossHint = document.getElementById('cs-save-img-oss-hint');
-        if (!ossConnected) {
-            saveToggle.checked = false;
-            saveToggle.disabled = true;
-            if (ossHint) ossHint.style.display = 'block';
-        } else {
-            saveToggle.disabled = false;
-            if (ossHint) ossHint.style.display = 'none';
-            saveToggle.checked = !!_csSettings.savePartnerImg;
-            saveToggle.onchange = () => { _csSettings.savePartnerImg = saveToggle.checked; _saveCsSettings(); };
-        }
+        if (ossHint) ossHint.style.display = 'none';
+        saveToggle.disabled = false;
+        saveToggle.checked = !!_csSettings.savePartnerImg;
+        saveToggle.onchange = () => { _csSettings.savePartnerImg = saveToggle.checked; _saveCsSettings(); };
     }
 
     if (noReplyToggle) {

@@ -727,6 +727,8 @@ const LIBRARY_CONFIG = {
             { id: 'pokes', name: '拍一拍', mode: 'list' },
             { id: 'statuses', name: '对方状态', mode: 'list' },
             { id: 'slacking', name: '摸鱼状态', mode: 'list' },
+            { id: 'locationBank', name: '他的位置', mode: 'list' },
+            { id: 'qaAnswers', name: '他的快答', mode: 'list' },
             { id: 'surveyBank', name: '问卷题库', mode: 'list' },
             { id: 'period', name: '经期', mode: 'list' },
             { id: 'checkinBank', name: '打卡', mode: 'list' },
