@@ -229,7 +229,26 @@
             showNotification(_partnerName() + ' 出题了！限时 ' + sec + ' 秒，快答！');
         }
 
+        // 气泡倒计时脉冲：只在有进行中题目时才跑，答完/超时立刻清掉，不空转耗电
+        _startCdPulse();
+
         _answering.timer = setTimeout(_onAnswerTimeout, sec * 1000);
+    }
+
+    var _cdPulseTimer = null;
+    function _startCdPulse() {
+        if (_cdPulseTimer) clearInterval(_cdPulseTimer);
+        _cdPulseTimer = setInterval(function () {
+            if (!_answering) { if (_cdPulseTimer) { clearInterval(_cdPulseTimer); _cdPulseTimer = null; } return; }
+            var left = Math.max(0, Math.ceil((_answering.deadline - Date.now()) / 1000));
+            document.querySelectorAll('.qa-inline-cd').forEach(function (el) {
+                el.textContent = left;
+                el.style.color = left <= 10 ? '#e74c3c' : 'var(--accent-color,#c5a47e)';
+            });
+        }, 500);
+    }
+    function _stopCdPulse() {
+        if (_cdPulseTimer) { clearInterval(_cdPulseTimer); _cdPulseTimer = null; }
     }
 
     function _onAnswerTimeout() {
@@ -237,6 +256,7 @@
         var q = _answering.q;
         var msgId = _answering.msgId;
         _answering = null;
+        _stopCdPulse();
         _markQaMsg(msgId, { qaState: 'timeout' });
         renderAnswering();
         _say(pick(getTeasePool()), 'him');
@@ -251,6 +271,7 @@
         var sec = load().answerSec;
         var elapsed = Math.round((Date.now() - _answering.startTs) / 1000);
         _answering = null;
+        _stopCdPulse();
         _markQaMsg(msgId, { qaState: 'answered', qaAnswer: answer });
         renderAnswering();
 
@@ -362,11 +383,13 @@
         +   '<button type="button" id="qa-ask-send" class="modal-btn modal-btn-primary" style="width:100%;padding:10px;font-size:13px;">发出去，等TA答</button>'
         +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:5px;line-height:1.6;">TA会在时限内挑一个答案回你</div>'
         +   '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin:14px 0 6px;">TA的题库（TA考你时从中抽题，可自己加）</div>'
-        +   '<div style="display:flex;gap:6px;margin-bottom:8px;">'
-        +     '<input type="text" id="qa-bank-add-input" placeholder="加一道题：问题 | 选项1 | 选项2…" maxlength="80" style="flex:1;min-width:0;padding:8px 10px;border-radius:10px;border:1.5px solid var(--border-color,#ddd);background:var(--primary-bg,transparent);color:var(--text-primary,#333);font-size:12px;outline:none;font-family:var(--font-family);">'
-        +     '<button type="button" id="qa-bank-add-btn" class="modal-btn modal-btn-primary" style="flex:0 0 auto;padding:8px 14px;font-size:12px;">加题</button>'
+        +   '<input type="text" id="qa-bank-q" placeholder="帮TA出一道题，如：今天开心吗？" maxlength="40" style="box-sizing:border-box;width:100%;padding:8px 10px;border-radius:10px;border:1.5px solid var(--border-color,#ddd);background:var(--primary-bg,transparent);color:var(--text-primary,#333);font-size:12px;outline:none;font-family:var(--font-family);margin-bottom:6px;">'
+        +   '<div id="qa-bank-opts-box"></div>'
+        +   '<div style="display:flex;gap:6px;margin:6px 0 8px;">'
+        +     '<button type="button" id="qa-bank-opt-add" style="flex:1;padding:7px;border:1px dashed var(--border-color,#ddd);border-radius:10px;background:transparent;color:var(--text-secondary,#888);font-size:11px;cursor:pointer;font-family:var(--font-family);"><i class="fas fa-plus"></i> 加选项格</button>'
+        +     '<button type="button" id="qa-bank-add-btn" class="modal-btn modal-btn-primary" style="flex:0 0 auto;padding:7px 16px;font-size:12px;">加题</button>'
         +   '</div>'
-        +   '<div id="qa-bank-list" style="max-height:24vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>'
+        +   '<div id="qa-bank-list" style="max-height:22vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>'
         +   '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin:12px 0 6px;">问答记录</div>'
         +   '<div id="qa-history" style="max-height:18vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>'
         +   '<div style="display:flex;gap:6px;margin-top:12px;">'
@@ -389,21 +412,29 @@
         });
 
         // 当场出题：问题 + 每格一个选项 → 发出去
-        renderOptRows(2);
+        askRows.render(2);
         m.querySelector('#qa-ask-opt-add').addEventListener('click', function () {
-            var n = m.querySelectorAll('.qa-ask-opt-input').length;
-            if (n >= 6) {
-                if (typeof showNotification === 'function') showNotification('一道题最多 6 个选项', 'info', 1600);
+            var n = document.querySelectorAll('#qa-ask-opts-box .qa-opt-input').length;
+            if (n >= MAX_OPTS) {
+                if (typeof showNotification === 'function') showNotification('一道题最多 ' + MAX_OPTS + ' 个选项', 'info', 1600);
                 return;
             }
-            renderOptRows(n + 1, true);
+            askRows.render(n + 1, true);
         });
         m.querySelector('#qa-ask-send').addEventListener('click', _composeAsk);
         m.querySelector('#qa-ask-q').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); _composeAsk(); } });
 
-        // 题库：加题 + 删除（删除走事件委托）
+        // 题库：加题（同样分格子）+ 删除（删除走事件委托）
+        bankRows.render(3);
+        m.querySelector('#qa-bank-opt-add').addEventListener('click', function () {
+            var n = document.querySelectorAll('#qa-bank-opts-box .qa-opt-input').length;
+            if (n >= MAX_OPTS) {
+                if (typeof showNotification === 'function') showNotification('一道题最多 ' + MAX_OPTS + ' 个选项', 'info', 1600);
+                return;
+            }
+            bankRows.render(n + 1, true);
+        });
         m.querySelector('#qa-bank-add-btn').addEventListener('click', _bankAdd);
-        m.querySelector('#qa-bank-add-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); _bankAdd(); } });
         m.querySelector('#qa-bank-list').addEventListener('click', function (e) {
             var btn = e.target.closest('[data-bank-del]');
             if (!btn) return;
@@ -445,61 +476,61 @@
 
     var MAX_OPTS = 6;
 
-    // 渲染选项格子：每个选项独立一个输入框（保留已填内容），focusLast=新增后聚焦新格
-    function renderOptRows(count, focusLast) {
-        var box = document.getElementById('qa-ask-opts-box');
-        if (!box) return;
-        var oldVals = [];
-        box.querySelectorAll('.qa-ask-opt-input').forEach(function (inp) { oldVals.push(inp.value); });
-        var n = Math.max(1, Math.min(MAX_OPTS, count));
-        while (oldVals.length < n) oldVals.push('');
-        oldVals = oldVals.slice(0, n);
-
-        var rowCss = 'flex:1;min-width:0;padding:8px 11px;border-radius:10px;border:1.5px solid var(--border-color,#ddd);background:var(--primary-bg,transparent);color:var(--text-primary,#333);font-size:13px;outline:none;font-family:var(--font-family);';
-        var delCss = 'flex-shrink:0;width:32px;height:32px;border:1px solid var(--border-color,#ddd);border-radius:10px;background:transparent;color:var(--text-secondary,#aaa);cursor:pointer;font-size:11px;';
-        var html = '';
-        oldVals.forEach(function (v, i) {
-            html += '<div style="display:flex;gap:6px;margin-bottom:6px;">'
-                + '<span style="flex-shrink:0;width:22px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent-color,#c5a47e);">' + String.fromCharCode(65 + i) + '</span>'
-                + '<input type="text" class="qa-ask-opt-input" placeholder="选项' + (i + 1) + '（可留空）" maxlength="16" style="' + rowCss + '" value="' + _esc(v) + '">'
-                + (n > 1 ? '<button type="button" class="qa-ask-opt-del" title="删掉这格" style="' + delCss + '"><i class="fas fa-times"></i></button>' : '')
-                + '</div>';
-        });
-        box.innerHTML = html;
-
-        // 删格：把当前各格值带回去重渲染
-        box.querySelectorAll('.qa-ask-opt-del').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var vals = _collectOptInputs();
-                var row = btn.closest('div');
-                var rows = Array.prototype.slice.call(box.children);
-                var idx = rows.indexOf(row);
-                if (idx > -1) vals.splice(idx, 1);
-                _renderOptRowsWith(vals, false);
-            });
-        });
-
-        var addBtn = document.getElementById('qa-ask-opt-add');
-        if (addBtn) addBtn.style.display = n >= MAX_OPTS ? 'none' : '';
-        if (focusLast) {
-            var ins = box.querySelectorAll('.qa-ask-opt-input');
-            if (ins.length) ins[ins.length - 1].focus();
+    // 通用「选项格子」工厂：出题区和题库加题区共用同一套交互（每选项一格、可删可加）
+    function _optRowsFactory(boxId) {
+        function _box() { return document.getElementById(boxId); }
+        function collect() {
+            var vals = [];
+            var box = _box();
+            if (!box) return vals;
+            box.querySelectorAll('.qa-opt-input').forEach(function (inp) { vals.push(inp.value); });
+            return vals;
         }
+        // vals：数组=用这些值重渲染；数字=指定格子数（保留已填内容，不够补空）；
+        // 不传=按当前格子重渲染（删格时用）。focusLast=渲染后聚焦最后一格
+        function render(vals, focusLast) {
+            var box = _box();
+            if (!box) return;
+            if (typeof vals === 'number') {
+                vals = collect();
+                while (vals.length < arguments[0]) vals.push('');
+            } else if (!Array.isArray(vals)) {
+                vals = collect();
+            }
+            vals = vals.slice(0, MAX_OPTS);
+            while (vals.length < 1) vals.push('');
+
+            var rowCss = 'flex:1;min-width:0;padding:8px 11px;border-radius:10px;border:1.5px solid var(--border-color,#ddd);background:var(--primary-bg,transparent);color:var(--text-primary,#333);font-size:13px;outline:none;font-family:var(--font-family);';
+            var delCss = 'flex-shrink:0;width:32px;height:32px;border:1px solid var(--border-color,#ddd);border-radius:10px;background:transparent;color:var(--text-secondary,#aaa);cursor:pointer;font-size:11px;';
+            var html = '';
+            vals.forEach(function (v, i) {
+                html += '<div style="display:flex;gap:6px;margin-bottom:6px;">'
+                    + '<span style="flex-shrink:0;width:22px;height:32px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent-color,#c5a47e);">' + String.fromCharCode(65 + i) + '</span>'
+                    + '<input type="text" class="qa-opt-input" placeholder="选项' + (i + 1) + '（可留空）" maxlength="16" style="' + rowCss + '" value="' + _esc(v) + '">'
+                    + (vals.length > 1 ? '<button type="button" class="qa-opt-del" title="删掉这格" style="' + delCss + '"><i class="fas fa-times"></i></button>' : '')
+                    + '</div>';
+            });
+            box.innerHTML = html;
+
+            box.querySelectorAll('.qa-opt-del').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var rows = Array.prototype.slice.call(box.children);
+                    var idx = rows.indexOf(btn.closest('div'));
+                    var now = collect();
+                    if (idx > -1) now.splice(idx, 1);
+                    render(now.length ? now : [''], false);
+                });
+            });
+            if (focusLast) {
+                var ins = box.querySelectorAll('.qa-opt-input');
+                if (ins.length) ins[ins.length - 1].focus();
+            }
+        }
+        return { render: render, collect: collect };
     }
 
-    // 用指定值数组重渲染选项格
-    function _renderOptRowsWith(vals, focusLast) {
-        var box = document.getElementById('qa-ask-opts-box');
-        if (!box) return;
-        renderOptRows(vals.length || 1, focusLast);
-        box.querySelectorAll('.qa-ask-opt-input').forEach(function (inp, i) { inp.value = vals[i] || ''; });
-    }
-
-    function _collectOptInputs() {
-        var vals = [];
-        document.querySelectorAll('#qa-ask-opts-box .qa-ask-opt-input').forEach(function (inp) { vals.push(inp.value); });
-        return vals;
-    }
+    var askRows = _optRowsFactory('qa-ask-opts-box');
+    var bankRows = _optRowsFactory('qa-bank-opts-box');
 
     // ── 当场出题：问题 + 每格选项，拼成 "问题|选项1|选项2" 发给 askHim ──────────────────────
     function _composeAsk() {
@@ -511,12 +542,12 @@
             qEl.focus();
             return;
         }
-        var opts = _collectOptInputs()
+        var opts = askRows.collect()
             .map(function (s) { return String(s || '').trim(); })
             .filter(Boolean)
             .slice(0, MAX_OPTS);
         qEl.value = '';
-        renderOptRows(2);   // 发完重置成两个空格，方便下一题
+        askRows.render(['', '']);   // 发完重置成两个空格，方便下一题
         askHim(opts.length ? q + '|' + opts.join('|') : q);
     }
 
@@ -542,10 +573,19 @@
     }
 
     function _bankAdd() {
-        var input = document.getElementById('qa-bank-add-input');
-        if (!input) return;
-        var v = String(input.value || '').trim();
-        if (!v) return;
+        var qEl = document.getElementById('qa-bank-q');
+        if (!qEl) return;
+        var q = String(qEl.value || '').trim().slice(0, 40);
+        if (!q) {
+            if (typeof showNotification === 'function') showNotification('先写个问题吧～', 'info', 1800);
+            qEl.focus();
+            return;
+        }
+        var opts = bankRows.collect()
+            .map(function (s) { return String(s || '').trim(); })
+            .filter(Boolean)
+            .slice(0, MAX_OPTS);
+        var v = opts.length ? q + '|' + opts.join('|') : q;
         var arr = _bankRaw();
         if (arr.some(function (x) { return x.text === v; })) {
             if (typeof showNotification === 'function') showNotification('题库里已经有这道题啦', 'info', 1800);
@@ -557,7 +597,8 @@
         }
         arr.push({ id: 'b_' + Date.now() + '_' + Math.floor(Math.random() * 1000), text: v });
         _bankSave(arr);
-        input.value = '';
+        qEl.value = '';
+        bankRows.render(['', '', '']);
         renderBankList();
         if (typeof showNotification === 'function') showNotification('已加进题库 ✓ ' + _partnerName() + '考你时会抽到它', 'success', 2000);
     }
@@ -696,16 +737,6 @@
             if (!btn) return;
             answerInline(btn.getAttribute('data-qa-msg'), btn.getAttribute('data-qa-opt'));
         });
-
-        // 聊天流气泡里的倒计时：轻量刷新文本，不触发整棵消息树重渲染
-        setInterval(function () {
-            if (!_answering) return;
-            var left = Math.max(0, Math.ceil((_answering.deadline - Date.now()) / 1000));
-            document.querySelectorAll('.qa-inline-cd').forEach(function (el) {
-                el.textContent = left;
-                el.style.color = left <= 10 ? '#e74c3c' : 'var(--accent-color,#c5a47e)';
-            });
-        }, 500);
     }
 
     if (document.readyState === 'loading') {

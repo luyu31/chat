@@ -561,7 +561,6 @@
                         '<button type="button" class="ledger-toggle-btn" id="ledger-auto-toggle"></button>' +
                         '<div style="flex:1;min-width:0;">' +
                             '<div style="font-size:13px;font-weight:700;color:var(--text-primary);">聊天自动记账</div>' +
-                            '<div class="ledger-hint">对我说「午饭花了30」「奶茶15元」「打车23块」，会自动识别并归类；也可「记账 午饭 30」强制记一笔</div>' +
                         '</div>' +
                     '</div>' +
 

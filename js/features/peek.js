@@ -263,12 +263,8 @@
             _partnerSay(pick(_getCaughtPool()));
             if (typeof showNotification === 'function') showNotification('糟糕，被他发现了');
         } else {
-            // 安全偷看：刷新出一条他此刻的随机状态和位置（不破坏今日固定状态）
-            var pool = _getPool();
-            var textEl = document.getElementById('peek-status-text');
-            if (textEl && pool.length) textEl.textContent = pick(pool);
-            var locEl = document.getElementById('peek-location-text');
-            if (locEl) locEl.textContent = pick(_getLocationPool());
+            // 安全偷看：今日状态和位置保持唯一数据源（与双向打卡完全一致），
+            // 不在这里临时随机改卡片——他此刻在做什么、在哪，全应用只有一个答案
             if (typeof showNotification === 'function') showNotification('偷看成功，他没发现');
         }
     }
@@ -330,5 +326,8 @@
         init();
     }
 
-    window.Peek = { open: open, getToday: getToday };
+    // 对外：getToday=他此刻在做什么（今日唯一状态字卡），
+    //       getLocationNow=他此刻在哪（本小时唯一地点字卡）。
+    // 双向打卡等所有功能都必须从这里取，保证全应用状态一致
+    window.Peek = { open: open, getToday: getToday, getLocationNow: getLocationNow };
 })();

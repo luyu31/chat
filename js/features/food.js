@@ -123,6 +123,71 @@
     }
     function _newId() { return 'f_' + Date.now() + '_' + Math.floor(Math.random() * 100000); }
 
+    // ── 他自己的吃饭调度：完全随机地记一笔"他吃了什么"并播报进聊天 ──────────────────────
+    // 照 ledger.js 共同记账的 nextCheckAt 持久化模式：setTimeout 精确调度，
+    // 页面关掉时间照走，下次打开发现过期就先补一笔；间隔 40 分钟~7 小时均匀随机
+    var _foodTimer = null;
+    var _foodChatReady = false;
+    var _foodPending = 0;
+
+    function _foodDelayMs() { return (40 + Math.random() * 380) * 60000; }   // 40 分钟~7 小时
+
+    function _scheduleFood() {
+        clearTimeout(_foodTimer);
+        var d = load();
+        if (!d.schedNextAt) {
+            // 第一次：随机隔一段时间才报第一顿，别装上就秒报
+            d.schedNextAt = Date.now() + (15 + Math.random() * 180) * 60000;  // 15 分钟~3.25 小时
+            save(d);
+        }
+        var delay = d.schedNextAt - Date.now();
+        if (delay <= 0) { _runFoodCheck(); return; }
+        _foodTimer = setTimeout(_runFoodCheck, delay);
+    }
+
+    function _runFoodCheck() {
+        _spawnPartnerEaten();
+        var d = load();
+        d.schedNextAt = Date.now() + _foodDelayMs();
+        save(d);
+        _scheduleFood();
+    }
+
+    function _spawnPartnerEaten() {
+        // 开机竞态：food.js 可能比聊天模块先就绪，先攒着，renderMessages 首调后再补发
+        if (window._appDataLoaded || _foodChatReady) {
+            _doPartnerEaten();
+        } else {
+            _foodPending++;
+        }
+    }
+
+    function _doPartnerEaten() {
+        var f = _pick(FOOD_POOL);
+        // 从他的角度记一笔：餐段按现在的时间，食物均匀随机
+        recordEaten(f[0], _nowMeal(), 'partner');
+        // 食光记弹窗开着就当场刷新
+        var modal = document.getElementById('food-modal');
+        if (modal && modal.style.display === 'flex') renderList();
+    }
+
+    (function _hookRenderForFood() {
+        var origFn = window.renderMessages;
+        if (typeof origFn !== 'function') return;
+        window.renderMessages = function () {
+            if (!_foodChatReady) {
+                _foodChatReady = true;
+                if (_foodPending > 0) {
+                    var n = _foodPending;
+                    _foodPending = 0;
+                    // 攒下的只补一笔，避免开机刷一串
+                    for (var i = 0; i < n; i++) setTimeout(_doPartnerEaten, i * 1500);
+                }
+            }
+            return origFn.apply(this, arguments);
+        };
+    })();
+
     // ── 往聊天流里说话（我 / TA 两种身份，和 quickqa 同一套） ──────────────────────
     // foodOwn=true 标记"食光记自己产生的消息"，聊天自动记账钩子靠它防重复
     function _say(text, who, foodOwn) {
@@ -502,9 +567,12 @@
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () { setTimeout(wrapUserHook, 0); });
+        document.addEventListener('DOMContentLoaded', function () {
+            setTimeout(wrapUserHook, 0);
+            _scheduleFood();   // 他的吃饭调度随模块启动
+        });
     } else {
-        setTimeout(wrapUserHook, 60);
+        setTimeout(function () { wrapUserHook(); _scheduleFood(); }, 60);
     }
 
     window.Food = { open: open, detect: detectEaten };

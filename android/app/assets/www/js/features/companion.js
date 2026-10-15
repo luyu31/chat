@@ -862,10 +862,9 @@
             // 写入陪伴日记（错过记录）
             try {
                 if (typeof window.addCompanionDiaryEntry === 'function') {
-                    // 90% 概率有梦角备注
-                    const partnerNote = Math.random() < 0.9
-                        ? (typeof window.pickCompanionDiaryCards === 'function' ? window.pickCompanionDiaryCards() : '')
-                        : '';
+                    // 每条陪伴记录都写梦角备注（字卡池为空时才为空串），不再概率跳过
+                    const partnerNote = (typeof window.pickCompanionDiaryCards === 'function')
+                        ? window.pickCompanionDiaryCards() : '';
                     window.addCompanionDiaryEntry({
                         id: Date.now(),
                         ts: Date.now(),

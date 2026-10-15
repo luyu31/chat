@@ -40,9 +40,8 @@
         'companion': 10
     };
 
-    var _tickInterval = null;
-    var _todayLockCount = 0;
-    var _todayDate = '';
+    // ── 随机封锁调度状态 ──────────────────────
+    // 今日已锁次数直接持久化在数据里（lockDate/lockCount），不再用内存计数
 
     // 用户改的昵称（设置→对方的名字），取不到就用"他"
     function _partnerName() {
@@ -336,7 +335,7 @@
         var lockPartner = document.getElementById('ctrl-lock-partner');
         var hint = document.getElementById('ctrl-footer-hint');
         if (lockPartner) lockPartner.textContent = '把' + name + '锁起来';
-        if (hint) hint.textContent = '什么时候锁你的手机由' + name + '随机决定，难度只定每天的次数上限；锁上的瞬间会给你发手机通知。';
+        if (hint) hint.textContent = '他会在随机时刻主动锁你（首次很快就会遇到），切回 App 到点即锁；难度只定每天次数上限，锁上的瞬间会发手机通知。';
     }
 
     function open() {
@@ -349,9 +348,14 @@
         }
     }
 
-    // ── 随机封锁调度（照抄 redpacket.js scheduler 思路） ──────────────────────
-    // 每 30 秒检查 nextLockAt：到点了 + 今天还没锁够 + 页面可见 → 触发封锁
-    // 什么时候锁完全随机，不配置任何概率；难度档位只决定每天的次数上限
+    // ── 随机封锁调度（setTimeout 精确调度 + 30 秒兜底 + 回前台立即补检） ──────────────────────
+    // 什么时候锁完全随机，不配置任何概率；难度档位只决定每天的次数上限。
+    // 旧版只靠 30 秒轮询且首次就要等 20 分钟~2 小时，App 使用时长短时几乎永远遇不到——
+    // 现在：从没遇到过锁的用户首次只等 3~20 分钟；页面关掉时间照走，
+    // 重新打开或切回前台时发现到点立刻补锁，不再依赖轮询碰运气。
+    var _lockTimer = null;
+
+    function _firstLockDelayMs() { return (3 + Math.random() * 17) * 60000; }      // 首次：3~20 分钟
     function _nextLockDelayMs() {
         // 常规档：20 分钟~6 小时均匀随机；
         // 「看他心情」连节奏都不让你摸透：2 分钟~10 小时均匀随机
@@ -359,63 +363,99 @@
         return (20 + Math.random() * 340) * 60000;
     }
 
-    function _checkScheduler() {
+    // 今日已锁次数（持久化，重启 App 不重置）
+    function _bumpTodayCount(d) {
+        var today = _todayStr();
+        if (d.lockDate !== today) { d.lockDate = today; d.lockCount = 0; }
+        d.lockCount = (d.lockCount || 0) + 1;
+    }
+    function _todayCount(d) {
+        return d.lockDate === _todayStr() ? (d.lockCount || 0) : 0;
+    }
+
+    // 到点后尝试真的锁；条件不满足就把下一次时间排好
+    function _fireIfPossible() {
         var d = load();
-        if (!d.nextLockAt) {
-            // 首次初始化：启动后 20 分钟~2 小时随机
-            d.nextLockAt = Date.now() + (20 + Math.random() * 100) * 60 * 1000;
+        // 还没到点：按剩余时间精确排闹钟
+        if (d.nextLockAt && Date.now() < d.nextLockAt) { _scheduleLock(); return; }
+        // 页面不在前台：不锁，等 visibilitychange 回前台时立刻再试
+        if (document.hidden) return;
+        // 暗号锁当前激活：顺延 10 分钟后再看
+        if (window.LockScreen && typeof window.LockScreen.isActive === 'function' && window.LockScreen.isActive()) {
+            d.nextLockAt = Date.now() + 10 * 60000;
             _saveData(d);
+            _scheduleLock();
             return;
         }
-
-        if (Date.now() < d.nextLockAt) return;
-
-        // 到点了，检查条件
-        // 1) 页面不可见时不触发（等回前台再触发）
-        if (document.hidden) return;
-
-        // 2) 暗号锁当前激活时不触发
-        if (window.LockScreen && typeof window.LockScreen.isActive === 'function' && window.LockScreen.isActive()) return;
-
-        // 3) 今天封锁次数还没到上限（无上限档永不触发这条）
-        var today = _todayStr();
-        if (_todayDate !== today) { _todayDate = today; _todayLockCount = 0; }
+        // 今天封锁次数到上限：排到明天 0~3 小时内
         var diff = _getDifficultyCfg();
-        if (_todayLockCount >= diff.maxPerDay) {
-            // 今天锁够了，排到明天
+        if (_todayCount(d) >= diff.maxPerDay) {
             var tomorrow = new Date();
             tomorrow.setHours(0, 0, 0, 0);
             tomorrow.setDate(tomorrow.getDate() + 1);
-            d.nextLockAt = tomorrow.getTime() + Math.random() * 3 * 3600000; // 明天 0~3 小时内随机
+            d.nextLockAt = tomorrow.getTime() + Math.random() * 3 * 3600000;
             _saveData(d);
+            _scheduleLock();
             return;
         }
 
         // 条件全满足，触发封锁！
-        _todayLockCount++;
-        if (window.LockScreen && typeof window.LockScreen.start === 'function') {
-            window.LockScreen.start();
-        }
-
-        // 排下一次：完全随机，摸不到规律
+        _bumpTodayCount(d);
+        d.everLocked = true;
         d.nextLockAt = Date.now() + _nextLockDelayMs();
         _saveData(d);
+        try {
+            if (window.LockScreen && typeof window.LockScreen.start === 'function') {
+                window.LockScreen.start();
+            }
+        } catch (e) { console.warn('[control] 触发封锁失败:', e); }
+        _scheduleLock();
+    }
+
+    function _scheduleLock() {
+        if (_lockTimer) { clearTimeout(_lockTimer); _lockTimer = null; }
+        var d = load();
+        // 老用户迁移：从没遇到过主动锁（旧版首次要等 20 分钟~2 小时，使用时长短永远遇不到），
+        // 把首次时间收紧到 3~20 分钟内
+        var neverLocked = !d.everLocked && !(d.stats && (d.stats.locksPassed || d.stats.locksFailed));
+        if (d.nextLockAt && neverLocked && d.nextLockAt > Date.now() + 20 * 60000) {
+            d.nextLockAt = Date.now() + _firstLockDelayMs();
+            _saveData(d);
+        }
+        if (!d.nextLockAt) {
+            // 从没锁过的人首次很快就能遇到一次；之后按档位宽随机
+            d.nextLockAt = Date.now() + (neverLocked ? _firstLockDelayMs() : _nextLockDelayMs());
+            _saveData(d);
+        }
+        var delay = d.nextLockAt - Date.now();
+        if (delay <= 0) {
+            // 已过期：5 秒后补锁（给页面加载/聊天数据恢复留点时间）
+            _lockTimer = setTimeout(_fireIfPossible, 5000);
+        } else {
+            // setTimeout 最大延迟约 24.8 天，这里最长 10 小时，安全
+            _lockTimer = setTimeout(_fireIfPossible, delay);
+        }
     }
 
     function initScheduler() {
-        if (_tickInterval) clearInterval(_tickInterval);
-        _tickInterval = setInterval(_checkScheduler, 30000);
-        // 启动后 30 秒第一次检查（不立刻检查，给页面加载时间）
+        _scheduleLock();
+        // 30 秒兜底轮询：极端情况下（系统改时间、timer 被 WebView 吞掉）也能自愈
+        setInterval(function () {
+            var d = load();
+            if (d.nextLockAt && Date.now() >= d.nextLockAt) _fireIfPossible();
+        }, 30000);
+        // 切回前台立刻检查：后台期间到点的锁，一回来就补，不用等轮询
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) {
+                var d = load();
+                if (d.nextLockAt && Date.now() >= d.nextLockAt) _fireIfPossible();
+            }
+        });
     }
 
     // ── 初始化 ──────────────────────
     function init() {
-        // 如果 nextLockAt 还没初始化，先排一个
-        var d = load();
-        if (!d.nextLockAt) {
-            d.nextLockAt = Date.now() + (20 + Math.random() * 100) * 60 * 1000;
-            _saveData(d);
-        }
+        // nextLockAt / 首次延迟都由 _scheduleLock 内部决定
         initScheduler();
         // 高级功能 → 实用工具 → 操控面板 入口
         var adv = document.getElementById('control-function');

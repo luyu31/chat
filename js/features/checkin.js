@@ -108,14 +108,21 @@
 
     function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-    // ─── 摸鱼状态（查岗「他在干什么」）：从字卡组「摸鱼状态」随机抽一条 ───
+    // ─── 他此刻在做什么：与摸鱼共用同一个唯一状态源（peek.js 的今日状态字卡），
+    //     两个功能展示必须一致，不能各抽各的 ───
     function pickSlackingStatus() {
+        if (window.Peek && typeof window.Peek.getToday === 'function') {
+            try {
+                var s = window.Peek.getToday();
+                if (s) return s;
+            } catch (e) {}
+        }
         var pool = [];
         if (typeof window._getSlackingStatusPool === 'function') {
             try { pool = window._getSlackingStatusPool(); } catch (e) {}
         }
         if (!pool || !pool.length) {
-            // 兜底：reply-library 没加载或库被清空时，用写死的默认
+            // 兜底：peek/reply-library 都没加载时
             pool = ['在摸鱼刷视频', '在偷偷打游戏', '在认真工作，勿扰', '在发呆想你了', '在吃零食', '在开会摸鱼', '在装忙，其实在等你消息', '在偷偷查岗你'];
         }
         return pick(pool);
@@ -216,14 +223,14 @@
                     '「{item}」双人打卡达成！击掌✋',
                     '你也「{item}」完啦，默契✓',
                 ]);
-            } else if (Math.random() < 0.6) {
-                // 他还没完成 → 只夸一句，会不会打看他自己
+            } else if (Math.random() < 0.5) {
+                // 他还没完成 → 夸不夸完全随机（对半，不配置偏向概率）
                 checkinSay(item, [
                     '真乖，「{item}」完成啦，奖励一朵小红花🌸',
                     '「{item}」打卡成功！继续保持～',
                 ]);
             }
-            // 剩下约 40% 的情况：不说话，留点真实感
+            // 另一半情况：不说话，留点真实感
         }, delay);
     }
 
@@ -294,9 +301,13 @@
         const now = new Date();
         if (sumEl) sumEl.textContent = (now.getMonth() + 1) + '月' + now.getDate() + '日 · 我 ' + meDone + '/' + items.length + ' · ' + partnerName + ' ' + paDone + '/' + items.length;
 
-        // 每次打开/刷新查岗面板，都随机展示一条梦角「此刻在干什么」的摸鱼状态
+        // 每次打开/刷新查岗面板，都展示他此刻唯一的状态+位置（与摸鱼同一数据源）
         var slackingEl = document.getElementById('checkin-slacking');
-        if (slackingEl) slackingEl.textContent = '此刻他正在：' + pickSlackingStatus();
+        if (slackingEl) {
+            var loc = (window.Peek && typeof window.Peek.getLocationNow === 'function') ? window.Peek.getLocationNow() : '';
+            slackingEl.innerHTML = '此刻他正在：' + pickSlackingStatus()
+                + (loc ? '<br><i class="fas fa-location-dot" style="font-size:10px;margin-right:2px;"></i>' + loc : '');
+        }
 
         listEl.innerHTML = '';
         items.forEach(it => {
