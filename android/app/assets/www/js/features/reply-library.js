@@ -153,7 +153,9 @@ function _renderListContentOnly() {
         else if (currentSubTab === 'statuses') itemsToRender = customStatuses;
         else if (currentSubTab === 'slacking') { _renderSlackingTab(list); return; }
         else if (currentSubTab === 'locationBank') { _locationBank.render(list, '位置字卡'); return; }
-        else if (currentSubTab === 'qaAnswers') { _qaAnswerBank.render(list, '快答字卡'); return; }
+        else if (currentSubTab === 'qaQuestions') { _qaQuestionBank.render(list, '快问问题'); return; }
+        else if (currentSubTab === 'qaPraise') { _qaPraiseBank.render(list, '夸奖字卡'); return; }
+        else if (currentSubTab === 'qaTease') { _qaTeaseBank.render(list, '嘲讽字卡'); return; }
         else if (currentSubTab === 'mottos') itemsToRender = customMottos;
         else if (currentSubTab === 'motto') itemsToRender = customMottos;
         else if (currentSubTab === 'intros') itemsToRender = customIntros;
@@ -258,7 +260,9 @@ function renderReplyLibrary() {
         else if (currentSubTab === 'statuses') itemsToRender = customStatuses;
         else if (currentSubTab === 'slacking') { _renderSlackingTab(list); return; }
         else if (currentSubTab === 'locationBank') { _locationBank.render(list, '位置字卡'); return; }
-        else if (currentSubTab === 'qaAnswers') { _qaAnswerBank.render(list, '快答字卡'); return; }
+        else if (currentSubTab === 'qaQuestions') { _qaQuestionBank.render(list, '快问问题'); return; }
+        else if (currentSubTab === 'qaPraise') { _qaPraiseBank.render(list, '夸奖字卡'); return; }
+        else if (currentSubTab === 'qaTease') { _qaTeaseBank.render(list, '嘲讽字卡'); return; }
         else if (currentSubTab === 'mottos') itemsToRender = customMottos;
         else if (currentSubTab === 'motto') itemsToRender = customMottos;
         else if (currentSubTab === 'intros') itemsToRender = customIntros;
@@ -300,7 +304,7 @@ function _renderModernToolbar() {
     // 问卷题库这个 tab 是自己单独一套渲染（对象结构，不是纯字符串数组），
     // 不走下面这套批量管理/分组/去重逻辑——那些都是照着字符串数组写的，硬塞进来只会出岔子
     // 摸鱼状态也是 {id,text} 对象结构，单独一套渲染，同样不走通用批量逻辑
-    if (currentMajorTab === 'atmosphere' && (currentSubTab === 'surveyBank' || currentSubTab === 'redpacketBank' || currentSubTab === 'slacking' || currentSubTab === 'locationBank' || currentSubTab === 'qaAnswers')) {
+    if (currentMajorTab === 'atmosphere' && (currentSubTab === 'surveyBank' || currentSubTab === 'redpacketBank' || currentSubTab === 'slacking' || currentSubTab === 'locationBank' || currentSubTab === 'qaQuestions' || currentSubTab === 'qaPraise' || currentSubTab === 'qaTease')) {
         if (toolbar) toolbar.style.display = 'none';
         return;
     }
@@ -1054,18 +1058,41 @@ var _locationBank = _makeObjectBank('customPartnerLocations', [
 ]);
 window._getPartnerLocationPool = _locationBank.pool;
 
-// ─── 他的快答（快问快答里他答填空题的台词）字卡组 ───────────────────────────────
-var _qaAnswerBank = _makeObjectBank('customQAAnswers', [
-    { id: 'q_1', text: '当然想你了' },
-    { id: 'q_2', text: '这还用问吗' },
-    { id: 'q_3', text: '嗯……让我想想，是想你' },
-    { id: 'q_4', text: '你猜？猜对有奖' },
-    { id: 'q_5', text: '无可奉告（开玩笑的，想你）' },
-    { id: 'q_6', text: '这题我会：想你了' },
-    { id: 'q_7', text: '刚想说就被你抢先问了' },
-    { id: 'q_8', text: '答案跟你有关' }
+// ─── 快问快答 · 问题字卡（格式：问题|选项1|选项2|...，问卷式点选） ───────────────────────────────
+var _qaQuestionBank = _makeObjectBank('customQAQuestions', [
+    { id: 'q_1', text: '今天想我了没？|想了|特别想|一直在想|才不想' },
+    { id: 'q_2', text: '周末想跟我干什么？|宅家贴贴|出门逛街|看电影|吃好吃的' },
+    { id: 'q_3', text: '我是不是很可爱？|是|特别可爱|全天下最可爱|一般般' },
+    { id: 'q_4', text: '更喜欢我对你笑还是对你撒娇？|笑|撒娇|都要|闭眼选你' },
+    { id: 'q_5', text: '今晚早点睡好不好？|好|再玩五分钟|马上睡|你先睡' },
+    { id: 'q_6', text: '先有鸡还是先有蛋？|鸡|蛋|不知道|先有你' },
+    { id: 'q_7', text: '吵架了谁先低头？|我先|你先|石头剪刀布|不存在吵架' },
+    { id: 'q_8', text: '奶茶要几分糖？|全糖|七分|半糖|无糖' },
+    { id: 'q_9', text: '更喜欢我叫你什么？|宝贝|老公|哥哥|名字' },
+    { id: 'q_10', text: '我生气了你会怎么哄？|抱抱|说好话|买好吃的|陪你到消气' }
 ]);
-window._getQAAnswerPool = _qaAnswerBank.pool;
+window._getQAQuestionPool = _qaQuestionBank.pool;
+
+// ─── 快问快答 · 夸奖字卡（你答得快时他说的话） ───────────────────────────────
+var _qaPraiseBank = _makeObjectBank('customQAPraise', [
+    { id: 'p_1', text: '反应挺快嘛，奖励一个抱抱' },
+    { id: 'p_2', text: '答得不错，就喜欢你这个速度' },
+    { id: 'p_3', text: '这速度，看来心里有我' },
+    { id: 'p_4', text: '好快的回答，我还没准备好夸你' },
+    { id: 'p_5', text: '秒答！默契值 +1' }
+]);
+window._getQAPraisePool = _qaPraiseBank.pool;
+
+// ─── 快问快答 · 嘲讽字卡（你超时或答太慢时他说的话） ───────────────────────────────
+var _qaTeaseBank = _makeObjectBank('customQATease', [
+    { id: 't_1', text: '时间到！你刚刚是不是走神了？' },
+    { id: 't_2', text: '超时了哦，这题算我赢' },
+    { id: 't_3', text: '喂，人呢？倒计时都跑完了' },
+    { id: 't_4', text: '算了算了，我自己去想答案了' },
+    { id: 't_5', text: '这么慢，是不是不爱我了（哼）' },
+    { id: 't_6', text: '蜗牛都比你快，下次加油吧' }
+]);
+window._getQATeasePool = _qaTeaseBank.pool;
 
 function _renderEmojiTab(list, itemsToRender) {
     if (itemsToRender.length === 0 && customEmojis.length === 0) {
@@ -2601,8 +2628,16 @@ function initReplyLibraryListeners() {
                 _locationBank.add('位置字卡', '请输入新的位置（比如：在江边散步）:');
                 return;
             }
-            if (currentSubTab === 'qaAnswers') {
-                _qaAnswerBank.add('快答字卡', '请输入新的快答台词（比如：当然是想你）:');
+            if (currentSubTab === 'qaQuestions') {
+                _qaQuestionBank.add('快问问题', '请输入新问题（格式：问题|选项1|选项2|选项3）\n例如：今天想我了没？|想了|没有|特别想');
+                return;
+            }
+            if (currentSubTab === 'qaPraise') {
+                _qaPraiseBank.add('夸奖字卡', '请输入新的夸奖台词（比如：这速度，看来心里有我）:');
+                return;
+            }
+            if (currentSubTab === 'qaTease') {
+                _qaTeaseBank.add('嘲讽字卡', '请输入新的嘲讽台词（比如：蜗牛都比你快）:');
                 return;
             }
             let input;

@@ -68,14 +68,14 @@
         let changed = false;
         items.forEach(it => {
             if (!(it.id in p.times)) {
-                // 30% 概率他今天压根不做这件事（他不是打卡机器）；
-                // 其余从现在起的 15分钟~6小时内随机完成；太晚开 app 时压缩到 5~50 分钟
-                if (Math.random() < 0.3) {
+                // 完全随机：做不做五五开（掷硬币），不做就排 0；
+                // 做的话完成时刻在「现在 ~ 当天 23:30」里均匀随机，纯看运气
+                if (Math.random() < 0.5) {
                     p.times[it.id] = 0; // 0 = 今天不做（到点检查里 0 是 falsy，天然跳过）
                 } else {
-                    let t = Date.now() + (15 + Math.random() * 345) * 60000;
-                    if (t > dayEnd.getTime()) t = Date.now() + (5 + Math.random() * 50) * 60000;
-                    p.times[it.id] = t;
+                    const lo = Date.now();
+                    const hi = dayEnd.getTime();
+                    p.times[it.id] = lo + Math.floor(Math.random() * (hi - lo));
                 }
                 changed = true;
             }
@@ -197,7 +197,7 @@
         }
     }
 
-    // ─── 我完成一项 → 梦角必然紧跟着一起打卡（像真的情侣互相带动那样）───
+    // ─── 我完成一项 → 只跟他汇报；他打不打卡完全看他自己当天的随机计划，跟我的行为无关 ───
     function onMeComplete(item) {
         // 我完成打卡 → 梦角 App 熟练度 +2（每日上限 6 次）
         try {
@@ -205,36 +205,25 @@
                 window.PartnerProficiency.gainDaily(2, 'checkin', 6);
             }
         } catch (e) {}
-        const daily = getDaily();
         const delay = 1200 + Math.random() * 2600;
         setTimeout(() => {
             const d = getDaily();
             if (!d.me[item.id]) return; // 用户又撤销了
             if (d.partner[item.id]) {
-                // 他先完成的 → 双人达成
+                // 他也完成了 → 双人达成
                 checkinSay(item, [
                     '太棒了，「{item}」我们都完成啦✓',
                     '「{item}」双人打卡达成！击掌✋',
                     '你也「{item}」完啦，默契✓',
                 ]);
-            } else if (Math.random() < 0.45) {
-                // 他还没完成 → 45% 概率跟着我一起打（他也可能今天压根没打算做这项）
-                d.partner[item.id] = Date.now();
-                save(KEY_DAILY, d);
-                checkinSay(item, [
-                    '我也刚「{item}」完，跟你一起✓',
-                    '被你感染了，我也去「{item}」啦',
-                    '看到你打了，我也把「{item}」搞定✓',
-                ]);
-                renderPanel();
             } else if (Math.random() < 0.6) {
-                // 没跟着打，但夸一句
+                // 他还没完成 → 只夸一句，会不会打看他自己
                 checkinSay(item, [
                     '真乖，「{item}」完成啦，奖励一朵小红花🌸',
                     '「{item}」打卡成功！继续保持～',
                 ]);
             }
-            // 剩下约 18% 的情况：不说话也不打，留点真实感
+            // 剩下约 40% 的情况：不说话，留点真实感
         }, delay);
     }
 
@@ -259,7 +248,7 @@
                 <button type="button" id="checkin-close" class="modal-btn modal-btn-secondary" style="flex:0 0 auto;">关闭</button>
             </div>
             <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;">
-                点「我」打卡，他可能会跟着一起打（看心情）；他自己到点也会完成并汇报，你没完成还会反过来催你。<br>
+                他每天做不做、几点做完全是随机的（掷硬币决定做不做，时刻全天随机），跟你打不打卡没关系；你没完成他还会反过来催你（每天最多一次）。<br>
                 双方都完成会点亮整行。任务每天零点自动重置。点任务名可改名。
             </div>
         </div>`;
