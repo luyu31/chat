@@ -118,7 +118,8 @@ public class MilkChat {
                 fos.write(data); fos.flush(); fos.close();
             }
         } catch (Exception ignored) {}
-        if (ring) RingtonePlayer.start(ctx);
+        if (ring) RingtonePlayer.start(ctx, true);
+        else RingtonePlayer.start(ctx, false); // 关铃声时仍走原生震动（比 navigator.vibrate 可靠）
         NotificationHelper.showIncomingCallNotification(ctx, name);
 
         // 直接拉起全屏来电界面：锁屏走上面 fullScreenIntent，这里再兜底一遍，
@@ -191,7 +192,7 @@ public class MilkChat {
     /** 试听当前铃声 3 秒 */
     @JavascriptInterface
     public void previewRingtone() {
-        RingtonePlayer.start(ctx);
+        RingtonePlayer.start(ctx, true);
         new Thread(new Runnable() {
             @Override
             public void run() {

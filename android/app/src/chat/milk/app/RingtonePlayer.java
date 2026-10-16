@@ -37,6 +37,8 @@ public final class RingtonePlayer {
     private static Runnable stopCap;
     private static volatile boolean vibrating;
     private static PowerManager.WakeLock wakeLock;
+    /** 本次来电是否请求了响铃（震动永远请求），供 IncomingCallActivity 补响时判断 */
+    static boolean ringRequested;
 
     private RingtonePlayer() {}
 
@@ -70,60 +72,67 @@ public final class RingtonePlayer {
         try { return player != null && player.isPlaying(); } catch (Exception e) { return false; }
     }
 
-    /** 开始响铃（幂等：已在响则忽略） */
-    public static synchronized void start(Context ctx) {
-        if (isPlaying()) return;
+    /**
+     * 开始来电提醒：永远震动（像手机来电），铃声是否播放由 playSound 控制。
+     * 幂等：已在响/震则忽略。
+     */
+    public static synchronized void start(Context ctx, boolean playSound) {
+        // 已经在响（或正在震）就不重复启动
+        if (playSound ? isPlaying() : vibrating) return;
         stopInternal();
+        ringRequested = playSound;
         Context app = ctx.getApplicationContext();
         if (handler == null) handler = new Handler(Looper.getMainLooper());
 
         // 响铃期间持有 PARTIAL_WAKE_LOCK，保证 CPU 不休眠、铃声和震动能持续到接听/超时
         acquireWakeLock(app);
 
-        player = new MediaPlayer();
-        try {
-            boolean loaded = false;
-            File custom = ringtoneFile(app);
-            if (custom.exists()) {
-                try {
-                    player.setDataSource(custom.getAbsolutePath());
-                    loaded = true;
-                } catch (IOException ignored) {}
-            }
-            if (!loaded) {
-                String uri = getUriPref(app);
-                if (uri != null) {
+        if (playSound) {
+            player = new MediaPlayer();
+            try {
+                boolean loaded = false;
+                File custom = ringtoneFile(app);
+                if (custom.exists()) {
                     try {
-                        player.setDataSource(app, Uri.parse(uri));
+                        player.setDataSource(custom.getAbsolutePath());
                         loaded = true;
-                    } catch (Exception ignored) {}
+                    } catch (IOException ignored) {}
                 }
+                if (!loaded) {
+                    String uri = getUriPref(app);
+                    if (uri != null) {
+                        try {
+                            player.setDataSource(app, Uri.parse(uri));
+                            loaded = true;
+                        } catch (Exception ignored) {}
+                    }
+                }
+                if (!loaded) {
+                    try {
+                        player.setDataSource(app.getAssets().openFd("www/assets/audio/invite_videocall.mp3"));
+                        loaded = true;
+                    } catch (IOException ignored) {}
+                }
+                if (!loaded) {
+                    Uri def = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+                    if (def != null) player.setDataSource(app, def);
+                }
+                player.setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build());
+                player.setAudioStreamType(AudioManager.STREAM_RING);
+                player.setLooping(true);
+                player.setVolume(1f, 1f);
+                player.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+                    @Override
+                    public void onPrepared(MediaPlayer mp) { try { mp.start(); } catch (IllegalStateException ignored) {} }
+                });
+                player.prepareAsync();
+            } catch (Exception e) {
+                try { player.release(); } catch (Exception ignored) {}
+                player = null;
             }
-            if (!loaded) {
-                try {
-                    player.setDataSource(app.getAssets().openFd("www/assets/audio/invite_videocall.mp3"));
-                    loaded = true;
-                } catch (IOException ignored) {}
-            }
-            if (!loaded) {
-                Uri def = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-                if (def != null) player.setDataSource(app, def);
-            }
-            player.setAudioAttributes(new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build());
-            player.setAudioStreamType(AudioManager.STREAM_RING);
-            player.setLooping(true);
-            player.setVolume(1f, 1f);
-            player.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-                @Override
-                public void onPrepared(MediaPlayer mp) { try { mp.start(); } catch (IllegalStateException ignored) {} }
-            });
-            player.prepareAsync();
-        } catch (Exception e) {
-            try { player.release(); } catch (Exception ignored) {}
-            player = null;
         }
 
         startVibrate(app);
@@ -151,6 +160,7 @@ public final class RingtonePlayer {
             handler.removeCallbacks(stopCap);
             stopCap = null;
         }
+        ringRequested = false;
         stopVibrate();
         releaseWakeLock();
     }

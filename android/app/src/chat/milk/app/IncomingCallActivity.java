@@ -210,8 +210,8 @@ public class IncomingCallActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
-        // 横幅点进来但铃声没响（如铃声被系统停了）时补响
-        if (!RingtonePlayer.isPlaying()) RingtonePlayer.start(this);
+        // 补响/补震：铃声被系统停了就按原本的设置重启（用户关了铃声就只补震动）
+        RingtonePlayer.start(this, RingtonePlayer.ringRequested);
     }
 
     @Override
