@@ -592,7 +592,18 @@
         // 只说「食光记/吃什么」之类的打开指令 → 直接打开弹窗
         if (/^\s*(?:食光记|食光)\s*$/.test(text)) { setTimeout(open, 100); return; }
 
-        var hit = detectEaten(text);
+        // 拆分：同一条消息里金额归记账，剩下的文本才交给食光——
+        // 先让记账把金额片段抠走（「中午吃了米线，18.4」→「中午吃了米线」），
+        // 这样食光只记「米线」，不会把价格和食物名并列记进去
+        var eatText = text;
+        try {
+            if (window.Ledger && typeof window.Ledger.splitText === 'function') {
+                var sp = window.Ledger.splitText(text);
+                if (sp && sp.amount != null && sp.text) eatText = sp.text;
+            }
+        } catch (e) {}
+
+        var hit = detectEaten(eatText);
         if (!hit) return;
         var d = load();
         d.entries.unshift({ id: _newId(), ts: Date.now(), kind: 'eaten', author: 'me', what: hit.what, meal: hit.meal, source: 'chat' });
@@ -614,23 +625,25 @@
         var st = document.createElement('style');
         st.textContent =
             '#food-modal .modal-content{max-width:420px;width:90vw;max-height:86vh;overflow-y:auto;}' +
-            '.food-sec-title{font-size:12px;font-weight:700;color:var(--text-secondary,#999);margin:14px 0 6px;}' +
+            '.food-sec-title{font-size:13px;font-weight:700;color:var(--text-secondary,#999);margin:16px 0 8px;}' +
             '.food-sec-title:first-of-type{margin-top:6px;}' +
-            '.food-input{width:100%;box-sizing:border-box;padding:9px 11px;border-radius:10px;border:1.5px solid var(--border-color,#ddd);background:var(--primary-bg,transparent);color:var(--text-primary,#333);font-size:13px;outline:none;font-family:var(--font-family);}' +
+            '.food-input{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:11px;border:1.5px solid var(--border-color,#ddd);background:var(--primary-bg,transparent);color:var(--text-primary,#333);font-size:14px;outline:none;font-family:var(--font-family);}' +
             '.food-input:focus{border-color:var(--accent-color,#c5a47e);}' +
-            '.food-btn-row{display:flex;gap:8px;margin-top:8px;}' +
-            '.food-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}' +
-            '.food-chip{padding:6px 12px;border-radius:999px;border:1px solid var(--border-color,#ddd);background:var(--secondary-bg,transparent);font-size:12px;color:var(--text-primary,#333);cursor:pointer;font-family:var(--font-family);}' +
+            '.food-btn-row{display:flex;gap:8px;margin-top:10px;}' +
+            '.food-chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px;}' +
+            '.food-chip{padding:7px 14px;border-radius:999px;border:1px solid var(--border-color,#ddd);background:var(--secondary-bg,transparent);font-size:13px;color:var(--text-primary,#333);cursor:pointer;font-family:var(--font-family);}' +
             '.food-chip.active{border-color:var(--accent-color,#c5a47e);background:rgba(var(--accent-color-rgb,197,164,126),.16);color:var(--accent-color,#c5a47e);font-weight:700;}' +
-            '.food-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:11px;}' +
-            '.food-row:hover{background:var(--secondary-bg,rgba(0,0,0,.03));}' +
-            '.food-row-icon{width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;flex-shrink:0;}' +
+            '.food-row{display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;border:1px solid var(--border-color,#ececec);background:var(--secondary-bg,rgba(0,0,0,.02));margin-top:8px;}' +
+            '.food-row:hover{background:var(--secondary-bg,rgba(0,0,0,.05));}' +
+            '.food-row-icon{width:36px;height:36px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0;}' +
             '.food-row-main{flex:1;min-width:0;}' +
-            '.food-row-desc{font-size:13px;color:var(--text-primary,#333);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
-            '.food-row-sub{font-size:10px;color:var(--text-secondary,#aaa);margin-top:1px;}' +
-            '.food-row-btn{flex-shrink:0;width:26px;height:26px;border:none;border-radius:50%;background:transparent;color:var(--text-secondary,#aaa);font-size:11px;cursor:pointer;}' +
-            '.food-date-head{font-size:11px;color:var(--text-secondary,#999);margin:8px 2px 2px;}' +
-            '.food-author-tag{display:inline-block;padding:0 6px;border-radius:8px;font-size:10px;line-height:16px;background:rgba(197,164,126,.16);color:var(--accent-color,#c5a47e);margin-right:4px;vertical-align:middle;}' +
+            '.food-row-desc{font-size:14px;line-height:1.45;font-weight:600;color:var(--text-primary,#333);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;}' +
+            '.food-row-sub{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:11.5px;color:var(--text-secondary,#999);margin-top:5px;}' +
+            '.food-meal-badge{display:inline-flex;align-items:center;padding:0 8px;border-radius:999px;font-size:11px;line-height:18px;background:rgba(249,115,22,.14);color:#e8842b;white-space:nowrap;}' +
+            '.food-row-time{font-size:11px;color:var(--text-secondary,#aaa);font-variant-numeric:tabular-nums;}' +
+            '.food-row-btn{flex-shrink:0;width:28px;height:28px;border:none;border-radius:50%;background:transparent;color:var(--text-secondary,#aaa);font-size:12px;cursor:pointer;}' +
+            '.food-date-head{font-size:12px;color:var(--text-secondary,#999);margin:14px 4px 4px;}' +
+            '.food-author-tag{display:inline-block;padding:0 6px;border-radius:8px;font-size:10px;line-height:16px;background:rgba(197,164,126,.16);color:var(--accent-color,#c5a47e);margin-right:0;vertical-align:middle;}' +
             '.food-author-partner{background:rgba(138,123,216,.16);color:#8a7bd8;}';
         document.head.appendChild(st);
 
@@ -790,7 +803,8 @@
                 + '<div class="food-row-main">'
                 +   '<div class="food-row-desc">' + (isRec ? '推荐' : '吃了') + '：' + _esc(x.what) + '</div>'
                 +   '<div class="food-row-sub"><span class="food-author-tag' + (x.author === 'partner' ? ' food-author-partner' : '') + '">' + _esc(authorName) + '</span>'
-                +     (isRec ? '推荐' : _esc(x.meal || '')) + ' · ' + time + '</div>'
+                +     (isRec ? '<span class="food-meal-badge">推荐</span>' : '<span class="food-meal-badge">' + _esc(x.meal || '') + '</span>')
+                +     '<span class="food-row-time">' + time + '</span></div>'
                 + '</div>'
                 + '<button type="button" class="food-row-btn" data-food-del="' + _esc(x.id) + '" title="删除"><i class="fas fa-times"></i></button>'
                 + '</div>';

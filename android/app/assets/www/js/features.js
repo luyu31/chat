@@ -493,8 +493,9 @@ function showEmojiTab() {
                 updateBatchPreview();
                 showNotification('已添加到批量发送', 'success', 1200);
             } else {
+                const stickerMsgId = Date.now();
                 addMessage({
-                    id: Date.now(),
+                    id: stickerMsgId,
                     sender: 'user',
                     text: '',
                     timestamp: new Date(),
@@ -504,11 +505,11 @@ function showEmojiTab() {
                     type: 'normal'
                 });
                 playSound('send');
-                
-                const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-                const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-                if (window._pendingReplyTimer) clearTimeout(window._pendingReplyTimer);
-                window._pendingReplyTimer = setTimeout(() => { window._pendingReplyTimer = null; simulateReply(); }, randomDelay);
+
+                // 用户发表情 = 等同于发了一条新消息：走跟发消息一样的回复流程（已读→延迟→正在输入→回复）
+                window._currentRoundMsgIds = window._currentRoundMsgIds || [];
+                window._currentRoundMsgIds.push(stickerMsgId);
+                window._triggerDelayedReply(true);
             }
             document.getElementById('user-sticker-picker').classList.remove('active');
         };

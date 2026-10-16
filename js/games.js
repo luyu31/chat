@@ -2014,11 +2014,14 @@ function initComboMenu() {
         }
         _appendStickersInBatches(grid, itemsToShow, (entry) => {
             return makeMyStickerItem(entry, () => {
-                addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: entry.src, isSticker: true, status: 'sent', type: 'normal' });
+                const stickerMsgId = Date.now();
+                addMessage({ id: stickerMsgId, sender: 'user', text: '', timestamp: new Date(), image: entry.src, isSticker: true, status: 'sent', type: 'normal' });
                 playSound('send');
                 picker.classList.remove('active');
-                const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-                setTimeout(simulateReply, settings.replyDelayMin + Math.random() * delayRange);
+                // 用户发表情 = 等同于发了一条新消息：走跟发消息一样的回复流程（已读→延迟→正在输入→回复）
+                window._currentRoundMsgIds = window._currentRoundMsgIds || [];
+                window._currentRoundMsgIds.push(stickerMsgId);
+                window._triggerDelayedReply(true);
             }, async () => {
                 if (window.CloudMedia && typeof entry.src === 'string' && entry.src.indexOf('oss://') === 0) {
                     try { await window.CloudMedia.delete(entry.src); } catch (err) { console.warn('[cloud-media] 云端删除失败', err); }
@@ -2412,11 +2415,14 @@ function initComboMenu() {
         grid.className = 'sticker-grid-view';
         _appendStickersInBatches(grid, stickerLibrary, (src) => {
             return makeStickerItem(src, () => {
-                addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: src, isSticker: true, status: 'sent', type: 'normal' });
+                const stickerMsgId = Date.now();
+                addMessage({ id: stickerMsgId, sender: 'user', text: '', timestamp: new Date(), image: src, isSticker: true, status: 'sent', type: 'normal' });
                 playSound('send');
                 picker.classList.remove('active');
-                const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-                setTimeout(simulateReply, settings.replyDelayMin + Math.random() * delayRange);
+                // 用户发表情 = 等同于发了一条新消息：走跟发消息一样的回复流程（已读→延迟→正在输入→回复）
+                window._currentRoundMsgIds = window._currentRoundMsgIds || [];
+                window._currentRoundMsgIds.push(stickerMsgId);
+                window._triggerDelayedReply(true);
             });
         });
         contentArea.appendChild(grid);

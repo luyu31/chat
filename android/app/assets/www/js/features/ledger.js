@@ -41,9 +41,10 @@
     var RE_YEN = /[¥￥]\s*(\d+(?:\.\d{1,2})?)/;
     // A2: 30元 / 30块 / 30块钱 / 30圆 / 30人民币 / 30rmb
     var RE_UNIT = /(\d+(?:\.\d{1,2})?)\s*(?:块钱|块|元|圆|人民币|rmb)/i;
-    // B: 消费动词 + 数字（无单位）：花了30 / 买奶茶15 / 充了100 / 支付25
+    // B: 消费动词 + 数字（无单位）：花了30 / 买奶茶15 / 充了100 / 支付25 / 吃了米线18.4
     //    负向先行：排除量词（买了2个）、时间（15分钟）、序号（3号）、大数（30万）
-    var RE_VERB = /(?:花了|花费|消费了?|付了|支付了?|付|充值|充了|充|买了|买)[^\d¥￥]{0,10}?(\d+(?:\.\d{1,2})?)(?!\d)(?![个件只双张次趟杯瓶盒本份支条头页倍分秒点时号天日月年岁遍下折万亿千百万])/;
+    //      "吃/喝"也属消费动词：让「吃了米线 18.4」「晚上吃火锅 288」这类能记到账上
+    var RE_VERB = /(?:花了|花费|消费了?|付了|支付了?|付|充值|充了|充|买了|买|吃了?|喝了?)[^\d¥￥]{0,10}?(\d+(?:\.\d{1,2})?)(?!\d)(?![个件只双张次趟杯瓶盒本份支条头页倍分秒点时号天日月年岁遍下折万亿千百万])/;
     // C: 常见消费词 + 数字结尾（口语速记）：外卖27.5 / 奶茶15 / 卫生巾30 / 地铁6
     var RE_NOUN = /(外卖|奶茶|咖啡|打车|地铁|公交|话费|房租|水电|加油|早餐|午饭|晚餐|宵夜|电影|门票|停车|火车票|机票|感冒药|药|卫生巾|护垫|纸巾|抽纸|卷纸|卫生纸|湿巾|餐巾纸|面巾纸|手帕纸|厨房纸|洗发水|沐浴露|牙膏|牙刷|毛巾|洗衣液|洗洁精|垃圾袋|零食|水果|理发|日用品|快递|炸鸡|烤肉|网购|会员)[^\d]{0,4}(\d+(?:\.\d{1,2})?)\s*$/;
 
@@ -97,13 +98,15 @@
         return s;
     }
 
-    function buildHit(amt, desc, raw) {
+    function buildHit(amt, desc, raw, amtRaw) {
         amt = parseFloat(amt);
         if (!isFinite(amt) || amt <= 0 || amt > 99999) return null;
         return {
             amount: Math.round(amt * 100) / 100,
             category: classify(raw),
-            desc: String(desc || '').trim().slice(0, 14)
+            // 事项/备注里不残留金额数字：金额只进 amount 字段，避免和食物描述并列重复
+            desc: String(desc || '').replace(/[¥￥]?\s*\d+(?:\.\d{1,2})?/g, '').trim().slice(0, 14),
+            amtRaw: amtRaw || ''   // 命中的金额原文片段（供 splitText 抠掉，不落库）
         };
     }
 
@@ -124,7 +127,8 @@
             if (nums && nums.length) {
                 var amtF = parseFloat(nums[nums.length - 1]);
                 var descF = body.replace(/\d+(?:\.\d{1,2})?\s*(?:块钱?|元|圆|人民币|rmb)?\s*$/i, '').trim();
-                return buildHit(amtF, cleanDesc(descF), body);
+                var tailF = body.match(/\d+(?:\.\d{1,2})?\s*(?:块钱?|元|圆|人民币|rmb)?\s*$/i);
+                return buildHit(amtF, cleanDesc(descF), body, tailF ? tailF[0].trim() : String(nums[nums.length - 1]));
             }
             return null;
         }
@@ -132,19 +136,19 @@
         var m;
         // 2) ¥30 / ￥12.5
         m = text.match(RE_YEN);
-        if (m) return buildHit(m[1], cleanDesc(text.slice(0, m.index)), text);
+        if (m) return buildHit(m[1], cleanDesc(text.slice(0, m.index)), text, m[0]);
 
         // 3) 30元 / 30块
         m = text.match(RE_UNIT);
-        if (m) return buildHit(m[1], cleanDesc(text.slice(0, m.index)), text);
+        if (m) return buildHit(m[1], cleanDesc(text.slice(0, m.index)), text, m[0]);
 
-        // 4) 花了30 / 买奶茶15（排除量词、时间、大数后缀）
+        // 4) 花了30 / 买奶茶15 / 吃了米线18.4（排除量词、时间、大数后缀）
         m = text.match(RE_VERB);
         if (m) {
             var descV = cleanDesc(text.slice(0, m.index));
             if (!descV) {
                 // 动词在句首：取动词与金额之间的内容（「买奶茶15」→「奶茶」）
-                var between = m[0].replace(/^[花了花费消费付支付充值充买]+/, '').replace(/\d+(?:\.\d{1,2})?$/, '');
+                var between = m[0].replace(/^[花了花费消费付支付充值充买吃喝]+/, '').replace(/\d+(?:\.\d{1,2})?$/, '');
                 descV = cleanDesc(between);
             }
             if (!descV) {
@@ -152,14 +156,33 @@
                 var after = text.slice(m.index + m[0].length).split(/[\s，。,.、!！?？]/)[0];
                 descV = cleanDesc(after);
             }
-            return buildHit(m[1], descV, text);
+            return buildHit(m[1], descV, text, m[1]);
         }
 
         // 5) 外卖27.5 / 奶茶15（消费词+数字在句尾）
         m = text.match(RE_NOUN);
-        if (m) return buildHit(m[2], m[1], text);
+        if (m) return buildHit(m[2], m[1], text, m[2]);
 
         return null;
+    }
+
+    /**
+     * 金额拆分：把一句话里的「金额」和「其余文本」切开。
+     * 记账只用金额，食光只用剔掉金额后的文本，两者各归各、互不污染。
+     * 返回 { amount, text }：amount=识别到的金额数字（没有则 null），
+     * text=抠掉金额原文片段及残留句读后剩下的文本（没有金额时原样返回）。
+     */
+    function splitText(text) {
+        var t = String(text == null ? '' : text).trim();
+        var hit = detectExpense(t);
+        if (!hit) return { amount: null, text: t };
+        var raw = hit.amtRaw;
+        if (!raw) return { amount: hit.amount, text: t };
+        var idx = t.lastIndexOf(raw);
+        var rest = t;
+        if (idx > -1) rest = t.slice(0, idx) + t.slice(idx + raw.length);
+        rest = rest.replace(/^[\s，。,.、!！?？~～:：;；\-—]+|[\s，。,.、!！?？~～:：;；\-—]+$/g, '').trim();
+        return { amount: hit.amount, text: rest };
     }
 
     // ─── 存储（localforage 优先，缺失时退回 localStorage） ─────────────
@@ -532,15 +555,16 @@
                 '.ledger-total{font-size:12px;color:var(--text-secondary,#999);text-align:center;margin-top:2px;}' +
                 '.ledger-total b{color:var(--accent-color,#c5a47e);font-size:15px;}' +
                 '.ledger-sec-title{font-size:12px;font-weight:700;color:var(--text-secondary,#999);margin:14px 0 4px;}' +
-                '.ledger-date-head{display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary,#999);margin:10px 2px 4px;}' +
-                '.ledger-row{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:11px;}' +
-                '.ledger-row:hover{background:var(--secondary-bg,rgba(0,0,0,.03));}' +
-                '.ledger-cat-dot{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;flex-shrink:0;}' +
+                '.ledger-date-head{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--text-secondary,#999);margin:14px 4px 6px;}' +
+                '.ledger-row{display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;border:1px solid var(--border-color,#ececec);background:var(--secondary-bg,rgba(0,0,0,.02));margin-top:8px;}' +
+                '.ledger-row:hover{background:var(--secondary-bg,rgba(0,0,0,.05));}' +
+                '.ledger-cat-dot{width:36px;height:36px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0;}' +
                 '.ledger-row-main{flex:1;min-width:0;}' +
-                '.ledger-row-desc{font-size:13px;color:var(--text-primary,#333);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
-                '.ledger-row-sub{font-size:10px;color:var(--text-secondary,#aaa);margin-top:1px;}' +
-                '.ledger-row-amt{font-size:13px;font-weight:700;color:var(--text-primary,#333);flex-shrink:0;font-variant-numeric:tabular-nums;}' +
-                '.ledger-row-btn{flex-shrink:0;width:26px;height:26px;border:none;border-radius:50%;background:transparent;color:var(--text-secondary,#aaa);font-size:11px;cursor:pointer;}' +
+                '.ledger-row-desc{font-size:14px;line-height:1.45;font-weight:600;color:var(--text-primary,#333);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;}' +
+                '.ledger-row-sub{display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:11.5px;color:var(--text-secondary,#999);margin-top:5px;}' +
+                '.ledger-cat-badge{display:inline-flex;align-items:center;padding:0 8px;border-radius:999px;font-size:11px;line-height:18px;background:rgba(197,164,126,.16);color:var(--accent-color,#c5a47e);white-space:nowrap;}' +
+                '.ledger-row-amt{font-size:17px;font-weight:800;color:var(--text-primary,#333);flex-shrink:0;text-align:right;font-variant-numeric:tabular-nums;letter-spacing:-.3px;}' +
+                '.ledger-row-btn{flex-shrink:0;width:28px;height:28px;border:none;border-radius:50%;background:transparent;color:var(--text-secondary,#aaa);font-size:12px;cursor:pointer;}' +
                 '.ledger-form{border:1px dashed var(--border-color,#ddd);border-radius:12px;padding:10px 12px;margin-top:12px;}' +
                 '.ledger-form-title{font-size:13px;font-weight:700;color:var(--text-primary,#333);margin-bottom:8px;}' +
                 '.ledger-form-row{display:flex;gap:6px;margin-top:8px;}' +
@@ -945,7 +969,8 @@
                     '<div class="ledger-row-desc">' + dsc + '</div>' +
                     '<div class="ledger-row-sub">' +
                         '<span class="ledger-author-tag' + (r.author === 'partner' ? ' ledger-author-partner' : '') + '">' + escapeHtml(authorName) + '</span>' +
-                        escapeHtml(r.category) + (r.source === 'chat' ? ' · 聊天识别' : '') +
+                        '<span class="ledger-cat-badge">' + escapeHtml(r.category) + '</span>' +
+                        (r.source === 'chat' ? '<span>聊天识别</span>' : '') +
                     '</div>' +
                 '</div>' +
                 '<span class="ledger-row-amt">' + fmtMoney(r.amount) + '</span>' +
@@ -1104,6 +1129,6 @@
         setTimeout(function () { init(); wrapUserHook(); }, 60);
     }
 
-    // 调试/外部入口
-    window.Ledger = { open: open, detect: detectExpense };
+    // 调试/外部入口（splitText 供食光记拆分金额用）
+    window.Ledger = { open: open, detect: detectExpense, splitText: splitText };
 })();
