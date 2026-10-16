@@ -8989,6 +8989,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    /* 每个格子独立合成/绘制边界：贴纸很多时限缩浏览器的重排重绘范围 */
+    contain: layout paint;
         }
 
         .sticker-grid-item:hover {

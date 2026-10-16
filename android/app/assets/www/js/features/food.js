@@ -17,14 +17,72 @@
     var KEY = 'foodDiaryData';
     var MAX_ENTRIES = 500;
 
-    // TA 推荐时的内置美食池（名字 + emoji）
-    var FOOD_POOL = [
-        ['火锅', '🍲'], ['烤肉', '🥩'], ['麻辣烫', '🍜'], ['螺蛳粉', '🍜'],
-        ['炸鸡', '🍗'], ['烧烤', '🍢'], ['小龙虾', '🦞'], ['寿司', '🍣'],
-        ['披萨', '🍕'], ['汉堡', '🍔'], ['饺子', '🥟'], ['牛肉面', '🍜'],
-        ['韩式拌饭', '🍚'], ['泰式咖喱', '🍛'], ['关东煮', '🍢'], ['烤鱼', '🐟'],
-        ['酸辣粉', '🍜'], ['砂锅粥', '🥣'], ['轻食沙拉', '🥗'], ['家常菜', '🥘'],
-        ['奶茶', '🧋'], ['甜品', '🍰']
+    // TA 推荐时的美食池：按餐段分组（他自己吃饭时按当前餐段抽，不会早餐吃炸鸡）；
+    // 推荐给你时用全部并集，什么都能馋
+    var FOOD_POOL = {
+        '早餐': [
+            ['豆浆油条', '🥖'], ['包子', '🥟'], ['小笼包', '🥟'], ['生煎包', '🍳'],
+            ['烧麦', '🍘'], ['皮蛋瘦肉粥', '🥣'], ['小米粥', '🥣'], ['豆腐脑', '🥣'],
+            ['煎饼果子', '🫓'], ['鸡蛋灌饼', '🫓'], ['鸡蛋饼', '🍳'], ['肠粉', '🍥'],
+            ['小馄饨', '🍜'], ['胡辣汤', '🥣'], ['三明治', '🥪'], ['吐司', '🍞'],
+            ['饭团', '🍙'], ['粢饭团', '🍙'], ['牛奶麦片', '🥛'], ['玉米鸡蛋', '🌽'],
+            ['牛肉面', '🍜'], ['肉夹馍', '🥙'], ['锅贴', '🥟'], ['蒸饺', '🥟'],
+            ['手抓饼', '🫓'], ['酸奶水果碗', '🥣']
+        ],
+        '午餐': [
+            ['黄焖鸡米饭', '🍗'], ['麻辣烫', '🍜'], ['螺蛳粉', '🍜'], ['牛肉面', '🍜'],
+            ['韩式拌饭', '🍚'], ['盖浇饭', '🍱'], ['兰州拉面', '🍜'], ['沙县小吃', '🥟'],
+            ['轻食沙拉', '🥗'], ['日式定食', '🍱'], ['猪脚饭', '🍲'], ['烧腊饭', '🍱'],
+            ['酸菜鱼', '🐟'], ['水煮肉片', '🌶️'], ['宫保鸡丁盖饭', '🥜'], ['咖喱饭', '🍛'],
+            ['意大利面', '🍝'], ['卤肉饭', '🍚'], ['麻辣香锅', '🥘'], ['冒菜', '🍲'],
+            ['鸡公煲', '🍲'], ['牛肉粉', '🍜'], ['酸辣粉', '🍜'], ['寿司便当', '🍱'],
+            ['米线', '🍜'], ['汉堡套餐', '🍔'], ['炒饭', '🍳'], ['炒面', '🍜'],
+            ['饺子', '🥟'], ['馄饨', '🥟'], ['家常菜', '🥘'], ['食堂套餐', '🍱']
+        ],
+        '晚餐': [
+            ['火锅', '🍲'], ['烤肉', '🥩'], ['烤鱼', '🐟'], ['小龙虾', '🦞'],
+            ['牛排', '🥩'], ['日料', '🍣'], ['寿司', '🍣'], ['泰式咖喱', '🍛'],
+            ['川菜', '🌶️'], ['粤式茶点', '🫖'], ['北京烤鸭', '🦆'], ['羊肉汤', '🍲'],
+            ['牛杂煲', '🍲'], ['猪肚鸡', '🍲'], ['椰子鸡', '🥥'], ['韩式烤肉', '🥩'],
+            ['部队锅', '🍲'], ['寿喜烧', '🍲'], ['披萨', '🍕'], ['意面', '🍝'],
+            ['酸菜鱼', '🐟'], ['水煮鱼', '🐟'], ['干锅', '🌶️'], ['烧烤大餐', '🍢'],
+            ['家常四菜一汤', '🥘'], ['砂锅粥配小菜', '🥣'], ['焖锅', '🍲'], ['海鲜大餐', '🦐']
+        ],
+        '夜宵': [
+            ['烧烤', '🍢'], ['炸鸡', '🍗'], ['泡面', '🍜'], ['小龙虾', '🦞'],
+            ['关东煮', '🍢'], ['烤冷面', '🍳'], ['炒粉', '🍜'], ['炒面', '🍜'],
+            ['螺蛳粉', '🍜'], ['花甲粉', '🍜'], ['炸串', '🍢'], ['卤味', '🍗'],
+            ['烤红薯', '🍠'], ['鸭脖', '🦆'], ['串串香', '🍢'], ['手抓饼加肠', '🫓'],
+            ['生煎', '🍳'], ['锅贴', '🥟'], ['臭豆腐', '🧆'], ['烤生蚝', '🦪'],
+            ['烤鱿鱼', '🦑'], ['麻辣烫', '🍜'], ['便利店饭团', '🍙'], ['薯片可乐', '🥤']
+        ],
+        '加餐': [
+            ['奶茶', '🧋'], ['咖啡', '☕'], ['果茶', '🧃'], ['蛋糕', '🍰'],
+            ['水果', '🍎'], ['冰淇淋', '🍦'], ['酸奶', '🥛'], ['饼干', '🍪'],
+            ['华夫饼', '🧇'], ['双皮奶', '🍮'], ['提拉米苏', '🍰'], ['麻薯', '🍡'],
+            ['布丁', '🍮'], ['巧克力', '🍫'], ['蛋挞', '🥧'], ['甜甜圈', '🍩'],
+            ['马卡龙', '🧁'], ['草莓大福', '🍓'], ['芒果班戟', '🥭'], ['芋圆烧仙草', '🍧']
+        ]
+    };
+
+    // 推荐池 = 所有餐段并集（去重，保留第一个 emoji）
+    var RECOMMEND_POOL = (function () {
+        var seen = {}, all = [];
+        Object.keys(FOOD_POOL).forEach(function (m) {
+            FOOD_POOL[m].forEach(function (f) {
+                if (!seen[f[0]]) { seen[f[0]] = 1; all.push(f); }
+            });
+        });
+        return all;
+    })();
+
+    // 他一天的吃饭时间窗：每段在窗口内随机一个点吃；加餐/夜宵是可选餐（对半决定今天吃不吃）
+    var MEAL_WINDOWS = [
+        { meal: '早餐', startH: 6,  startM: 30, endH: 9,  endM: 30, optional: false },
+        { meal: '午餐', startH: 11, startM: 0,  endH: 13, endM: 30, optional: false },
+        { meal: '加餐', startH: 14, startM: 30, endH: 16, endM: 30, optional: true },
+        { meal: '晚餐', startH: 17, startM: 30, endH: 20, endM: 30, optional: false },
+        { meal: '夜宵', startH: 21, startM: 30, endH: 23, endM: 40, optional: true }
     ];
 
     var MEALS = ['早餐', '午餐', '晚餐', '夜宵', '加餐'];
@@ -123,49 +181,116 @@
     }
     function _newId() { return 'f_' + Date.now() + '_' + Math.floor(Math.random() * 100000); }
 
-    // ── 他自己的吃饭调度：完全随机地记一笔"他吃了什么"并播报进聊天 ──────────────────────
-    // 照 ledger.js 共同记账的 nextCheckAt 持久化模式：setTimeout 精确调度，
-    // 页面关掉时间照走，下次打开发现过期就先补一笔；间隔 40 分钟~7 小时均匀随机
+    // ── 他自己的吃饭调度：按"真实餐段"来 ──────────────────────
+    // 每天凌晨后第一次检查时排好当天的吃饭计划：早/午/晚必有，加餐/夜宵对半随机，
+    // 每顿在对应时间窗内随机一个点；到点且在窗口内才播报，错过的窗口静默跳过不补发，
+    // 同一餐今天已经记过（无论自动还是手动）就不再记——从根上杜绝"三顿晚餐/早餐炸鸡"。
     var _foodTimer = null;
     var _foodChatReady = false;
     var _foodPending = 0;
 
-    function _foodDelayMs() { return (40 + Math.random() * 380) * 60000; }   // 40 分钟~7 小时
+    function _todayStr(ts) {
+        var d = new Date(ts || Date.now());
+        return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+    }
+    function _winStart(w, day) { return new Date(day.getFullYear(), day.getMonth(), day.getDate(), w.startH, w.startM, 0, 0).getTime(); }
+    function _winEnd(w, day) { return new Date(day.getFullYear(), day.getMonth(), day.getDate(), w.endH, w.endM, 0, 0).getTime(); }
+
+    // 生成（或沿用）今天的计划：[{meal, at, on}]
+    function _ensurePlan(d) {
+        var today = _todayStr();
+        if (d.mealPlan && d.mealPlan.date === today && Array.isArray(d.mealPlan.items)) return d.mealPlan;
+        var now = new Date();
+        var items = MEAL_WINDOWS.map(function (w) {
+            var s = _winStart(w, now), e = _winEnd(w, now);
+            return {
+                meal: w.meal,
+                on: w.optional ? Math.random() < 0.5 : true,
+                at: s + Math.floor(Math.random() * Math.max(1, e - s))
+            };
+        });
+        d.mealPlan = { date: today, items: items };
+        return d.mealPlan;
+    }
+
+    // 今天他是否已有某餐的记录（自动+手动都算，避免重复）
+    function _partnerAteMealToday(d, meal) {
+        var today = _todayStr();
+        return d.entries.some(function (en) {
+            return en.author === 'partner' && en.kind === 'eaten' && en.meal === meal && _todayStr(en.ts) === today;
+        });
+    }
 
     function _scheduleFood() {
         clearTimeout(_foodTimer);
         var d = load();
-        if (!d.schedNextAt) {
-            // 第一次：随机隔一段时间才报第一顿，别装上就秒报
-            d.schedNextAt = Date.now() + (15 + Math.random() * 180) * 60000;  // 15 分钟~3.25 小时
+        var plan = _ensurePlan(d);
+        save(d);
+        var now = Date.now();
+
+        // 找下一顿该吃的饭
+        for (var i = 0; i < plan.items.length; i++) {
+            var it = plan.items[i];
+            if (!it.on || it.done || _partnerAteMealToday(d, it.meal)) { it.done = true; continue; }
+            var w = MEAL_WINDOWS.filter(function (x) { return x.meal === it.meal; })[0];
+            var e = _winEnd(w, new Date());
+            if (now > e) { it.done = true; continue; }      // 窗口已过，静默跳过，不补发
+            var delay = Math.max(3000, it.at - now);        // 还没到点就等；在窗口内则至少 3 秒后吃
+            _foodTimer = setTimeout(_runFoodCheck, delay);
             save(d);
+            return;
         }
-        var delay = d.schedNextAt - Date.now();
-        if (delay <= 0) { _runFoodCheck(); return; }
-        _foodTimer = setTimeout(_runFoodCheck, delay);
+        // 今天饭全吃完了：排到明天 0:05 再重建计划
+        save(d);
+        var tomorrow = new Date();
+        tomorrow.setHours(24, 5, 0, 0);
+        _foodTimer = setTimeout(_scheduleFood, Math.max(5000, tomorrow.getTime() - now));
     }
 
     function _runFoodCheck() {
-        _spawnPartnerEaten();
         var d = load();
-        d.schedNextAt = Date.now() + _foodDelayMs();
-        save(d);
+        var plan = _ensurePlan(d);
+        var now = new Date();
+        var fired = false;
+        for (var i = 0; i < plan.items.length; i++) {
+            var it = plan.items[i];
+            if (!it.on || it.done || _partnerAteMealToday(d, it.meal)) { it.done = true; continue; }
+            var w = MEAL_WINDOWS.filter(function (x) { return x.meal === it.meal; })[0];
+            if (now.getTime() > _winEnd(w, now)) { it.done = true; continue; }
+            // 到点了：从"当前餐段池"里抽吃的，抽一个他今天还没吃过的（小池子兜底不纠结）
+            var meal = it.meal;
+            var pool = (FOOD_POOL[meal] || RECOMMEND_POOL).slice();
+            var eatenToday = {};
+            d.entries.forEach(function (en) {
+                if (en.author === 'partner' && en.kind === 'eaten' && _todayStr(en.ts) === _todayStr()) eatenToday[en.what] = 1;
+            });
+            var fresh = pool.filter(function (f) { return !eatenToday[f[0]]; });
+            var f = _pick(fresh.length ? fresh : pool);
+            it.done = true;
+            fired = true;
+            save(d);
+            _spawnPartnerEaten(meal, f[0]);
+            break;
+        }
+        if (!fired) save(d);
         _scheduleFood();
     }
 
-    function _spawnPartnerEaten() {
+    function _spawnPartnerEaten(meal, what) {
         // 开机竞态：food.js 可能比聊天模块先就绪，先攒着，renderMessages 首调后再补发
         if (window._appDataLoaded || _foodChatReady) {
-            _doPartnerEaten();
+            _doPartnerEaten(meal, what);
         } else {
             _foodPending++;
+            _foodPendingMeal = meal;
+            _foodPendingWhat = what;
         }
     }
+    var _foodPendingMeal = null, _foodPendingWhat = null;
 
-    function _doPartnerEaten() {
-        var f = _pick(FOOD_POOL);
-        // 从他的角度记一笔：餐段按现在的时间，食物均匀随机
-        recordEaten(f[0], _nowMeal(), 'partner');
+    function _doPartnerEaten(meal, what) {
+        // 直接记已经算好的餐段和食物（不能再用 _nowMeal，否则错过窗口补发时餐段会错）
+        recordEaten(what, meal || _nowMeal(), 'partner');
         // 食光记弹窗开着就当场刷新
         var modal = document.getElementById('food-modal');
         if (modal && modal.style.display === 'flex') renderList();
@@ -178,10 +303,9 @@
             if (!_foodChatReady) {
                 _foodChatReady = true;
                 if (_foodPending > 0) {
-                    var n = _foodPending;
                     _foodPending = 0;
-                    // 攒下的只补一笔，避免开机刷一串
-                    for (var i = 0; i < n; i++) setTimeout(_doPartnerEaten, i * 1500);
+                    // 攒下的只补一笔（带原定餐段和食物），避免开机刷一串
+                    setTimeout(function () { _doPartnerEaten(_foodPendingMeal, _foodPendingWhat); }, 600);
                 }
             }
             return origFn.apply(this, arguments);
@@ -226,7 +350,7 @@
     }
 
     function recommendHis() {
-        var f = _pick(FOOD_POOL);
+        var f = _pick(RECOMMEND_POOL);
         var d = load();
         d.entries.unshift({ id: _newId(), ts: Date.now(), kind: 'recommend', author: 'partner', what: f[0], meal: '' });
         save(d);

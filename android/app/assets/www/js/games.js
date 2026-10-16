@@ -1609,8 +1609,14 @@ function initComboMenu() {
         return item;
     }
 
-    // 本地/ base64 贴纸懒加载：先放空 img，滚到附近（提前 200px）才赋 src 解码
+    // 本地/ base64 贴纸懒加载：先放空 img，进视口后排队、分帧解码——
+    // 非 GIF 生成 128px 缩略图再塞进格子（面板里只显示小图，没必要解码 300px 原图），
+    // GIF 不能走 canvas（会丢动画），直接用原地址；每帧只处理 4 张，避免一次性解码卡顿
     var _stickerIO = null;
+    var _thumbCache = {};          // src -> 缩略 dataURL
+    var _decodeQueue = [];         // 等待解码的 {img, src, isGif}
+    var _decodeScheduled = false;
+
     function _getStickerIO() {
         if (_stickerIO) return _stickerIO;
         if (!('IntersectionObserver' in window)) return null;
@@ -1618,16 +1624,74 @@ function initComboMenu() {
             entries.forEach(function (en) {
                 if (!en.isIntersecting) return;
                 var img = en.target;
-                if (img && img.dataset.lazySrc) { img.src = img.dataset.lazySrc; img.removeAttribute('data-lazy-src'); }
+                if (!img || !img.dataset.lazySrc) return;
                 _stickerIO.unobserve(img);
+                _enqueueDecode(img, img.dataset.lazySrc);
+                img.removeAttribute('data-lazy-src');
             });
         }, { root: document.getElementById('combo-content-area'), rootMargin: '200px 0px' });
         return _stickerIO;
     }
+
+    function _isGifSrc(src) {
+        if (typeof src !== 'string') return false;
+        if (/^data:image\/gif/i.test(src)) return true;
+        // oss:// 等云端引用看不到 mime，保守起见不做缩略（保留动图可能性）
+        if (src.indexOf('oss://') === 0) return true;
+        return /\.gif(\?|$)/i.test(src);
+    }
+
+    function _enqueueDecode(imgEl, src) {
+        if (_thumbCache[src]) { imgEl.src = _thumbCache[src]; return; }
+        _decodeQueue.push({ img: imgEl, src: src, isGif: _isGifSrc(src) });
+        if (!_decodeScheduled) {
+            _decodeScheduled = true;
+            requestAnimationFrame(_pumpDecodeQueue);
+        }
+    }
+
+    // 每帧处理 4 张：GIF 直接赋 src；其余异步生成缩略图
+    function _pumpDecodeQueue() {
+        var batch = _decodeQueue.splice(0, 4);
+        batch.forEach(function (job) {
+            if (job.isGif) { job.img.src = job.src; return; }
+            _makeThumb(job.src, 128, function (thumb) { job.img.src = thumb || job.src; });
+        });
+        if (_decodeQueue.length) {
+            requestAnimationFrame(_pumpDecodeQueue);
+        } else {
+            _decodeScheduled = false;
+        }
+    }
+
+    // 生成缩略 dataURL（同一张原图只生成一次，结果缓存）
+    function _makeThumb(src, size, cb) {
+        if (_thumbCache[src]) { cb(_thumbCache[src]); return; }
+        var im = new Image();
+        im.onload = function () {
+            var url;
+            try {
+                var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
+                var scale = Math.min(1, size / Math.max(w, h));
+                var tw = Math.max(1, Math.round(w * scale)), th = Math.max(1, Math.round(h * scale));
+                var cvs = document.createElement('canvas');
+                cvs.width = tw; cvs.height = th;
+                var ctx = cvs.getContext('2d');
+                ctx.drawImage(im, 0, 0, tw, th);
+                url = cvs.toDataURL('image/webp', 0.7);
+                if (!url || url === 'data:,') url = cvs.toDataURL('image/jpeg', 0.7);
+            } catch (e) { url = src; }
+            _thumbCache[src] = url;
+            cb(url);
+        };
+        im.onerror = function () { cb(src); };
+        im.src = src;
+    }
+
     function _bindLazyLocalImage(imgEl, src) {
         var io = _getStickerIO();
         if (io) { imgEl.dataset.lazySrc = src; io.observe(imgEl); }
-        else { imgEl.src = src; }  // 老 WebView 不支持 IO 就直接给
+        else { _enqueueDecode(imgEl, src); }  // 老 WebView 不支持 IO 也走分帧队列
     }
 
     // 贴纸格子分批挂载：首批 30 个立即出，其余滚到底再追加，避免一次插几百个图片节点
@@ -2231,7 +2295,9 @@ function initComboMenu() {
             grid.innerHTML = items.map(function (e) {
                 var isSel = !!selectedIds[e.id];
                 var isCloud = typeof e.src === 'string' && e.src.indexOf('oss://') === 0;
-                var imgTag = isCloud ? '<img loading="lazy" data-cover-ref="' + e.src + '">' : '<img loading="lazy" src="' + e.src + '">';
+                var imgTag = isCloud
+                    ? '<img loading="lazy" data-cover-ref="' + e.src + '">'
+                    : '<img loading="lazy" data-lazy-src="' + e.src + '">';
                 // 之前这里用的是 <button>——同一套"用百分比 padding 撑高度"的技巧在 <button> 上不生效
                 // （浏览器给表单控件的默认渲染跟普通块级元素不是一回事），格子被撑成长方形。
                 // 新建分组那边预览用的是 <div> 就没这个问题，这里换成一样的 <div>（配 role/tabindex 保留可访问性）
@@ -2241,6 +2307,24 @@ function initComboMenu() {
                 '</div>';
             }).join('');
             _myStickerBindCoverRefs(grid);
+            // 管理弹窗里的本地图：独立 IO（root 是弹窗内滚动容器），进视口才进分帧缩略图队列
+            (function bindLocalThumbs() {
+                var imgs = Array.prototype.slice.call(grid.querySelectorAll('img[data-lazy-src]'));
+                if ('IntersectionObserver' in window) {
+                    var mio = new IntersectionObserver(function (es) {
+                        es.forEach(function (en) {
+                            if (!en.isIntersecting) return;
+                            var im = en.target, s = im.getAttribute('data-lazy-src');
+                            mio.unobserve(im);
+                            im.removeAttribute('data-lazy-src');
+                            _enqueueDecode(im, s);
+                        });
+                    }, { root: grid, rootMargin: '150px 0px' });
+                    imgs.forEach(function (im) { mio.observe(im); });
+                } else {
+                    imgs.forEach(function (im) { var s = im.getAttribute('data-lazy-src'); im.removeAttribute('data-lazy-src'); _enqueueDecode(im, s); });
+                }
+            })();
             // 不再单靠 CSS 撑高度——这个位置已经连着猜错两次了（aspect-ratio 不行、
             // button 上的百分比 padding 也不行），不再赌第三种 CSS 写法。
             // 直接照抄电影院表情格子那套做法：量出格子实际渲染宽度，用 JS 把 height 钉成一样的数字，
