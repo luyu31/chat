@@ -200,15 +200,6 @@
         { id: 'sneaky',   label: '偷偷买了什么', icon: '🙈', hidden: true }
     ];
 
-    // 播报文案：正常项不剧透具体买了啥；隐藏项金额也不露
-    var LEDGER_MSGS = [
-        '我记了一笔，¥{n}',
-        '今天花了一点点，记上了'
-    ];
-    var LEDGER_MSGS_HIDDEN = [
-        '我偷偷买了个东西，不告诉你多少钱'
-    ];
-
     var _sharedTimer = null;          // 调度器 setTimeout 句柄
 
     function storageGet(key, cb) {
@@ -407,7 +398,7 @@
         };
         records.push(rec);
         saveSoon();
-        partnerLedgerSay(rec);
+        insertPartnerLedgerCard(rec);
         // 梦角熟练度 +3（存在性检查）
         if (window.PartnerProficiency && typeof window.PartnerProficiency.gain === 'function') {
             window.PartnerProficiency.gain(3);
@@ -417,28 +408,34 @@
         if (modal && modal.style.display === 'flex') renderAll();
     }
 
-    // 每笔消费同步播报进聊天流（正常项随机 2 条；隐藏项只说不告诉你金额）
-    function partnerLedgerSay(rec) {
+    // 每笔消费同步在聊天流里插一条居中的系统小卡片（跟"我"自己记账的样式一致）：
+    // 可见项写明买了什么 + 金额；隐藏项保持神秘——既不显示买了什么、也不露金额
+    function insertPartnerLedgerCard(rec) {
         try {
             if (typeof addMessage !== 'function') return;
-            var text = rec.hidden
-                ? pickLedger(LEDGER_MSGS_HIDDEN)
-                : pickLedger(LEDGER_MSGS).replace(/\{n\}/g, rec.amount);
+            var name = partnerNameLabel();
+            var text;
+            if (rec.hidden) {
+                text = '<i class="fas fa-wallet" style="margin-right:4px;"></i>' + escapeHtml(name) + '偷偷记了一笔 · 金额保密';
+            } else {
+                var d = rec.desc ? '（' + escapeHtml(rec.desc) + '）' : '';
+                text = '<i class="fas fa-wallet" style="margin-right:4px;"></i>' + escapeHtml(name) + '记账 · ' + escapeHtml(rec.category) + ' ¥' + rec.amount.toFixed(2) + d;
+            }
             addMessage({
                 id: Date.now() + Math.random(),
-                sender: partnerNameLabel(),
+                sender: null,
+                type: 'system',
                 text: text,
                 timestamp: new Date(),
                 status: 'received',
                 favorited: false,
                 note: null,
-                replyTo: null,
-                type: 'normal'
+                replyTo: null
             });
             if (typeof playSound === 'function') playSound('message');
             // 同时弹顶部通知，App 在后台/看别的地方也能及时知道他记账了
             if (typeof showNotification === 'function') {
-                showNotification(partnerNameLabel() + '刚记了一笔：' + (rec.hidden ? '神秘消费，就不告诉你' : rec.desc + ' ¥' + rec.amount.toFixed(1)), 'info', 3000);
+                showNotification(name + '刚记了一笔：' + (rec.hidden ? '神秘消费，就不告诉你' : rec.desc + ' ¥' + rec.amount.toFixed(1)), 'info', 3000);
             }
         } catch (e) { console.warn('[ledger] 共同记账播报失败:', e); }
     }

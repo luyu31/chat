@@ -53,7 +53,7 @@
         +   '<div class="dm-row-card">'
         +     '<div class="dm-row-item" id="replay-tutorial-btn-row" style="cursor:pointer">'
         +       '<div class="dm-row-icon slate"><i class="fas fa-compass"></i></div>'
-        +       '<div class="dm-row-info"><div class="dm-row-title">重放新手引导</div><div class="dm-row-desc">重新播放功能介绍教程</div></div>'
+        +       '<div class="dm-row-info"><div class="dm-row-title">梦角带我逛</div><div class="dm-row-desc">由梦角带你重新认识每个功能</div></div>'
         +       '<button class="dm-nav-btn" id="replay-tutorial-btn"><i class="fas fa-play"></i></button>'
         +     '</div>'
         +     '<div class="dm-row-item" id="open-credits-row" style="cursor:pointer">'

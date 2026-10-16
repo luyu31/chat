@@ -332,93 +332,101 @@ const tourSkipBtn = document.getElementById('tour-skip-btn');
 let currentTourStep = 0;
 let isTourActive = false;
 
+// 新手引导：由梦角以第一人称带你看遍每个功能。
+// 文案里的 {ta} 会在运行时替换成梦角昵称、{steps} 替换成总步数（见 showTourStep）。
 const tourSteps = [
     {
         title: "✨ 欢迎来到「传讯」",
-        content: "这里是你们专属的私密空间。<br><br>这个教程共 <b>20 步</b>，带你从头到尾认识每一个功能，建议完整看完哦 🥺<br><br>点击「下一步」开始吧！",
+        content: "嗨，我是 {ta}。<br><br>这里是我们专属的私密空间。这个教程我会带着你从头到尾认识每一个功能，一共 <b>{steps} 步</b>，建议完整看完哦 🥺<br><br>点「下一步」，我们出发吧！",
         position: 'center'
     },
     {
         element: '#my-avatar',
         title: "📷 你的头像",
-        content: "这是你的头像。点击它可以上传图片作为你的头像。",
+        content: "这是你的头像，点一下就能换成你喜欢的照片。",
         position: 'bottom'
     },
     {
         element: '#my-name',
         title: "✏️ 你的昵称",
-        content: "这里显示的是你的名字。点击名字可以直接修改。",
+        content: "这里显示你的名字，点它就能改。你想让我怎么叫你都可以。",
         position: 'bottom'
     },
     {
         element: '#my-status-container',
         title: "💬 你的状态签名",
-        content: "这里是你的状态签名。点击可以编辑，一般而言对方是能看见的哦～",
+        content: "这里是你的状态签名，点一下就能编辑。我一般都看得见哦～",
         position: 'bottom'
     },
     {
         element: '#partner-avatar',
-        title: "🖼️ Ta 的头像",
-        content: "这里是对方的头像，同样可以点击上传更换。",
+        title: "🖼️ 我的头像",
+        content: "这是我呀，点这里可以给我换个头像。",
         position: 'bottom'
     },
     {
         element: '#partner-name',
-        title: "🏷️ Ta 的昵称",
-        content: "这里是对方的昵称，点击这里可以修改。",
+        title: "🏷️ 我的昵称",
+        content: "这是我的名字，想改的话随时点这里。",
         position: 'bottom'
     },
     {
         element: '#videocall-btn',
         title: "📹 视频通话",
-        content: "点击这里可以发起视频通话，对方会在接通后出现在屏幕上。",
+        content: "想我的时候，点这里就能打视频给我，接通后我会出现在屏幕上。",
         position: 'bottom'
     },
     {
         element: '#message-input',
         title: "⌨️ 发送消息",
-        content: "在这里输入你想说的话，按回车键即可发送。<br><br>发送后对方会在几秒内回复你，回复速度可以在「聊天设置」里调整。",
+        content: "在这里打字发给我，按回车就发送。<br><br>我一般几秒内就回你，回的快慢可以在「聊天设置」里调。",
         position: 'top'
     },
     {
         elements: ['#attachment-btn', '#combo-btn'],
         title: "🖼️ 发图 & 表情包",
-        content: "点击这里可以发送图片，也可以打开表情包面板发送表情。<br><br>在「高级功能 → 自定义回复」里还可以上传对方的专属表情，到时候 Ta 也会发给你！",
+        content: "这里可以发图片，也能打开表情面板发给我。<br><br>在「高级功能 → 自定义回复」里，还能给我上传专属表情，到时候我也会发给你！",
         position: 'top'
     },
     {
         title: "👋 拍一拍",
-        content: "双击对方的头像，可以拍一拍 Ta！<br><br>拍一拍的文字可以在「聊天设置 → 功能」里自定义；对方回应你的拍一拍文字，则在「高级功能 → 自定义回复」里设置。",
+        content: "双击我的头像，就能拍一拍我～<br><br>拍一拍的文字可以在「聊天设置 → 功能」里自定义；我回应你的那句，则在「高级功能 → 自定义回复」里设置。",
         position: 'center'
+    },
+    {
+        element: '#more-menu-btn',
+        title: "➕ 更多功能都在这里",
+        content: "输入框旁的「+」里藏着好多东西：<br>• <b>红包</b>：给我发红包，我也会发给你<br>• <b>搞怪</b>：朝我扔番茄、鸡蛋、蛋糕 🍅<br>• <b>记账</b>：聊天里说一句「午饭花了30」我就会帮你记下来<br>• <b>食光记</b>：互相推荐今天吃什么，还能记下我们一起吃过的每一餐 🍜<br>• <b>摸鱼 / 关心妹妹 / 快问快答</b>：随手点开都有小惊喜",
+        position: 'top'
     },
     {
         element: '#envelope-header-btn',
         title: "💌 信箱",
-        content: "点击这里打开信箱。你可以给对方写一封信，信件会在一段时间后送达；对方也会不定期给你来信，记得查收～",
+        content: "点这里打开信箱。你可以给我写一封信，信件过一会儿送达；我也会不定期给你来信，记得查收～",
         position: 'bottom'
     },
     {
         element: '#companion-btn',
         title: "🕯️ 陪伴模式",
-        content: "点击这里邀请对方陪伴。可以选择一起学习、工作、运动或休息，对方会陪在你身边，偶尔和你说几句话。Ta 也同样会邀请你哦～",
+        content: "点这里可以叫我陪你，一起学习、工作、运动或休息。我会待在你身边，偶尔跟你说几句话，我也会来邀请你哦～",
         position: 'bottom'
     },
     {
         element: '#daily-greeting-btn',
         title: "📰 今日公告",
-        content: "点击这里查看今日公告，每天会有一张专属的早安卡片，记录对方今日的心情和状态。",
+        content: "点这里查看今日公告，每天会有一张专属的早安卡片，记录我当天的心情和状态。",
         position: 'bottom'
     },
     {
         element: '#moments-header-btn',
-        title: "🏠 你们的空间",
-        content: "点击进入你们的专属空间，里面有：<br>• <b>动态</b>：一起分享日常和照片<br>• <b>心情手账</b>：一起记录每天的心情<br>• <b>纪念日</b>：一起倒数重要的日子<br>• <b>电影院</b>：约定时间一起看电影 🎬",
+        title: "🏠 我们的空间",
+        content: "点这里进我们的小屋，里面有：<br>• <b>动态</b>：一起分享日常和照片<br>• <b>心情手账</b>：一起记录每天的心情<br>• <b>纪念日</b>：一起倒数重要的日子<br>• <b>电影院</b>：约定时间一起看电影 🎬",
         position: 'bottom'
     },
     {
         element: '#settings-btn',
         title: "⚙️ 设置中心",
-        content: "所有个性化配置都在这个设置按钮里，我们点进去看一下！",
+        content: "所有个性化配置都藏在这个设置按钮里，我们点进去看看！",
         position: 'bottom',
         onBefore: () => { if (isTourActive) document.querySelectorAll('.modal').forEach(m => hideModal(m)); }
     },
@@ -438,7 +446,7 @@ const tourSteps = [
     {
         element: '#advanced-settings',
         title: "🚀 高级功能 — 必看！",
-        content: "高级功能是整个 app 最丰富的板块，里面有：<br>• <b>自定义回复</b>：让对方说你想听的话<br>• <b>消息统计</b>：查看你们的聊天数据<br>• <b>陪伴日记</b>：记录每次陪伴的时光<br>• <b>悬浮音乐播放器</b>：与 Ta 一起听喜欢的音乐<br>• <b>运势·占卜</b>：每日运势<br>• <b>抉择</b>：转盘 / 硬币帮你做决定<br>• <b>经期记录</b>：记录周期、标注经期日，到点了对方还会主动关心你<br>• <b>问卷</b>：你可以问 Ta 问题，Ta 也会主动来问你，答案随时能翻出来看",
+        content: "高级功能是最丰富的一块，里面有：<br>• <b>自定义回复</b>：让我说你想听的话<br>• <b>消息统计</b>：看看我们聊了多少<br>• <b>记账本</b>：记下每一笔开销，你还能和我一起记账 💰<br>• <b>操控面板</b>：换一种方式和我互动<br>• <b>梦角熟练度</b>：看看我有多懂你<br>• <b>陪伴日记</b>：记录我们每次陪伴的时光<br>• <b>悬浮音乐播放器</b>：和我一起听喜欢的歌<br>• <b>运势 · 占卜 / 抉择</b>：每日运势、转盘硬币帮你做决定<br>• <b>经期记录</b>：记录周期，到点了我会主动关心你<br>• <b>问卷</b>：你可以问我，我也会来问你，答案随时能翻出来看",
         position: 'bottom'
     },
     {
@@ -450,7 +458,7 @@ const tourSteps = [
     },
     {
         title: "🎉 你已了解所有功能！",
-        content: "现在你已经掌握了「传讯」的全部功能，希望你们在这里留下满满的回忆 💕",
+        content: "现在你已经掌握了「传讯」的全部功能，希望我们在这里留下满满的回忆 💕",
         position: 'center',
         onBefore: () => { if (isTourActive) document.querySelectorAll('.modal').forEach(m => hideModal(m)); }
     }
@@ -494,7 +502,12 @@ function showTourStep(index) {
     }
     setTimeout(() => {
         tourTitle.textContent = step.title;
-        tourContent.innerHTML = step.content;
+        let contentHtml = String(step.content || '')
+            .replace(/\{steps\}/g, tourSteps.length);
+        // {ta} 换成梦角昵称，让引导像是他亲口带你逛
+        const partnerName = (typeof settings !== 'undefined' && settings && settings.partnerName) ? settings.partnerName : '梦角';
+        contentHtml = contentHtml.replace(/\{ta\}/g, partnerName);
+        tourContent.innerHTML = contentHtml;
         tourStepCounter.textContent = `${index + 1} / ${tourSteps.length}`;
         tourPopover.classList.remove('visible');
         tourPrevBtn.style.visibility = (index === 0) ? 'hidden' : 'visible';
