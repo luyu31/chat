@@ -1808,9 +1808,9 @@
 
         body.with-background .header,
         body.with-background .input-area-wrapper {
-            background-color: rgba(var(--secondary-bg-rgb), 0.3);
-            backdrop-filter: blur(2px);
-            -webkit-backdrop-filter: blur(2px);
+            /* 原来靠 blur(2px) 把 30% 的半透明底"磨"到能看清字；blur 停用后
+               把底色提上来补足可读性，避免自定义背景图上顶栏/输入区文字发飘 */
+            background-color: rgba(var(--secondary-bg-rgb), 0.82);
         }
         body.with-background .input-area {
             border-top-color: transparent;
@@ -2382,8 +2382,8 @@
         .daily-greeting-card.has-card-bg .dg-mood-panel {
             background: rgba(255,255,255,0.22) !important;
             border-color: rgba(255,255,255,0.3) !important;
-            backdrop-filter: blur(6px) !important;
-            -webkit-backdrop-filter: blur(6px) !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
         }
         html[data-theme="dark"] .daily-greeting-card.has-card-bg .dg-mood-panel {
             background: rgba(0,0,0,0.3) !important;
@@ -2392,8 +2392,8 @@
         .daily-greeting-card.has-card-bg .dg-info-cell {
             background: rgba(255,255,255,0.22) !important;
             border-color: rgba(255,255,255,0.3) !important;
-            backdrop-filter: blur(6px) !important;
-            -webkit-backdrop-filter: blur(6px) !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
         }
         html[data-theme="dark"] .daily-greeting-card.has-card-bg .dg-info-cell {
             background: rgba(0,0,0,0.28) !important;
@@ -2402,8 +2402,8 @@
         .daily-greeting-card.has-card-bg .dg-note-box {
             background: rgba(255,255,255,0.2) !important;
             border-color: rgba(255,255,255,0.28) !important;
-            backdrop-filter: blur(6px) !important;
-            -webkit-backdrop-filter: blur(6px) !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
         }
         html[data-theme="dark"] .daily-greeting-card.has-card-bg .dg-note-box {
             background: rgba(0,0,0,0.26) !important;
@@ -2493,7 +2493,7 @@
         }
         .notification-toast {
             border-radius: 14px !important;
-            backdrop-filter: blur(12px) !important;
+            backdrop-filter: none !important;
         }
 
         .ann-item-card {
@@ -13999,4 +13999,16 @@ body #user-sticker-picker .empty-sticker-tip {
     max-width: 140px;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* ── 性能：全面停用毛玻璃 backdrop-filter ────────────────────────────
+   Android WebView 上 blur 会让「固定悬浮在滚动列表上方」的元素（顶栏、输入区）
+   以及弹窗遮罩每一帧都重新采样背后的内容，是掉帧/划拉不流畅的主因。
+   这里统一置为 none —— 各元素原有的半透明底色都保留，观感几乎不变。
+   注意：本条选择器权重最低，个别写了 !important 的 blur 需单独覆盖（见下方）。 */
+*,
+*::before,
+*::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
 }

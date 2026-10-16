@@ -1516,12 +1516,17 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef, animate) {
 function _updateReadReceiptsDOM() {
     const container = DOMElements.chatContainer;
     const rrStyle = settings.readReceiptStyle || 'icon';
-    container.querySelectorAll('.message-wrapper.sent').forEach(wrapper => {
+    const wrappers = container.querySelectorAll('.message-wrapper.sent');
+    if (!wrappers.length) return;
+    // 一次性建索引：原来对每个气泡都做一次 messages.find()（O(n×m)），
+    // 聊天记录一长，每次收到回复刷新已读都要扫几十万次，直接掉帧
+    const readIds = new Set();
+    messages.forEach(m => { if (m.status === 'read') readIds.add(String(m.id)); });
+    wrappers.forEach(wrapper => {
+        const msgId = wrapper.dataset.msgId || wrapper.dataset.id;
+        if (!readIds.has(String(msgId))) return;
         const receiptEl = wrapper.querySelector('.read-receipt');
         if (!receiptEl) return;
-        const msgId = wrapper.dataset.msgId || wrapper.dataset.id;
-        const msg = messages.find(m => String(m.id) === String(msgId));
-        if (!msg || msg.status !== 'read') return;
         if (rrStyle === 'text') {
             receiptEl.classList.add('read');
             receiptEl.textContent = '已读';
@@ -1599,6 +1604,9 @@ function renderMessages(preserveScroll = false) {
 // 但碰上特别长的自定义表情/颜文字，居中之后还是可能有一侧探出屏幕，这里量一下、
 // 超出了就用 --badge-safe-shift 往回拉一点，跟长按工具栏那个安全边距是同一个思路
 function _clampReactionBadges() {
+    // 一条反应角标都没有的时候直接跳过：不必开一个 rAF，更不必逼一次同步布局
+    // （这段每次渲染消息列表都会跑，绝大多数消息根本没有反应角标）
+    if (!document.querySelector('.message-reaction-badge')) return;
     requestAnimationFrame(() => {
         const SAFE_MARGIN = 10;
         document.querySelectorAll('.message-reaction-badge').forEach(badge => {
@@ -2722,19 +2730,20 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.5) {
                      throttledSaveData();
                 }
             }
-            // ── 对方拍一拍 / 梦角搞怪彩蛋：低概率彩蛋，绝大多数时候都是正常回复——
-            //    约 8% 只拍一拍、约 4% 只搞怪，两者不叠加；剩下的约 88% 都正常产出一句话 ──
-            const _surprise = Math.random();
-            const _canThrow = !!(window.ThrowEgg && typeof window.ThrowEgg.partnerThrow === 'function');
-            if (_surprise < 0.08) {
+            // ── 对方拍一拍 / 梦角搞怪彩蛋：四种结果等概率（各 25%）——
+            //    普通回复 / 只拍一拍 / 只搞怪 / 两个一起来；不配置偏向概率，
+            //    他爱发啥发啥，让两个惊喜都有均等机会 ──
+            const _surprise = Math.floor(Math.random() * 4);
+            const _doPoke = _surprise === 1 || _surprise === 3;
+            const _doThrow = (_surprise === 2 || _surprise === 3) && window.ThrowEgg && typeof window.ThrowEgg.partnerThrow === 'function';
+            if (_doPoke) {
                 // 调用提取的通用函数（同时供 /测试拍一拍 指令使用）
                 if (typeof window._triggerPartnerPoke === 'function') window._triggerPartnerPoke();
-                return;
             }
-            if (_canThrow && _surprise < 0.12) {
+            if (_doThrow) {
                 window.ThrowEgg.partnerThrow();
-                return;
             }
+            if (_doPoke || _doThrow) return;
 
             // ── 梦角主动发红包：跟上面拍一拍是完全独立的两套判定，互不影响——
             // 不 return，不影响这次正常回复照常生成；异步调用，不 await，不拖慢/阻塞回复流程，
