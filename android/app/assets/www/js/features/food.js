@@ -671,7 +671,7 @@
             +   '</div>'
 
             +   '<div class="food-sec-title"><i class="fas fa-clock-rotate-left"></i> 最近食光</div>'
-            +   '<div id="food-list" style="max-height:26vh;overflow-y:auto;"></div>'
+            +   '<div id="food-list"></div>'
 
             +   '<div class="food-btn-row" style="margin-top:12px;">'
             +     '<button type="button" id="food-manage-menu" style="flex:1;padding:9px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;"><i class="fas fa-bowl-food"></i> 管理他的菜单</button>'

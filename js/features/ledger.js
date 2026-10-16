@@ -613,7 +613,9 @@
                     '<div id="ledger-summary"></div>' +
 
                     '<div class="ledger-sec-title"><i class="fas fa-receipt"></i> 流水明细</div>' +
-                    '<div id="ledger-list" style="max-height:34vh;overflow-y:auto;"></div>' +
+                    // 不再给流水明细单独设 max-height/overflow：内层小滚动盒会把滚动"吞"在
+                    // 那一小块里，手指只能在里面划拉。去掉后整个弹窗（86vh）就是一个大滚动区
+                    '<div id="ledger-list"></div>' +
 
                     '<div class="ledger-form" id="ledger-form" style="display:none;">' +
                         '<div class="ledger-form-title" id="ledger-form-title">记一笔</div>' +
