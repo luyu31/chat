@@ -545,7 +545,11 @@
 
             var st = document.createElement('style');
             st.textContent =
-                '#ledger-modal .modal-content{max-width:430px;width:92vw;max-height:86vh;overflow-y:auto;}' +
+                '#ledger-modal .modal-content{max-width:430px;width:92vw;max-height:90vh;display:flex;flex-direction:column;overflow-y:auto;}' +
+                '#ledger-modal .modal-content>*{flex-shrink:0;}' +
+                // 顶部「月份栏 / 总支出」和底部按钮固定；「分类汇总 + 流水明细」整体塞进下面这个大滚动区，
+                // 明细能划的面积比原来那个 34vh 的小盒子大一倍左右
+                '#ledger-modal .modal-content>.ledger-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;}' +
                 '.ledger-toggle-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border-color,#e8e8e8);border-radius:12px;background:var(--primary-bg,transparent);}' +
                 '.ledger-toggle-btn{flex-shrink:0;min-width:64px;padding:6px 10px;border:none;border-radius:9px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;font-family:var(--font-family);}' +
                 '.ledger-hint{font-size:11px;color:var(--text-secondary,#999);line-height:1.6;margin-top:6px;}' +
@@ -609,13 +613,15 @@
                     '</div>' +
                     '<div class="ledger-total" id="ledger-total"></div>' +
 
+                    '<div class="ledger-scroll">' +
                     '<div class="ledger-sec-title"><i class="fas fa-chart-simple"></i> 分类汇总</div>' +
                     '<div id="ledger-summary"></div>' +
 
                     '<div class="ledger-sec-title"><i class="fas fa-receipt"></i> 流水明细</div>' +
-                    // 不再给流水明细单独设 max-height/overflow：内层小滚动盒会把滚动"吞"在
-                    // 那一小块里，手指只能在里面划拉。去掉后整个弹窗（86vh）就是一个大滚动区
+                    // 明细本身不再设 max-height/overflow：统一交给外层 .ledger-scroll 滚动，
+                    // 这样顶部月份栏不会跟着滚走、底部按钮也始终在屏幕里
                     '<div id="ledger-list"></div>' +
+                    '</div>' +
 
                     '<div class="ledger-form" id="ledger-form" style="display:none;">' +
                         '<div class="ledger-form-title" id="ledger-form-title">记一笔</div>' +

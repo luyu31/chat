@@ -624,7 +624,11 @@
 
         var st = document.createElement('style');
         st.textContent =
-            '#food-modal .modal-content{max-width:420px;width:90vw;max-height:86vh;overflow-y:auto;}' +
+            '#food-modal .modal-content{max-width:420px;width:90vw;max-height:90vh;display:flex;flex-direction:column;overflow-y:auto;}' +
+            '#food-modal .modal-content>*{flex-shrink:0;}' +
+            // 顶部标题和底部按钮固定；「推荐 / 记一笔 / 最近食光」整体塞进大滚动区，
+            // 列表能划的面积比原来那个 26vh 的小盒子大得多
+            '#food-modal .modal-content>.food-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;}' +
             '.food-sec-title{font-size:13px;font-weight:700;color:var(--text-secondary,#999);margin:16px 0 8px;}' +
             '.food-sec-title:first-of-type{margin-top:6px;}' +
             '.food-input{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:11px;border:1.5px solid var(--border-color,#ddd);background:var(--primary-bg,transparent);color:var(--text-primary,#333);font-size:14px;outline:none;font-family:var(--font-family);}' +
@@ -655,6 +659,7 @@
             '<div class="modal-content">'
             +   '<div class="modal-title"><i class="fas fa-utensils"></i><span>食光记</span></div>'
 
+            +   '<div class="food-scroll">'
             +   '<div class="food-sec-title"><i class="fas fa-star"></i> 互相推荐</div>'
             +   '<input type="text" class="food-input" id="food-rec-input" placeholder="想推荐TA吃什么？如：火锅" maxlength="20">'
             +   '<div class="food-btn-row">'
@@ -672,6 +677,7 @@
 
             +   '<div class="food-sec-title"><i class="fas fa-clock-rotate-left"></i> 最近食光</div>'
             +   '<div id="food-list"></div>'
+            +   '</div>'
 
             +   '<div class="food-btn-row" style="margin-top:12px;">'
             +     '<button type="button" id="food-manage-menu" style="flex:1;padding:9px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;"><i class="fas fa-bowl-food"></i> 管理他的菜单</button>'
