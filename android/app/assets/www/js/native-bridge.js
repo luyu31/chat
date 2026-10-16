@@ -130,7 +130,7 @@
         row.innerHTML =
             '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">' +
             '<i class="fas fa-phone-volume" style="margin-right:4px;color:var(--accent-color,#c5a47e);"></i>' +
-            '来电铃声（后台/锁屏全屏来电时播放）</div>' +
+            '来电铃声（来电时播放，含震动）</div>' +
             '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;" id="native-ringtone-name">' +
             (cur ? '当前：' + cur : '未设置（用内置铃声）') + '</div>' +
             '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +

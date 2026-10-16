@@ -892,6 +892,30 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             showNotification('通话已挂断', 'info', 2000);
     }
 
+    // ─── 来电震动/铃声：像真正手机来电一样 ─────────────
+    // 来电震动节奏（响0.8s停0.6s再响0.8s停1.2s，循环），和原生 RingtonePlayer 的节奏一致
+    const VIBRATE_PATTERN = [800, 600, 800, 1200];
+    let webVibrateTimer = null;
+
+    function startWebVibrate() {
+        stopWebVibrate();
+        if (!navigator.vibrate) return;
+        const pulse = () => { try { navigator.vibrate(VIBRATE_PATTERN); } catch (e) {} };
+        pulse();
+        // 一轮节奏总长后重发，保持持续震动到接听/挂断
+        webVibrateTimer = setInterval(pulse, VIBRATE_PATTERN.reduce((a, b) => a + b, 0));
+    }
+    function stopWebVibrate() {
+        if (webVibrateTimer) { clearInterval(webVibrateTimer); webVibrateTimer = null; }
+        try { if (navigator.vibrate) navigator.vibrate(0); } catch (e) {}
+    }
+    // 统一停止：原生铃声 + 网页音效 + 网页震动
+    function stopIncomingSignals() {
+        try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch (e) {}
+        try { if (window.MilkChat) window.MilkChat.stopRinging(); } catch (e) {}
+        stopWebVibrate();
+    }
+
     function showIncomingCall() {
         if (!S.enabled || S.active) return;
         if (typeof window._cinemaShouldBlockInterruptions === 'function' && window._cinemaShouldBlockInterruptions()) return; // 观影中/快到观影时间不弹通话邀请
@@ -901,24 +925,27 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         ov.classList.add('visible');
         clearTimeout(S.incomingTimer);
 
-        // App 原生全屏来电：后台/锁屏时交给系统级全屏界面 + 原生铃声（像手机来电）。
-        // 此时跳过网页铃声，避免双重播放；前台时仍走网页音效。
-        let nativeRing = false;
+        // 铃声与震动：只要有原生桥就走原生（前台后台都走），原生自带循环铃声 + 来电震动节奏，
+        // 像真正的手机来电。ringAllowed 控制是否响铃；关了铃声时用网页震动兜底，
+        // 保证来电一定有触感提醒。
+        const av = (document.querySelector('#partner-avatar img') || {}).src || '';
+        const ringAllowed = (typeof settings === 'undefined' || settings.soundEnabled !== false)
+            && ((settings && settings.inviteVideocallSoundPreset) || 'default') !== 'mute';
+        let nativeOk = false;
         try {
-            if (window.MilkChat && document.hidden) {
-                const av = (document.querySelector('#partner-avatar img') || {}).src || '';
-                const ringAllowed = (typeof settings === 'undefined' || settings.soundEnabled !== false)
-                    && ((settings && settings.inviteVideocallSoundPreset) || 'default') !== 'mute';
+            if (window.MilkChat && typeof window.MilkChat.startRinging === 'function') {
                 window.MilkChat.startRinging(getName(), av, ringAllowed);
-                nativeRing = ringAllowed;
+                nativeOk = true;
             }
         } catch (e) { console.warn('[call] native ring error:', e); }
 
-        // 播放视频通话邀请音效
-        if (!nativeRing) {
-            try {
-                if (typeof playSound === 'function') playSound('invite_videocall');
-            } catch (e) { console.warn('[call] invite sound error:', e); }
+        if (nativeOk) {
+            // 原生接管了铃声；声音关着时原生不会震动，这里用网页震动补上
+            if (!ringAllowed) startWebVibrate();
+        } else {
+            // 没有原生桥：网页音效 + 网页震动
+            try { if (typeof playSound === 'function' && ringAllowed) playSound('invite_videocall'); } catch (e) {}
+            startWebVibrate();
         }
 
         // 后台推送通知（仅当页面在后台 + 用户开启了通知）
@@ -938,8 +965,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             S.incomingTimer = setTimeout(() => {
                 if (!ov.classList.contains('visible')) return;
                 ov.classList.remove('visible');
-                try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
-                try { if (window.MilkChat) window.MilkChat.stopRinging(); } catch(e) {}
+                stopIncomingSignals();
                 const myName = (typeof settings !== 'undefined' && settings.myName) || '我';
                 const partnerName = getName();
                 const rejectLabels = [
@@ -955,8 +981,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             S.incomingTimer = setTimeout(() => {
                 if (!ov.classList.contains('visible')) return;
                 ov.classList.remove('visible');
-                try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
-                try { if (window.MilkChat) window.MilkChat.stopRinging(); } catch(e) {}
+                stopIncomingSignals();
                 const myName = (typeof settings !== 'undefined' && settings.myName) || '我';
                 sendCallEvent('fa-phone-slash', `${myName}未接听 ${getName()} 的来电`, null);
             }, 60000);
@@ -1104,16 +1129,14 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         document.getElementById('call-inc-reject')?.addEventListener('click', () => {
             document.getElementById('call-incoming-overlay')?.classList.remove('visible');
             clearTimeout(S.incomingTimer);
-            try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
-            try { if (window.MilkChat) window.MilkChat.stopRinging(); } catch(e) {}
+            stopIncomingSignals();
             const myName = (typeof settings !== 'undefined' && settings.myName) || '我';
             sendCallEvent('fa-phone-slash', `${myName}拒绝了 ${getName()} 的通话`, null);
         });
         document.getElementById('call-inc-accept')?.addEventListener('click', () => {
             document.getElementById('call-incoming-overlay')?.classList.remove('visible');
             clearTimeout(S.incomingTimer);
-            try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
-            try { if (window.MilkChat) window.MilkChat.stopRinging(); } catch(e) {}
+            stopIncomingSignals();
             startCall(true);
         });
 
