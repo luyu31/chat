@@ -2722,20 +2722,19 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.5) {
                      throttledSaveData();
                 }
             }
-            // ── 对方拍一拍 / 梦角搞怪彩蛋：四种结果等概率（各 25%）——
-            //    普通回复 / 只拍一拍 / 只搞怪 / 两个一起来；不配置偏向概率，
-            //    既保证大部分时候正常聊天，又让两个惊喜都有均等机会 ──
-            const _surprise = Math.floor(Math.random() * 4);
-            const _doPoke = _surprise === 1 || _surprise === 3;
-            const _doThrow = (_surprise === 2 || _surprise === 3) && window.ThrowEgg && typeof window.ThrowEgg.partnerThrow === 'function';
-            if (_doPoke) {
+            // ── 对方拍一拍 / 梦角搞怪彩蛋：低概率彩蛋，绝大多数时候都是正常回复——
+            //    约 8% 只拍一拍、约 4% 只搞怪，两者不叠加；剩下的约 88% 都正常产出一句话 ──
+            const _surprise = Math.random();
+            const _canThrow = !!(window.ThrowEgg && typeof window.ThrowEgg.partnerThrow === 'function');
+            if (_surprise < 0.08) {
                 // 调用提取的通用函数（同时供 /测试拍一拍 指令使用）
                 if (typeof window._triggerPartnerPoke === 'function') window._triggerPartnerPoke();
+                return;
             }
-            if (_doThrow) {
+            if (_canThrow && _surprise < 0.12) {
                 window.ThrowEgg.partnerThrow();
+                return;
             }
-            if (_doPoke || _doThrow) return;
 
             // ── 梦角主动发红包：跟上面拍一拍是完全独立的两套判定，互不影响——
             // 不 return，不影响这次正常回复照常生成；异步调用，不 await，不拖慢/阻塞回复流程，
