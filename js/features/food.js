@@ -62,11 +62,24 @@
             ['华夫饼', '🧇'], ['双皮奶', '🍮'], ['提拉米苏', '🍰'], ['麻薯', '🍡'],
             ['布丁', '🍮'], ['巧克力', '🍫'], ['蛋挞', '🥧'], ['甜甜圈', '🍩'],
             ['马卡龙', '🧁'], ['草莓大福', '🍓'], ['芒果班戟', '🥭'], ['芋圆烧仙草', '🍧']
+        ],
+        '早午饭': [
+            ['班尼迪克蛋', '🍳'], ['松饼', '🥞'], ['可颂配拿铁', '☕'], ['英式早午餐', '🍳'],
+            ['滑蛋虾仁饭', '🍚'], ['菠萝油配奶茶', '🧋'], ['猪扒包', '🥪'], ['厚切吐司', '🍞'],
+            ['贝果三明治', '🥯'], ['牛油果吐司', '🥑'], ['舒芙蕾', '🥞'], ['早茶点心', '🫖'],
+            ['麦片碗', '🥣'], ['鸡蛋仔', '🧇']
+        ],
+        '工作餐': [
+            ['公司盒饭', '🍱'], ['食堂打饭', '🍱'], ['外卖便当', '🥡'], ['便利店饭团', '🍙'],
+            ['加班外卖', '🥡'], ['盖浇饭外卖', '🍱'], ['轻食代餐', '🥗'], ['三明治简餐', '🥪'],
+            ['员工餐', '🍲'], ['楼下快餐', '🍛'], ['猪脚饭外卖', '🍲'], ['黄焖鸡外卖', '🍗'],
+            ['麻辣烫外卖', '🍜'], ['麻辣香锅外卖', '🥘'], ['米线外卖', '🍜'], ['汉堡快餐', '🍔'],
+            ['三明治咖啡', '☕'], ['关东煮简餐', '🍢']
         ]
     };
 
-    // 推荐池 = 所有餐段并集（去重，保留第一个 emoji）
-    var RECOMMEND_POOL = (function () {
+    // 预设推荐池（名字并集，去重）——实际使用时会叠加自定义、剔除被删预设
+    var PRESET_ALL = (function () {
         var seen = {}, all = [];
         Object.keys(FOOD_POOL).forEach(function (m) {
             FOOD_POOL[m].forEach(function (f) {
@@ -76,16 +89,99 @@
         return all;
     })();
 
-    // 他一天的吃饭时间窗：每段在窗口内随机一个点吃；加餐/夜宵是可选餐（对半决定今天吃不吃）
+    // ── 自定义食物 / 删除预设 ──────────────────────
+    // 数据存在 foodDiaryData 里：
+    //   d.custFoods  = { '早餐': ['胡辣汤', ...], ... }  用户自己加的"他吃什么"
+    //   d.hiddenFoods= ['炸鸡', ...]                    被删掉的预设名（全局生效，可恢复）
+    var DEFAULT_EMOJI = '🍽️';
+
+    function _ensureFoodCfg(d) {
+        if (!d.custFoods || typeof d.custFoods !== 'object') d.custFoods = {};
+        if (!Array.isArray(d.hiddenFoods)) d.hiddenFoods = [];
+        return d;
+    }
+    function _hiddenSet(d) {
+        var s = {};
+        (d.hiddenFoods || []).forEach(function (n) { s[n] = 1; });
+        return s;
+    }
+    // 某餐段实际生效的池子（预设去删 + 自定义）
+    function poolFor(meal) {
+        var d = _ensureFoodCfg(load());
+        var hidden = _hiddenSet(d);
+        var out = [];
+        (FOOD_POOL[meal] || []).forEach(function (f) {
+            if (!hidden[f[0]]) out.push(f);
+        });
+        ((d.custFoods && d.custFoods[meal]) || []).forEach(function (name) {
+            if (name && !hidden[name]) out.push([name, DEFAULT_EMOJI]);
+        });
+        return out;
+    }
+    // 全部食物（推荐用）
+    function recommendPool() {
+        var d = _ensureFoodCfg(load());
+        var hidden = _hiddenSet(d);
+        var seen = {}, all = [];
+        PRESET_ALL.forEach(function (f) { if (!hidden[f[0]] && !seen[f[0]]) { seen[f[0]] = 1; all.push(f); } });
+        Object.keys(d.custFoods || {}).forEach(function (m) {
+            (d.custFoods[m] || []).forEach(function (name) {
+                if (name && !hidden[name] && !seen[name]) { seen[name] = 1; all.push([name, DEFAULT_EMOJI]); }
+            });
+        });
+        return all;
+    }
+    // 这个名字是不是预设（用于 UI 显示"预设"标记）
+    function isPresetFood(name) {
+        return PRESET_ALL.some(function (f) { return f[0] === name; });
+    }
+    function addCustomFood(meal, name) {
+        name = String(name || '').trim().slice(0, 12);
+        if (!name) return 0;
+        var d = _ensureFoodCfg(load());
+        if (!d.custFoods[meal]) d.custFoods[meal] = [];
+        var n = 0;
+        name.split(/[，,、\/\n]+/).forEach(function (part) {
+            part = part.trim();
+            if (!part) return;
+            var exists = poolFor(meal).some(function (f) { return f[0] === part; });
+            if (!exists) { d.custFoods[meal].push(part); n++; }
+        });
+        // 如果之前删过这个名字的预设，现在用户手动加了，就解除隐藏
+        d.hiddenFoods = d.hiddenFoods.filter(function (x) {
+            return d.custFoods[meal].indexOf(x) === -1;
+        });
+        save(d);
+        return n;
+    }
+    // 删除：预设 → 进隐藏名单；自定义 → 直接删
+    function removeFood(meal, name) {
+        var d = _ensureFoodCfg(load());
+        if (d.custFoods[meal]) d.custFoods[meal] = d.custFoods[meal].filter(function (x) { return x !== name; });
+        if (isPresetFood(name) && d.hiddenFoods.indexOf(name) === -1) d.hiddenFoods.push(name);
+        save(d);
+    }
+    function restoreAllPresets() {
+        var d = _ensureFoodCfg(load());
+        d.hiddenFoods = [];
+        save(d);
+    }
+
+    // 他一天的吃饭节奏（不卡太死，每天吃几顿、几点吃都带随机）：
+    //   on      —— 这顿今天"开不开火"的概率（早午晚基本都吃，但偶尔睡过头/忙忘）
+    //   middayPick —— 中午这顿在"午餐/工作餐"之间二选一（二选一，不会一天两顿中午饭）
+    //   早午饭   —— 偶尔睡懒觉合并成 brunch；开了早午饭，早餐就自动取消
     var MEAL_WINDOWS = [
-        { meal: '早餐', startH: 6,  startM: 30, endH: 9,  endM: 30, optional: false },
-        { meal: '午餐', startH: 11, startM: 0,  endH: 13, endM: 30, optional: false },
-        { meal: '加餐', startH: 14, startM: 30, endH: 16, endM: 30, optional: true },
-        { meal: '晚餐', startH: 17, startM: 30, endH: 20, endM: 30, optional: false },
-        { meal: '夜宵', startH: 21, startM: 30, endH: 23, endM: 40, optional: true }
+        { meal: '早餐',   startH: 6,  startM: 20, endH: 9,  endM: 40, on: 0.90 },
+        { meal: '早午饭', startH: 9,  startM: 40, endH: 11, endM: 5,  on: 0.18 },
+        { meal: '午餐',   startH: 11, startM: 0,  endH: 13, endM: 40, on: 0.95, middayPick: ['午餐', '工作餐'], middayWeights: [0.62, 0.38] },
+        { meal: '加餐',   startH: 14, startM: 20, endH: 16, endM: 40, on: 0.50 },
+        { meal: '晚餐',   startH: 17, startM: 20, endH: 20, endM: 40, on: 0.92 },
+        { meal: '夜宵',   startH: 21, startM: 20, endH: 23, endM: 45, on: 0.45 }
     ];
 
-    var MEALS = ['早餐', '午餐', '晚餐', '夜宵', '加餐'];
+    // 手动记一笔时可选的餐段
+    var MEALS = ['早餐', '早午饭', '午餐', '工作餐', '加餐', '晚餐', '夜宵'];
 
     // ── 台词池（不预设身份，口吻跟其他模块保持一致） ──────────────────────
     var ME_RECO = [
@@ -147,12 +243,19 @@
         return (typeof settings !== 'undefined' && settings.partnerName) || '对方';
     }
     function _nowMeal() {
-        var h = new Date().getHours();
-        if (h >= 5 && h < 10) return '早餐';
-        if (h >= 10 && h < 14) return '午餐';
-        if (h >= 14 && h < 18) return '加餐';
-        if (h >= 18 && h < 23) return '晚餐';
-        return '夜宵';
+        var h = new Date().getHours(), m = new Date().getMinutes();
+        var t = h * 60 + m;
+        if (t >= 5 * 60 + 30 && t < 9 * 60 + 40) return '早餐';
+        if (t >= 9 * 60 + 40 && t < 11 * 60 + 5) return '早午饭';
+        if (t >= 11 * 60 && t < 13 * 60 + 40) return '午餐';
+        if (t >= 14 * 60 + 20 && t < 16 * 60 + 40) return '加餐';
+        if (t >= 17 * 60 + 20 && t < 20 * 60 + 40) return '晚餐';
+        if (t >= 21 * 60 + 20 && t < 23 * 60 + 50) return '夜宵';
+        // 交界空档按就近餐段兜底
+        if (t < 5 * 60 + 30) return '夜宵';
+        if (t < 11 * 60) return '早餐';
+        if (t < 14 * 60 + 20) return '午餐';
+        return '晚餐';
     }
     function _gain(n) {
         try {
@@ -168,9 +271,10 @@
             var d = JSON.parse(localStorage.getItem(KEY));
             if (!d || typeof d !== 'object') d = {};
             if (!Array.isArray(d.entries)) d.entries = [];
+            _ensureFoodCfg(d);
             return d;
         } catch (e) {
-            return { entries: [] };
+            return _ensureFoodCfg({ entries: [] });
         }
     }
     function save(d) {
@@ -197,18 +301,31 @@
     function _winEnd(w, day) { return new Date(day.getFullYear(), day.getMonth(), day.getDate(), w.endH, w.endM, 0, 0).getTime(); }
 
     // 生成（或沿用）今天的计划：[{meal, at, on}]
+    // 不卡太死：每顿按 on 概率决定吃不吃；时间点在窗口内均匀随机；
+    // 偶尔睡懒觉吃了早午饭，早餐就自动取消；中午在午餐/工作餐里随机二选一
     function _ensurePlan(d) {
         var today = _todayStr();
         if (d.mealPlan && d.mealPlan.date === today && Array.isArray(d.mealPlan.items)) return d.mealPlan;
         var now = new Date();
         var items = MEAL_WINDOWS.map(function (w) {
             var s = _winStart(w, now), e = _winEnd(w, now);
+            var meal = w.meal;
+            // 中午这顿：午餐 / 工作餐 按权重二选一（只产生一条计划）
+            if (w.middayPick) {
+                var r = Math.random();
+                meal = r < w.middayWeights[0] ? w.middayPick[0] : w.middayPick[1];
+            }
             return {
-                meal: w.meal,
-                on: w.optional ? Math.random() < 0.5 : true,
+                meal: meal,
+                on: Math.random() < w.on,
                 at: s + Math.floor(Math.random() * Math.max(1, e - s))
             };
         });
+        // 吃了早午饭 → 早餐自动取消（睡觉呢）
+        var brunch = items.filter(function (it) { return it.meal === '早午饭'; })[0];
+        if (brunch && brunch.on) {
+            items.forEach(function (it) { if (it.meal === '早餐') it.on = false; });
+        }
         d.mealPlan = { date: today, items: items };
         return d.mealPlan;
     }
@@ -219,6 +336,13 @@
         return d.entries.some(function (en) {
             return en.author === 'partner' && en.kind === 'eaten' && en.meal === meal && _todayStr(en.ts) === today;
         });
+    }
+
+    function _winForMeal(meal, day) {
+        // 工作餐复用中午窗口；其他餐段直接查
+        var w = MEAL_WINDOWS.filter(function (x) { return x.meal === meal; })[0];
+        if (!w && meal === '工作餐') w = MEAL_WINDOWS.filter(function (x) { return x.meal === '午餐'; })[0];
+        return w ? { s: _winStart(w, day), e: _winEnd(w, day) } : null;
     }
 
     function _scheduleFood() {
@@ -232,10 +356,9 @@
         for (var i = 0; i < plan.items.length; i++) {
             var it = plan.items[i];
             if (!it.on || it.done || _partnerAteMealToday(d, it.meal)) { it.done = true; continue; }
-            var w = MEAL_WINDOWS.filter(function (x) { return x.meal === it.meal; })[0];
-            var e = _winEnd(w, new Date());
-            if (now > e) { it.done = true; continue; }      // 窗口已过，静默跳过，不补发
-            var delay = Math.max(3000, it.at - now);        // 还没到点就等；在窗口内则至少 3 秒后吃
+            var win = _winForMeal(it.meal, new Date());
+            if (!win || now > win.e) { it.done = true; continue; }  // 窗口已过，静默跳过，不补发
+            var delay = Math.max(3000, it.at - now);                // 还没到点就等；在窗口内则至少 3 秒后吃
             _foodTimer = setTimeout(_runFoodCheck, delay);
             save(d);
             return;
@@ -255,17 +378,20 @@
         for (var i = 0; i < plan.items.length; i++) {
             var it = plan.items[i];
             if (!it.on || it.done || _partnerAteMealToday(d, it.meal)) { it.done = true; continue; }
-            var w = MEAL_WINDOWS.filter(function (x) { return x.meal === it.meal; })[0];
-            if (now.getTime() > _winEnd(w, now)) { it.done = true; continue; }
-            // 到点了：从"当前餐段池"里抽吃的，抽一个他今天还没吃过的（小池子兜底不纠结）
+            var win = _winForMeal(it.meal, now);
+            if (!win || now.getTime() > win.e) { it.done = true; continue; }
+            // 到点了：从"当前餐段生效池"（预设+自定义、删掉的已剔除）抽吃的；
+            // 不卡太死——70% 优先挑今天没吃过的，30% 全池随便抽，允许偶尔回味
             var meal = it.meal;
-            var pool = (FOOD_POOL[meal] || RECOMMEND_POOL).slice();
+            var pool = poolFor(meal);
+            if (!pool.length) pool = recommendPool();
             var eatenToday = {};
             d.entries.forEach(function (en) {
                 if (en.author === 'partner' && en.kind === 'eaten' && _todayStr(en.ts) === _todayStr()) eatenToday[en.what] = 1;
             });
             var fresh = pool.filter(function (f) { return !eatenToday[f[0]]; });
-            var f = _pick(fresh.length ? fresh : pool);
+            var useFresh = fresh.length && (Math.random() < 0.7);
+            var f = _pick(useFresh ? fresh : pool);
             it.done = true;
             fired = true;
             save(d);
@@ -350,7 +476,7 @@
     }
 
     function recommendHis() {
-        var f = _pick(RECOMMEND_POOL);
+        var f = _pick(recommendPool());
         var d = load();
         d.entries.unshift({ id: _newId(), ts: Date.now(), kind: 'recommend', author: 'partner', what: f[0], meal: '' });
         save(d);
@@ -381,7 +507,9 @@
     var _seenChat = {};
 
     var MEAL_RULES = [
+        ['工作餐', /工作餐|加班餐|盒饭|便当|员工餐|食堂打?饭/],
         ['夜宵', /夜宵|宵夜/],
+        ['早午饭', /早午饭|早午餐|brunch/i],
         ['早餐', /早餐|早饭|早点|今早|早上\s*吃/],
         ['午餐', /午餐|午饭|中饭|中午\s*吃/],
         ['晚餐', /晚餐|晚饭|今晚|晚上\s*吃|夜里\s*吃|半夜\s*吃/],
@@ -412,7 +540,7 @@
         if (m) what = m[1];
         // 2) 「晚饭是火锅」「晚餐解决了黄焖鸡」「夜宵：烧烤」
         if (!what) {
-            m = text.match(/(?:早餐|早饭|午餐|午饭|中饭|晚餐|晚饭|夜宵|宵夜|下午茶)\s*(?:是|为|有|解决了?|搞定了?|安排了?|吃的是|吃了)?\s*[:：]?\s*(.+?)\s*[。.!！~～…]*$/);
+            m = text.match(/(?:早餐|早饭|早午饭|早午餐|午餐|午饭|中饭|工作餐|加班餐|晚餐|晚饭|夜宵|宵夜|下午茶)\s*(?:是|为|有|解决了?|搞定了?|安排了?|吃的是|吃了)?\s*[:：]?\s*(.+?)\s*[。.!！~～…]*$/);
             if (m) what = m[1];
         }
         if (!what) return null;
@@ -533,7 +661,10 @@
             +   '<div id="food-list" style="max-height:26vh;overflow-y:auto;"></div>'
 
             +   '<div class="food-btn-row" style="margin-top:12px;">'
+            +     '<button type="button" id="food-manage-menu" style="flex:1;padding:9px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;"><i class="fas fa-bowl-food"></i> 管理他的菜单</button>'
             +     '<button type="button" id="food-manage-react" style="flex:1;padding:9px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;"><i class="fas fa-comment-dots"></i> 管理反应字卡</button>'
+            +   '</div>'
+            +   '<div class="food-btn-row" style="margin-top:8px;">'
             +     '<button type="button" id="food-close" class="modal-btn modal-btn-secondary" style="flex:1;">关闭</button>'
             +   '</div>'
             +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:8px;line-height:1.7;">推荐和记录都会出现在聊天里，翻记录就像翻一起吃过的日子</div>'
@@ -551,6 +682,9 @@
                 var libModal = document.getElementById('custom-replies-modal');
                 if (libModal && typeof showModal === 'function') showModal(libModal);
             } catch (e) {}
+        });
+        m.querySelector('#food-manage-menu').addEventListener('click', function () {
+            openMenuManager();
         });
         m.addEventListener('click', function (e) {
             if (e.target === m) { if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none'; }
@@ -664,6 +798,99 @@
         el.innerHTML = html;
     }
 
+    // ── "他吃什么"菜单管理：自定义添加 + 删除预设（预设可一键恢复） ──────────────────────
+    var _menuMeal = '早餐';
+    function openMenuManager() {
+        var old = document.getElementById('food-menu-modal');
+        if (old) old.remove();
+        var ov = document.createElement('div');
+        ov.className = 'modal';
+        ov.id = 'food-menu-modal';
+        ov.style.zIndex = '3300';
+        ov.innerHTML =
+            '<div class="modal-content" style="max-width:400px;width:90vw;max-height:84vh;display:flex;flex-direction:column;">'
+            + '<div class="modal-title"><i class="fas fa-bowl-food"></i><span>他吃什么 · 菜单</span></div>'
+            + '<div style="font-size:11px;color:var(--text-secondary,#999);line-height:1.6;margin-bottom:8px;">给他加你想让他吃的（每行一个或用顿号隔开），不喜欢的预设点 × 删掉，可随时恢复</div>'
+            + '<div class="food-chips" id="fm-meal-chips" style="flex-shrink:0;"></div>'
+            + '<div style="display:flex;gap:8px;flex-shrink:0;margin-bottom:8px;">'
+            +   '<input type="text" class="food-input" id="fm-add-input" placeholder="加一个，如：胡辣汤" maxlength="40">'
+            +   '<button type="button" id="fm-add-btn" class="modal-btn modal-btn-primary" style="flex-shrink:0;padding:9px 16px;font-size:12px;">添加</button>'
+            + '</div>'
+            + '<div id="fm-list" style="flex:1;overflow-y:auto;min-height:120px;display:flex;flex-direction:column;gap:4px;"></div>'
+            + '<div id="fm-hidden-bar" style="flex-shrink:0;margin-top:8px;font-size:11px;color:var(--text-secondary,#999);"></div>'
+            + '<div class="food-btn-row" style="flex-shrink:0;margin-top:10px;">'
+            +   '<button type="button" id="fm-restore" class="modal-btn modal-btn-secondary" style="flex:1;padding:9px;font-size:12px;">恢复全部预设</button>'
+            +   '<button type="button" id="fm-done" class="modal-btn modal-btn-primary" style="flex:1;padding:9px;font-size:12px;">完成</button>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(ov);
+        if (typeof showModal === 'function') showModal(ov); else ov.style.display = 'flex';
+
+        function renderMealChips() {
+            var box = ov.querySelector('#fm-meal-chips');
+            box.innerHTML = '';
+            MEALS.forEach(function (mm) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'food-chip' + (mm === _menuMeal ? ' active' : '');
+                b.textContent = mm;
+                b.addEventListener('click', function () { _menuMeal = mm; renderMealChips(); renderFoods(); });
+                box.appendChild(b);
+            });
+        }
+        function foodRowHTML(f) {
+            var isCustom = !isPresetFood(f[0]);
+            return '<div class="food-row">'
+                + '<span class="food-row-icon" style="background:rgba(var(--accent-color-rgb,197,164,126),.55);">' + _esc(f[1] || DEFAULT_EMOJI) + '</span>'
+                + '<div class="food-row-main"><div class="food-row-desc">' + _esc(f[0]) + '</div>'
+                + '<div class="food-row-sub">' + (isCustom ? '我加的' : '预设') + '</div></div>'
+                + '<button type="button" class="food-row-btn" data-fm-del="' + _esc(f[0]) + '" title="删除" style="color:#e57373;"><i class="fas fa-xmark"></i></button>'
+                + '</div>';
+        }
+        function renderFoods() {
+            var box = ov.querySelector('#fm-list');
+            var pool = poolFor(_menuMeal);
+            box.innerHTML = pool.length
+                ? pool.map(foodRowHTML).join('')
+                : '<div style="text-align:center;font-size:12px;color:var(--text-secondary,#aaa);padding:20px 0;">这餐还没有食物，加一个吧</div>';
+            var d = load();
+            var bar = ov.querySelector('#fm-hidden-bar');
+            bar.textContent = d.hiddenFoods.length ? ('已删 ' + d.hiddenFoods.length + ' 个预设（全部餐段生效）') : '';
+        }
+        function doAdd() {
+            var input = ov.querySelector('#fm-add-input');
+            var v = input.value;
+            if (!v.trim()) { if (typeof showNotification === 'function') showNotification('先写个吃的呀', 'info', 1500); return; }
+            var n = addCustomFood(_menuMeal, v);
+            input.value = '';
+            renderFoods();
+            if (typeof showNotification === 'function') {
+                showNotification(n ? ('✓ 添加 ' + n + ' 个到「' + _menuMeal + '」') : '这些已经有啦', n ? 'success' : 'info', 1600);
+            }
+        }
+        ov.querySelector('#fm-add-btn').addEventListener('click', doAdd);
+        ov.querySelector('#fm-add-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } });
+        ov.querySelector('#fm-list').addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-fm-del]');
+            if (!btn) return;
+            var name = btn.getAttribute('data-fm-del');
+            removeFood(_menuMeal, name);
+            renderFoods();
+        });
+        ov.querySelector('#fm-restore').addEventListener('click', function () {
+            var d = load();
+            if (!d.hiddenFoods.length) { if (typeof showNotification === 'function') showNotification('没有删掉的预设呀', 'info', 1500); return; }
+            restoreAllPresets();
+            renderFoods();
+            if (typeof showNotification === 'function') showNotification('✓ 预设已全部恢复', 'success', 1500);
+        });
+        ov.querySelector('#fm-done').addEventListener('click', function () { ov.remove(); });
+        ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+
+        renderMealChips();
+        renderFoods();
+    }
+
     function open() {
         buildModal();
         var m = document.getElementById('food-modal');
@@ -699,5 +926,15 @@
         setTimeout(function () { wrapUserHook(); _scheduleFood(); }, 60);
     }
 
-    window.Food = { open: open, detect: detectEaten };
+    window.Food = {
+        open: open,
+        detect: detectEaten,
+        // 测试/调试用
+        poolFor: poolFor,
+        recommendPool: recommendPool,
+        addCustomFood: addCustomFood,
+        removeFood: removeFood,
+        restoreAllPresets: restoreAllPresets,
+        isPresetFood: isPresetFood
+    };
 })();
