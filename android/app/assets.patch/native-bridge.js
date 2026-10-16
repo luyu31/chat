@@ -88,15 +88,25 @@
 
     // ─── 全屏来电联动 ───
     // 全屏来电界面点"接听/拒绝"后，原生回到主界面并调用这个函数，
-    // 模拟点击应用内来电弹窗的对应按钮，接管通话流程。
+    // 触发应用内来电弹窗的对应逻辑，接管通话流程。
+    // 注意：不依赖网页内来电弹窗是否可见——用户可能在原生全屏界面接听/拒绝时，
+    // 网页弹窗已被 60s 超时收起，仍要确保动作能落到通话流程上。
     window._nativeCallAction = function (action) {
-        try {
-            Native.stopRinging();
-        } catch (e) {}
-        var overlay = document.getElementById('call-incoming-overlay');
-        if (!overlay || !overlay.classList.contains('visible')) return;
-        var btn = document.getElementById(action === 'answer' ? 'call-inc-accept' : 'call-inc-reject');
-        if (btn) btn.click();
+        try { Native.stopRinging(); } catch (e) {}
+        var btnId = action === 'answer' ? 'call-inc-accept' : 'call-inc-reject';
+
+        function dispatch() {
+            var btn = document.getElementById(btnId);
+            if (btn) { btn.click(); return true; }
+            return false;
+        }
+        if (dispatch()) return;
+
+        // call.js 还没注入按钮（极端冷启动）：等一下再试，最多 5 秒
+        var tries = 0;
+        var t = setInterval(function () {
+            if (dispatch() || ++tries > 50) clearInterval(t);
+        }, 100);
     };
 
     // 原生铃声选择结果回调（更新设置界面显示）

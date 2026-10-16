@@ -12,6 +12,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -31,6 +33,19 @@ import java.io.FileInputStream;
 public class IncomingCallActivity extends Activity {
 
     public static final String EXTRA_NAME = "name";
+
+    /** 60 秒未接听自动收起（与 RingtonePlayer 超时一致，避免界面一直停在锁屏上） */
+    private static final long AUTO_FINISH_MS = 60000;
+
+    private final Handler finishHandler = new Handler(Looper.getMainLooper());
+    private final Runnable finishRunnable = new Runnable() {
+        @Override
+        public void run() {
+            RingtonePlayer.stop(IncomingCallActivity.this);
+            NotificationHelper.cancelCallNotification(IncomingCallActivity.this);
+            finish();
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -116,6 +131,10 @@ public class IncomingCallActivity extends Activity {
         card.addView(btns);
         root.addView(card);
         setContentView(root);
+
+        // 60s 未接自动收起：铃声本身 60s 停，这里把界面也一并收掉，
+        // 否则铃声停了全屏界面还卡在锁屏上，用户无法操作。
+        finishHandler.postDelayed(finishRunnable, AUTO_FINISH_MS);
     }
 
     /** 圆形按钮 + 下方文字，点击触发对应动作 */
@@ -154,6 +173,7 @@ public class IncomingCallActivity extends Activity {
     }
 
     private void action(String act) {
+        finishHandler.removeCallbacks(finishRunnable);
         RingtonePlayer.stop(this);
         NotificationHelper.cancelCallNotification(this);
         Intent i = new Intent(this, MainActivity.class);
@@ -197,5 +217,11 @@ public class IncomingCallActivity extends Activity {
     @Override
     public void onBackPressed() {
         // 来电界面不响应返回键（像系统来电），只能接听或拒绝
+    }
+
+    @Override
+    protected void onDestroy() {
+        finishHandler.removeCallbacks(finishRunnable);
+        super.onDestroy();
     }
 }

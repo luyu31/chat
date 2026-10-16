@@ -10,6 +10,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 
@@ -35,6 +36,7 @@ public final class RingtonePlayer {
     private static Handler handler;
     private static Runnable stopCap;
     private static volatile boolean vibrating;
+    private static PowerManager.WakeLock wakeLock;
 
     private RingtonePlayer() {}
 
@@ -74,6 +76,9 @@ public final class RingtonePlayer {
         stopInternal();
         Context app = ctx.getApplicationContext();
         if (handler == null) handler = new Handler(Looper.getMainLooper());
+
+        // 响铃期间持有 PARTIAL_WAKE_LOCK，保证 CPU 不休眠、铃声和震动能持续到接听/超时
+        acquireWakeLock(app);
 
         player = new MediaPlayer();
         try {
@@ -147,6 +152,7 @@ public final class RingtonePlayer {
             stopCap = null;
         }
         stopVibrate();
+        releaseWakeLock();
     }
 
     private static void startVibrate(Context ctx) {
@@ -175,6 +181,25 @@ public final class RingtonePlayer {
         if (vibrator != null) {
             try { vibrator.cancel(); } catch (Exception ignored) {}
             vibrator = null;
+        }
+    }
+
+    private static void acquireWakeLock(Context ctx) {
+        try {
+            if (wakeLock != null && wakeLock.isHeld()) return;
+            PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+            if (pm == null) return;
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "milkchat:ringtone");
+            wakeLock.setReferenceCounted(false);
+            // 超时兜底：即使 stop 没被调到，最多比铃声上限多 5 秒也会自动释放
+            wakeLock.acquire(RING_CAP_MS + 5000);
+        } catch (Exception e) { wakeLock = null; }
+    }
+
+    private static void releaseWakeLock() {
+        if (wakeLock != null) {
+            try { if (wakeLock.isHeld()) wakeLock.release(); } catch (Exception ignored) {}
+            wakeLock = null;
         }
     }
 }

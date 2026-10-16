@@ -120,6 +120,16 @@ public class MilkChat {
         } catch (Exception ignored) {}
         if (ring) RingtonePlayer.start(ctx);
         NotificationHelper.showIncomingCallNotification(ctx, name);
+
+        // 直接拉起全屏来电界面：锁屏走上面 fullScreenIntent，这里再兜底一遍，
+        // 让"亮屏但 App 在后台/在别的 App 里"时也尽量像系统来电一样全屏弹出。
+        // 系统若拦截后台启动 Activity 会抛异常，直接吞掉，仍有横幅通知可用。
+        try {
+            Intent i = new Intent(ctx, IncomingCallActivity.class);
+            i.putExtra(IncomingCallActivity.EXTRA_NAME, name);
+            i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            ctx.startActivity(i);
+        } catch (Exception ignored) {}
     }
 
     /** 停止铃声并取消来电通知（接听/拒绝/超时后由 JS 调用） */
