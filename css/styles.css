@@ -1880,6 +1880,13 @@
             display: flex;
             flex-direction: column;
         }
+        /* 弹窗内容比 max-height 高时，别再让子元素被 flex 压扁：压扁会让带 overflow:hidden
+           的按钮被裁掉一半文字（快问快答的「发出去，等TA答」就是这样），也会让带 overflow:auto
+           的列表被压成 0 高度（问答记录整个看不见）。固定为 0 收缩后，弹窗自己滚动即可。
+           确实需要「列表占满剩余空间」的弹窗，请单独给那个子元素写 flex:1 1 auto + min-height:0。 */
+        .modal-content > * {
+            flex-shrink: 0;
+        }
         .modal-content::-webkit-scrollbar {
             display: none;
             width: 0;

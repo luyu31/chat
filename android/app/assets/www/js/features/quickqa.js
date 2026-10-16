@@ -23,7 +23,7 @@
     var DEFAULT_SEC = 60;
     var MIN_SEC = 1;
     var MAX_SEC = 120;
-    var HISTORY_MAX = 30;
+    var HISTORY_MAX = 200;   // 记录条数上限（记录页要能翻到比较久以前的问答）
 
     // ── 台词池：优先字卡库，兜底内置 ──────────────────────
     function _poolFrom(fn, fallback) {
@@ -124,6 +124,7 @@
         if (d.history.length > HISTORY_MAX) d.history.length = HISTORY_MAX;
         save(d);
         renderHistory();
+        renderHistoryModal();   // 记录页正好开着的话，同步刷一条
     }
 
     // ── 玩法一：我问他（问卷式点选，不打字） ──────────────────────
@@ -390,7 +391,10 @@
         +     '<button type="button" id="qa-bank-add-btn" class="modal-btn modal-btn-primary" style="flex:0 0 auto;padding:7px 16px;font-size:12px;">加题</button>'
         +   '</div>'
         +   '<div id="qa-bank-list" style="max-height:22vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>'
-        +   '<div style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);margin:12px 0 6px;">问答记录</div>'
+        +   '<div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 6px;">'
+        +     '<span style="font-size:12px;font-weight:600;color:var(--text-secondary,#888);">问答记录</span>'
+        +     '<button type="button" id="qa-history-open" style="border:none;background:transparent;color:var(--accent-color,#c5a47e);font-size:12px;font-weight:700;cursor:pointer;padding:0;font-family:var(--font-family);">查看全部 <i class="fas fa-chevron-right"></i></button>'
+        +   '</div>'
         +   '<div id="qa-history" style="max-height:18vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>'
         +   '<div style="display:flex;gap:6px;margin-top:12px;">'
         +     '<button type="button" class="qa-manage-btn" data-tab="qaPraise" style="flex:1;padding:9px 6px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:11px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;"><i class="fas fa-thumbs-up"></i> 夸奖字卡</button>'
@@ -454,6 +458,7 @@
             });
         });
 
+        m.querySelector('#qa-history-open').addEventListener('click', openHistory);
         m.querySelector('#qa-close').addEventListener('click', function () {
             if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none';
         });
@@ -708,6 +713,93 @@
         });
     }
 
+    // ── 问答记录页：独立弹窗，和记账本/食光一样「顶部固定 + 下面一大块内部滚动」 ──────────
+    function _histStyle() {
+        if (document.getElementById('qa-hist-style')) return;
+        var st = document.createElement('style');
+        st.id = 'qa-hist-style';
+        st.textContent =
+            '#qa-history-modal .modal-content{max-width:420px;width:90vw;max-height:90vh;display:flex;flex-direction:column;overflow-y:auto;}' +
+            '#qa-history-modal .modal-content>*{flex-shrink:0;}' +
+            '#qa-history-modal .qa-history-scroll{flex:1 1 auto;min-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}' +
+            '#qa-history-modal .qa-rec{padding:11px 12px;border-radius:12px;background:var(--primary-bg,#fff);border:1px solid var(--border-color,#e8e8e8);}' +
+            '#qa-history-modal .qa-rec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}' +
+            '#qa-history-modal .qa-rec-who{font-size:11px;font-weight:700;color:#fff;background:var(--accent-color,#c5a47e);border-radius:8px;padding:2px 9px;}' +
+            '#qa-history-modal .qa-rec-who.him{background:var(--text-secondary,#999);}' +
+            '#qa-history-modal .qa-rec-time{font-size:10px;color:var(--text-secondary,#aaa);}' +
+            '#qa-history-modal .qa-rec-q{font-size:13.5px;font-weight:700;color:var(--text-primary,#333);line-height:1.5;margin-bottom:4px;}' +
+            '#qa-history-modal .qa-rec-a{font-size:13px;color:var(--text-primary,#555);line-height:1.5;}' +
+            '#qa-history-modal .qa-rec-a.pending{color:var(--text-secondary,#bbb);}' +
+            '#qa-history-modal .qa-history-empty{font-size:12px;color:var(--text-secondary,#bbb);text-align:center;padding:26px 0;line-height:1.9;}';
+        document.head.appendChild(st);
+    }
+
+    function buildHistoryModal() {
+        if (document.getElementById('qa-history-modal')) return;
+        _histStyle();
+        var m = document.createElement('div');
+        m.className = 'modal';
+        m.id = 'qa-history-modal';
+        m.style.zIndex = '3400';
+        m.innerHTML =
+            '<div class="modal-content">'
+            + '<div class="modal-title"><i class="fas fa-clock-rotate-left"></i><span>问答记录</span></div>'
+            + '<div id="qa-history-count" style="font-size:11px;color:var(--text-secondary,#999);margin:-4px 0 10px;"></div>'
+            + '<div id="qa-history-full" class="qa-history-scroll"></div>'
+            + '<div style="display:flex;justify-content:flex-end;margin:12px 0 16px;">'
+            +   '<button type="button" id="qa-history-close" class="modal-btn modal-btn-secondary" style="flex:0 0 auto;">关闭</button>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(m);
+        m.querySelector('#qa-history-close').addEventListener('click', function () {
+            if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none';
+        });
+        m.addEventListener('click', function (e) {
+            if (e.target === m) { if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none'; }
+        });
+    }
+
+    function renderHistoryModal() {
+        var box = document.getElementById('qa-history-full');
+        if (!box) return;
+        var d = load();
+        var list = Array.isArray(d.history) ? d.history : [];
+        var cnt = document.getElementById('qa-history-count');
+        var html = '';
+        if (!list.length) {
+            if (cnt) cnt.textContent = '';
+            box.innerHTML = '<div class="qa-history-empty">还没有问答记录<br><span style="font-size:11px;">出题问' + _esc(_partnerName()) + '、或者等TA考你之后，就会留在这里</span></div>';
+            return;
+        }
+        if (cnt) cnt.textContent = '一共 ' + list.length + ' 条 · 最新的在最上面';
+        list.forEach(function (h) {
+            var t = new Date(h.ts || Date.now());
+            var two = function (n) { return String(n).length < 2 ? '0' + n : String(n); };
+            var ts = (t.getMonth() + 1) + '月' + t.getDate() + '日 ' + two(t.getHours()) + ':' + two(t.getMinutes());
+            html += '<div class="qa-rec">'
+                + '<div class="qa-rec-head">'
+                +   '<span class="qa-rec-who' + (h.who === 'me' ? '' : ' him') + '">' + (h.who === 'me' ? '我问' : '他问') + '</span>'
+                +   '<span class="qa-rec-time">' + ts + '</span>'
+                + '</div>'
+                + '<div class="qa-rec-q">' + _esc(h.q || '') + '</div>'
+                + '<div class="qa-rec-a' + (h.a ? '' : ' pending') + '">答：' + (h.a ? _esc(h.a) : '（超时未答）') + '</div>'
+                + '</div>';
+        });
+        box.innerHTML = html;
+        box.scrollTop = 0;
+    }
+
+    function openHistory() {
+        buildHistoryModal();
+        var m = document.getElementById('qa-history-modal');
+        if (!m) return;
+        renderHistoryModal();
+        // 先收掉快问快答主弹窗，别让两个叠在一起
+        var qm = document.getElementById('qa-modal');
+        if (qm) { if (typeof hideModal === 'function') hideModal(qm); else qm.style.display = 'none'; }
+        if (typeof showModal === 'function') showModal(m); else m.style.display = 'flex';
+    }
+
     function open() {
         buildModal();
         var m = document.getElementById('qa-modal');
@@ -745,5 +837,5 @@
         init();
     }
 
-    window.QuickQA = { open: open, heAsks: heAsks, renderBubbleHTML: renderBubbleHTML, answerInline: answerInline };
+    window.QuickQA = { open: open, heAsks: heAsks, renderBubbleHTML: renderBubbleHTML, answerInline: answerInline, history: openHistory };
 })();
