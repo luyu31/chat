@@ -578,8 +578,21 @@
                 '.ledger-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;border:1px solid var(--border-color,#ddd);background:var(--secondary-bg,transparent);font-size:12px;color:var(--text-primary,#333);}' +
                 '.ledger-chip-x{border:none;background:transparent;color:var(--text-secondary,#aaa);cursor:pointer;font-size:10px;padding:0;display:inline-flex;}' +
                 '.ledger-chip-x:hover{color:#e53935;}' +
-                '.ledger-author-tag{display:inline-block;padding:0 6px;border-radius:8px;font-size:10px;line-height:16px;background:rgba(197,164,126,.16);color:var(--accent-color,#c5a47e);margin-right:4px;vertical-align:middle;}' +
-                '.ledger-author-partner{background:rgba(138,123,216,.16);color:#8a7bd8;}';
+                '.ledger-author-tag{display:inline-block;padding:0 6px;border-radius:8px;font-size:10px;line-height:16px;background:rgba(197,164,126,.16);color:var(--accent-color,#c5a47e);margin-right:4px;vertical-align:middle;} ' +
+                '.ledger-author-partner{background:rgba(138,123,216,.16);color:#8a7bd8;}' +
+                // ── 两人记账对比卡 ──
+                '.ledger-compare-card{border:1px solid var(--border-color,#e8e8e8);border-radius:14px;padding:12px 13px;background:var(--secondary-bg,rgba(0,0,0,.02));}' +
+                '.ledger-compare-title{font-size:12px;font-weight:700;color:var(--text-secondary,#999);margin-bottom:11px;}' +
+                '.ledger-cmp-row{margin-bottom:10px;}' +
+                '.ledger-cmp-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:13px;color:var(--text-primary,#333);margin-bottom:5px;}' +
+                '.ledger-cmp-name{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:700;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;}' +
+                '.ledger-cmp-amt{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.3px;flex-shrink:0;}' +
+                '.ledger-cmp-cnt{font-size:11px;color:var(--text-secondary,#999);font-weight:400;letter-spacing:0;}' +
+                '.ledger-cmp-bar{height:8px;border-radius:4px;background:var(--border-color,#ececec);overflow:hidden;}' +
+                '.ledger-cmp-bar>div{height:100%;border-radius:4px;transition:width .4s ease;}' +
+                '.ledger-cmp-diff{font-size:12px;color:var(--accent-color,#c5a47e);margin-top:2px;text-align:center;font-weight:600;}' +
+                '.ledger-cmp-all{font-size:11px;color:var(--text-secondary,#999);margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-color,#e8e8e8);text-align:center;line-height:1.7;}' +
+                '.ledger-compare-empty{font-size:12px;color:var(--text-secondary,#999);padding:14px 10px;text-align:center;border:1px dashed var(--border-color,#e8e8e8);border-radius:12px;}';
             document.head.appendChild(st);
 
             var m = document.createElement('div');
@@ -614,6 +627,9 @@
                     '<div class="ledger-total" id="ledger-total"></div>' +
 
                     '<div class="ledger-scroll">' +
+                    '<div class="ledger-sec-title"><i class="fas fa-scale-balanced"></i> 两人对比</div>' +
+                    '<div id="ledger-compare"></div>' +
+
                     '<div class="ledger-sec-title"><i class="fas fa-chart-simple"></i> 分类汇总</div>' +
                     '<div id="ledger-summary"></div>' +
 
@@ -904,6 +920,67 @@
         renderAll();
     }
 
+    // ── 两人记账对比：本月 我 vs 他 的金额 / 笔数 + 累计 ──────────────
+    var _CMP_ME_RGB = '197,164,126';    // 我：主题米金色
+    var _CMP_HIM_RGB = '138,123,216';   // 他：紫色
+
+    function renderCompare(monthRecs) {
+        var el = document.getElementById('ledger-compare');
+        if (!el) return;
+        var meName = '我';
+        var himName = partnerNameLabel();
+
+        var me = { total: 0, count: 0 };
+        var him = { total: 0, count: 0 };
+        monthRecs.forEach(function (r) {
+            var t = (r.author === 'partner') ? him : me;
+            t.total += r.amount;
+            t.count++;
+        });
+
+        // 累计（全部时间，不受月份栏影响）
+        var meAll = 0, himAll = 0;
+        records.forEach(function (r) {
+            if (r.author === 'partner') himAll += r.amount; else meAll += r.amount;
+        });
+
+        if (!monthRecs.length) {
+            el.innerHTML = '<div class="ledger-compare-empty">本月还没有记录<br>记几笔就能看到两人对比啦</div>';
+            return;
+        }
+
+        var maxVal = Math.max(me.total, him.total, 1);
+        function block(name, o, rgb) {
+            var w = Math.max(2, Math.round(o.total / maxVal * 100));
+            return '<div class="ledger-cmp-row">'
+                + '<div class="ledger-cmp-head">'
+                +   '<span class="ledger-cmp-name" style="background:rgba(' + rgb + ',.16);color:rgb(' + rgb + ');">' + escapeHtml(name) + '</span>'
+                +   '<span class="ledger-cmp-amt">' + fmtMoney(o.total) + ' <span class="ledger-cmp-cnt">' + o.count + '笔</span></span>'
+                + '</div>'
+                + '<div class="ledger-cmp-bar"><div style="width:' + w + '%;background:linear-gradient(90deg,rgba(' + rgb + ',.9),rgba(' + rgb + ',.5));"></div></div>'
+                + '</div>';
+        }
+
+        // 差额：一眼看出这个月谁花得多
+        var diff = me.total - him.total;
+        var diffLine;
+        if (Math.abs(diff) < 0.005) diffLine = '这个月两人花得一样多';
+        else if (diff > 0) diffLine = meName + '比' + escapeHtml(himName) + '多花 ' + fmtMoney(diff);
+        else diffLine = escapeHtml(himName) + '比' + meName + '多花 ' + fmtMoney(-diff);
+
+        el.innerHTML =
+            '<div class="ledger-compare-card">'
+            + '<div class="ledger-compare-title"><i class="fas fa-calendar-day"></i> 本月 · 两人记账对比</div>'
+            + block(meName, me, _CMP_ME_RGB)
+            + block(himName, him, _CMP_HIM_RGB)
+            + '<div class="ledger-cmp-diff">' + diffLine + '</div>'
+            + '<div class="ledger-cmp-all">累计：' + escapeHtml(meName) + ' ' + fmtMoney(meAll)
+            + '（' + records.filter(function (r) { return r.author !== 'partner'; }).length + '笔）'
+            + ' · ' + escapeHtml(himName) + ' ' + fmtMoney(himAll)
+            + '（' + records.filter(function (r) { return r.author === 'partner'; }).length + '笔）</div>'
+            + '</div>';
+    }
+
     function renderSummary(monthRecs) {
         var el = document.getElementById('ledger-summary');
         if (!el) return;
@@ -1012,6 +1089,7 @@
             ? '本月支出 <b>' + fmtMoney(total) + '</b> · 共' + monthRecs.length + '笔'
             : '';
 
+        renderCompare(monthRecs);
         renderSummary(monthRecs);
         dayTotals = {};
         renderList(monthRecs);

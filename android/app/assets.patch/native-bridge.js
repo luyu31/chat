@@ -162,11 +162,14 @@
             '<button type="button" id="native-ringtone-file" style="padding:7px 10px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:12px;cursor:pointer;background:var(--primary-bg,transparent);color:var(--text-primary);">从文件选</button>' +
             '<button type="button" id="native-ringtone-test" style="padding:7px 10px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:12px;cursor:pointer;background:var(--primary-bg,transparent);color:var(--text-primary);">试听(铃+震)</button>' +
             '<button type="button" id="native-vibrate-test" style="padding:7px 10px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:12px;cursor:pointer;background:var(--primary-bg,transparent);color:var(--text-primary);">震动测试</button>' +
+            '<button type="button" id="native-audio-diag" style="padding:7px 10px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:12px;cursor:pointer;background:var(--primary-bg,transparent);color:var(--text-primary);">设备检测</button>' +
             '<button type="button" id="native-ringtone-reset" style="padding:7px 10px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:12px;cursor:pointer;background:var(--primary-bg,transparent);color:var(--text-primary);">恢复默认</button>' +
             '</div>' +
+            '<div id="native-audio-diag-out" style="display:none;font-size:11.5px;line-height:1.75;margin-top:8px;padding:9px 11px;' +
+            'border:1px solid var(--border-color,#e8e8e8);border-radius:10px;background:var(--secondary-bg,rgba(0,0,0,.02));color:var(--text-secondary,#888);"></div>' +
             '<div style="font-size:11px;color:var(--text-secondary);margin-top:6px;line-height:1.6;">' +
-            '「试听」播放铃声并震动 3 秒；「震动测试」震动约 2 秒，方便单独确认震动是否生效。' +
-            '来电是否震动，由下方「来电震动」开关控制。' +
+            '「试听」用媒体音量播放铃声并震动 3 秒；「震动测试」用最大振幅震约 3 秒。<br>' +
+            '如果两个都没反应，先点「设备检测」看看是不是手机静音/震动总开关被关了。' +
             '</div>';
         block.parentElement.insertBefore(row, block.nextSibling);
         row.querySelector('#native-ringtone-pick').onclick = function () {
@@ -182,6 +185,44 @@
             try { Native.vibrateTest(); } catch (e) {
                 try { Native.toast('震动测试失败，请重试'); } catch (e2) {}
             }
+        };
+        // 设备检测：把手机的声音/震动关键状态读出来，直接告诉用户卡在哪
+        row.querySelector('#native-audio-diag').onclick = function () {
+            var out = document.getElementById('native-audio-diag-out');
+            if (!out) return;
+            var d = {};
+            try { d = JSON.parse(Native.audioDiag() || '{}'); } catch (e) { d = {}; }
+            var lines = [];
+            var problems = [];
+
+            var rmTxt = d.ringerMode === 'silent' ? '静音' : (d.ringerMode === 'vibrate' ? '仅振动' : '响铃');
+            lines.push('铃声模式：<b>' + rmTxt + '</b>');
+            lines.push('铃声音量：' + (d.ringVol == null ? '?' : d.ringVol) + ' / ' + (d.ringMax == null ? '?' : d.ringMax));
+            lines.push('媒体音量：' + (d.musicVol == null ? '?' : d.musicVol) + ' / ' + (d.musicMax == null ? '?' : d.musicMax));
+            lines.push('震动器：' + (d.hasVibrator ? '可用' : '<b style="color:#e53935;">不可用</b>')
+                + (d.amplitude ? '（支持强度控制）' : ''));
+
+            if (d.hasVibrator === false) {
+                problems.push('这台设备报告没有可用的震动器，任何 App 都震不了。');
+            }
+            if (d.ringerMode === 'silent') {
+                problems.push('手机现在是静音模式：来电铃声不会响（试听走媒体音量仍能听到），部分机型在静音下也会挡掉震动。');
+            }
+            if (d.ringVol === 0 && d.ringerMode !== 'silent') {
+                problems.push('铃声音量为 0：真来电不会响。请按音量键把「铃声」音量调大。');
+            }
+            if (d.musicVol === 0) {
+                problems.push('媒体音量是 0：试听也听不到。请把「媒体」音量调大。');
+            }
+            if (d.hasVibrator && problems.length === 0) {
+                problems.push('设备状态正常。如果震动测试仍无震感，多半是系统的「震动强度」被调到最低、或开了省电/勿扰模式限制了震动 —— 去 设置 → 声音与振动 里把震动强度拉满再试。');
+            }
+            if (!problems.length) problems.push('未发现异常。');
+
+            out.innerHTML = lines.join('<br>') +
+                '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-color,#ddd);">'
+                + problems.map(function (p) { return '· ' + p; }).join('<br>') + '</div>';
+            out.style.display = 'block';
         };
         row.querySelector('#native-ringtone-reset').onclick = function () {
             try {

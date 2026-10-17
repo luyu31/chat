@@ -191,11 +191,12 @@ public class MilkChat {
         RingtonePlayer.setPrefs(ctx, null, null);
     }
 
-    /** 试听当前铃声 3 秒（震动与否由 JS 侧"来电震动"开关决定） */
+    /** 试听当前铃声 3 秒（走媒体音量；震动与否由 JS 侧"来电震动"开关决定） */
     @JavascriptInterface
     public void previewRingtone(Boolean vibrate) {
         boolean v = (vibrate == null) || vibrate;
-        RingtonePlayer.start(ctx, true, v);
+        // preview 而非 start：试听走媒体音量，避免铃声音量为 0 / 静音模式下"试听没声音"
+        RingtonePlayer.preview(ctx, true, v);
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -205,25 +206,62 @@ public class MilkChat {
         }).start();
     }
 
-    /** 震动测试：设置里"震动测试"按钮用，只震不响铃。成功/失败都给明确反馈。 */
+    /**
+     * 震动测试：设置里"震动测试"按钮用，只震不响铃。
+     * 用最大振幅连震约 3 秒（默认振幅在部分机型上弱到几乎感觉不到）。
+     */
     @JavascriptInterface
     public void vibrateTest() {
         try {
-            android.os.Vibrator vt = (android.os.Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
+            android.os.Vibrator vt = RingtonePlayer.getVibrator(ctx);
             if (vt == null || !vt.hasVibrator()) {
-                toast("震动测试失败：当前设备不支持震动");
+                toast("震动测试失败：这台设备没有可用的震动器");
                 return;
             }
-            // 来电震动节奏的简化版（约 2 秒），一次播完，明显可感知
-            final long[] pattern = {0, 500, 250, 500, 250, 500};
+            final long[] pattern = {0, 600, 200, 600, 200, 600, 200, 600};
             if (Build.VERSION.SDK_INT >= 26) {
-                vt.vibrate(android.os.VibrationEffect.createWaveform(pattern, -1));
+                try {
+                    vt.vibrate(android.os.VibrationEffect.createWaveform(
+                            pattern, RingtonePlayer.amplitudeArray(pattern), -1));
+                } catch (Exception e) {
+                    vt.vibrate(android.os.VibrationEffect.createWaveform(pattern, -1));
+                }
             } else {
                 vt.vibrate(pattern, -1);
             }
-            toast("震动已触发 ✓（约 2 秒）");
+            toast("已发送震动信号（约 3 秒）");
         } catch (Exception e) {
             toast("震动测试失败：" + (e.getMessage() == null ? "未知原因" : e.getMessage()));
+        }
+    }
+
+    /**
+     * 设备声音/震动状态自检：把关键状态返回给 JS，设置里"设备检测"按钮用。
+     * 用来判断"为什么没声音/没震动"到底是手机设置问题还是功能问题。
+     */
+    @JavascriptInterface
+    public String audioDiag() {
+        try {
+            org.json.JSONObject o = new org.json.JSONObject();
+            android.media.AudioManager am = (android.media.AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+            if (am != null) {
+                int rm = am.getRingerMode();
+                o.put("ringerMode", rm == android.media.AudioManager.RINGER_MODE_SILENT ? "silent"
+                        : (rm == android.media.AudioManager.RINGER_MODE_VIBRATE ? "vibrate" : "normal"));
+                o.put("ringVol", am.getStreamVolume(android.media.AudioManager.STREAM_RING));
+                o.put("ringMax", am.getStreamMaxVolume(android.media.AudioManager.STREAM_RING));
+                o.put("musicVol", am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC));
+                o.put("musicMax", am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC));
+                o.put("dnd", am.getStreamVolume(android.media.AudioManager.STREAM_RING) == 0 && rm == android.media.AudioManager.RINGER_MODE_SILENT);
+            }
+            android.os.Vibrator v = RingtonePlayer.getVibrator(ctx);
+            boolean hasV = v != null && v.hasVibrator();
+            o.put("hasVibrator", hasV);
+            o.put("amplitude", hasV && Build.VERSION.SDK_INT >= 26 && v.hasAmplitudeControl());
+            o.put("sdk", Build.VERSION.SDK_INT);
+            return o.toString();
+        } catch (Exception e) {
+            return "{}";
         }
     }
 

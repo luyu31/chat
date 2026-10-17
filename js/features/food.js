@@ -648,7 +648,21 @@
             '.food-row-btn{flex-shrink:0;width:28px;height:28px;border:none;border-radius:50%;background:transparent;color:var(--text-secondary,#aaa);font-size:12px;cursor:pointer;}' +
             '.food-date-head{font-size:12px;color:var(--text-secondary,#999);margin:14px 4px 4px;}' +
             '.food-author-tag{display:inline-block;padding:0 6px;border-radius:8px;font-size:10px;line-height:16px;background:rgba(197,164,126,.16);color:var(--accent-color,#c5a47e);margin-right:0;vertical-align:middle;}' +
-            '.food-author-partner{background:rgba(138,123,216,.16);color:#8a7bd8;}';
+            '.food-author-partner{background:rgba(138,123,216,.16);color:#8a7bd8;}' +
+            // ── 两人食光对比卡 ──
+            '.food-compare-card{border:1px solid var(--border-color,#e8e8e8);border-radius:14px;padding:12px 13px;background:var(--secondary-bg,rgba(0,0,0,.02));}' +
+            '.food-compare-title{font-size:12px;font-weight:700;color:var(--text-secondary,#999);margin-bottom:11px;}' +
+            '.food-cmp-row{margin-bottom:10px;}' +
+            '.food-cmp-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:13px;color:var(--text-primary,#333);margin-bottom:5px;}' +
+            '.food-cmp-name{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:700;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;}' +
+            '.food-cmp-val{font-size:15px;font-weight:800;flex-shrink:0;}' +
+            '.food-cmp-unit{font-size:11px;color:var(--text-secondary,#999);font-weight:400;}' +
+            '.food-cmp-bar{height:8px;border-radius:4px;background:var(--border-color,#ececec);overflow:hidden;}' +
+            '.food-cmp-bar>div{height:100%;border-radius:4px;transition:width .4s ease;}' +
+            '.food-cmp-extra{font-size:12px;color:var(--text-secondary,#999);margin-top:2px;text-align:center;line-height:1.7;}' +
+            '.food-cmp-extra b{color:var(--text-primary,#333);}' +
+            '.food-cmp-all{font-size:11px;color:var(--text-secondary,#999);margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-color,#e8e8e8);text-align:center;line-height:1.7;}' +
+            '.food-compare-empty{font-size:12px;color:var(--text-secondary,#999);padding:14px 10px;text-align:center;border:1px dashed var(--border-color,#e8e8e8);border-radius:12px;}';
         document.head.appendChild(st);
 
         var m = document.createElement('div');
@@ -660,6 +674,9 @@
             +   '<div class="modal-title"><i class="fas fa-utensils"></i><span>食光记</span></div>'
 
             +   '<div class="food-scroll">'
+            +   '<div class="food-sec-title"><i class="fas fa-scale-balanced"></i> 两人食光对比</div>'
+            +   '<div id="food-compare"></div>'
+
             +   '<div class="food-sec-title"><i class="fas fa-star"></i> 互相推荐</div>'
             +   '<input type="text" class="food-input" id="food-rec-input" placeholder="想推荐TA吃什么？如：火锅" maxlength="20">'
             +   '<div class="food-btn-row">'
@@ -775,7 +792,71 @@
         }
     }
 
+    // ── 两人食光对比：我 vs 他 各吃了多少顿 + 互相推荐次数 ──────────────
+    var _FC_ME_RGB = '197,164,126';     // 我：主题米金色
+    var _FC_HIM_RGB = '138,123,216';    // 他：紫色
+
+    function renderCompare() {
+        var el = document.getElementById('food-compare');
+        if (!el) return;
+        var d = load();
+        var meName = '我';
+        var himName = _partnerName();
+
+        var stat = { me: { eat: 0, rec: 0 }, partner: { eat: 0, rec: 0 } };
+        var now = new Date();
+        var mKey = now.getFullYear() + '-' + now.getMonth();
+        var meMonth = 0, himMonth = 0;
+        (d.entries || []).forEach(function (x) {
+            var who = x.author === 'partner' ? 'partner' : 'me';
+            if (x.kind === 'eaten') {
+                stat[who].eat++;
+                var dt = new Date(x.ts);
+                if (dt.getFullYear() + '-' + dt.getMonth() === mKey) {
+                    if (who === 'partner') himMonth++; else meMonth++;
+                }
+            } else if (x.kind === 'recommend') {
+                stat[who].rec++;
+            }
+        });
+
+        if (!(d.entries || []).length) {
+            el.innerHTML = '<div class="food-compare-empty">还没有食光记录<br>记几笔或推荐一顿就能看到对比啦</div>';
+            return;
+        }
+
+        var maxEat = Math.max(stat.me.eat, stat.partner.eat, 1);
+        function block(name, count, rgb) {
+            var w = Math.max(2, Math.round(count / maxEat * 100));
+            return '<div class="food-cmp-row">'
+                + '<div class="food-cmp-head">'
+                +   '<span class="food-cmp-name" style="background:rgba(' + rgb + ',.16);color:rgb(' + rgb + ');">' + _esc(name) + '</span>'
+                +   '<span class="food-cmp-val">' + count + ' <span class="food-cmp-unit">顿</span></span>'
+                + '</div>'
+                + '<div class="food-cmp-bar"><div style="width:' + w + '%;background:linear-gradient(90deg,rgba(' + rgb + ',.9),rgba(' + rgb + ',.5));"></div></div>'
+                + '</div>';
+        }
+
+        var diffTxt;
+        var diff = stat.me.eat - stat.partner.eat;
+        if (diff === 0) diffTxt = '两人吃的一样多';
+        else if (diff > 0) diffTxt = meName + '比' + _esc(himName) + '多吃 ' + diff + ' 顿';
+        else diffTxt = _esc(himName) + '比' + meName + '多吃 ' + (-diff) + ' 顿';
+
+        el.innerHTML =
+            '<div class="food-compare-card">'
+            + '<div class="food-compare-title"><i class="fas fa-utensils"></i> 共记录 ' + d.entries.length + ' 条食光</div>'
+            + block(meName, stat.me.eat, _FC_ME_RGB)
+            + block(himName, stat.partner.eat, _FC_HIM_RGB)
+            + '<div class="food-cmp-extra">' + diffTxt + '</div>'
+            + '<div class="food-cmp-extra">本月：' + meName + ' <b>' + meMonth + '</b> 顿 · ' + _esc(himName) + ' <b>' + himMonth + '</b> 顿</div>'
+            + '<div class="food-cmp-all">互相推荐：' + meName + '推了 <b>' + stat.me.rec + '</b> 次 · '
+            + _esc(himName) + '推了 <b>' + stat.partner.rec + '</b> 次</div>'
+            + '</div>';
+    }
+
     function renderList() {
+        renderCompare();
         var el = document.getElementById('food-list');
         if (!el) return;
         var d = load();
