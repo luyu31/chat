@@ -126,7 +126,9 @@
         } catch (e) {}
     };
 
-    // 在设置 → 音效设置的"视频通话邀请音效"下面注入"来电铃声"设置（仅 App 内）
+    // 在设置 → 音效设置的"视频通话邀请音效"下面注入"来电铃声"设置（仅 App 内）。
+    // 来电震动开关统一用音效设置里的「来电震动」(#call-vibrate-toggle)，这里不再重复放一个，
+    // 避免两个同名单开关互相打架（之前两个都写同一个设置，用户会误以为开关失灵）。
     function injectRingtoneSetting() {
         var anchor = document.getElementById('sound-invite-videocall-preset');
         if (!anchor) return;
@@ -135,16 +137,16 @@
         var cur = '';
         try { cur = Native.hasRingtone() ? (Native.getRingtoneName() || '自选铃声') : ''; } catch (e) {}
 
-        // 来电震动开关状态：优先读 settings（默认开启），老数据/未加载时退回 localStorage 兜底
-        var vibrateOn = true;
-        try {
-            if (typeof settings !== 'undefined' && settings.callVibrateEnabled !== undefined) {
-                vibrateOn = settings.callVibrateEnabled !== false;
-            } else {
+        // 实时读取来电震动开关（设置 → 音效 → 来电震动，默认开启）
+        function vibrateOnNow() {
+            try {
+                if (typeof settings !== 'undefined' && settings.callVibrateEnabled !== undefined) {
+                    return settings.callVibrateEnabled !== false;
+                }
                 var lsV = localStorage.getItem('milkCallVibrate');
-                vibrateOn = lsV === null ? true : lsV !== '0';
-            }
-        } catch (e) {}
+                return lsV === null ? true : lsV !== '0';
+            } catch (e) { return true; }
+        }
 
         var row = document.createElement('div');
         row.id = 'native-ringtone-row';
@@ -155,13 +157,6 @@
             '来电铃声（来电时播放）</div>' +
             '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;" id="native-ringtone-name">' +
             (cur ? '当前：' + cur : '未设置（用内置铃声）') + '</div>' +
-            '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;margin-bottom:8px;' +
-            'border:1px solid var(--border-color,#e8e8e8);border-radius:10px;cursor:pointer;" id="native-vibrate-row">' +
-            '<div style="font-size:12px;color:var(--text-primary);flex:1;">来电震动 ' +
-            '<span style="font-size:11px;color:var(--text-secondary);">来电时手机会震动提醒</span></div>' +
-            '<div style="width:38px;height:21px;border-radius:21px;background:' + (vibrateOn ? 'var(--accent-color,#c5a47e)' : '#bbb') + ';position:relative;flex-shrink:0;transition:background .2s;">' +
-            '<div style="position:absolute;top:2px;left:' + (vibrateOn ? '19px' : '2px') + ';width:17px;height:17px;border-radius:50%;background:#fff;transition:left .2s;"></div>' +
-            '</div></div>' +
             '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
             '<button type="button" id="native-ringtone-pick" style="flex:1;padding:7px 10px;border:none;border-radius:8px;font-size:12px;cursor:pointer;background:var(--accent-color,#c5a47e);color:#fff;">选择铃声</button>' +
             '<button type="button" id="native-ringtone-file" style="padding:7px 10px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:12px;cursor:pointer;background:var(--primary-bg,transparent);color:var(--text-primary);">从文件选</button>' +
@@ -170,31 +165,10 @@
             '<button type="button" id="native-ringtone-reset" style="padding:7px 10px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:12px;cursor:pointer;background:var(--primary-bg,transparent);color:var(--text-primary);">恢复默认</button>' +
             '</div>' +
             '<div style="font-size:11px;color:var(--text-secondary);margin-top:6px;line-height:1.6;">' +
-            '「试听」播放铃声并按来电震动开关同时震 3 秒；「震动测试」只震一下，方便单独确认震动是否生效。' +
+            '「试听」播放铃声并震动 3 秒；「震动测试」震动约 2 秒，方便单独确认震动是否生效。' +
+            '来电是否震动，由下方「来电震动」开关控制。' +
             '</div>';
         block.parentElement.insertBefore(row, block.nextSibling);
-
-        function setVibrateUI(on) {
-            vibrateOn = on;
-            var vr = document.getElementById('native-vibrate-row');
-            if (!vr) return;
-            var sw = vr.querySelector('div[style*="position:relative"]');
-            if (sw) {
-                sw.style.background = on ? 'var(--accent-color,#c5a47e)' : '#bbb';
-                var knob = sw.firstElementChild;
-                if (knob) knob.style.left = on ? '19px' : '2px';
-            }
-            // 同步到 settings + localStorage 兜底（call.js 读 settings 控制来电震动）
-            try {
-                if (typeof settings !== 'undefined') {
-                    settings.callVibrateEnabled = on;
-                    if (typeof throttledSaveData === 'function') throttledSaveData();
-                }
-                localStorage.setItem('milkCallVibrate', on ? '1' : '0');
-            } catch (e) {}
-        }
-
-        row.querySelector('#native-vibrate-row').onclick = function () { setVibrateUI(!vibrateOn); };
         row.querySelector('#native-ringtone-pick').onclick = function () {
             try { Native.pickRingtone(); } catch (e) {}
         };
@@ -202,10 +176,12 @@
             try { Native.pickRingtoneFile ? Native.pickRingtoneFile() : Native.pickRingtone(); } catch (e) {}
         };
         row.querySelector('#native-ringtone-test').onclick = function () {
-            try { Native.previewRingtone(vibrateOn); } catch (e) {}
+            try { Native.previewRingtone(vibrateOnNow()); } catch (e) {}
         };
         row.querySelector('#native-vibrate-test').onclick = function () {
-            try { Native.vibrateTest(); } catch (e) {}
+            try { Native.vibrateTest(); } catch (e) {
+                try { Native.toast('震动测试失败，请重试'); } catch (e2) {}
+            }
         };
         row.querySelector('#native-ringtone-reset').onclick = function () {
             try {

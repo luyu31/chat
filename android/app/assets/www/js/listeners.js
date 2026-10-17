@@ -1308,6 +1308,12 @@ if (_chatSettingsEl) _chatSettingsEl.addEventListener('click', () => {
                 const _initVal = (prop === 'emojiMixEnabled' || prop === 'callVibrateEnabled') ? (settings[prop] !== false) : !!settings[prop];
                 element.classList.toggle('active', _initVal);
 
+                // 这段绑定在「聊天设置」每次打开时都会执行一遍，不防重的话第二次打开后
+                // 同一个开关会绑上两个 click 监听：点一下 = 开→关→开 走两遍，表现成
+                // 「关了之后再也点不回来」。用 dataset 标记，同一个开关只绑一次。
+                if (element.dataset.toggleBound === '1') continue;
+                element.dataset.toggleBound = '1';
+
                 element.addEventListener('click', () => {
                     if ((prop === 'emojiMixEnabled' || prop === 'callVibrateEnabled') && settings[prop] === undefined) settings[prop] = true;
                     settings[prop] = !settings[prop];

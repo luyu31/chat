@@ -205,27 +205,26 @@ public class MilkChat {
         }).start();
     }
 
-    /** 单次震动测试：设置里"震动测试"按钮用，只震不响铃 */
+    /** 震动测试：设置里"震动测试"按钮用，只震不响铃。成功/失败都给明确反馈。 */
     @JavascriptInterface
     public void vibrateTest() {
         try {
             android.os.Vibrator vt = (android.os.Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
             if (vt == null || !vt.hasVibrator()) {
-                MainActivity act = activityRef == null ? null : activityRef.get();
-                if (act != null) act.runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        Toast.makeText(ctx, "当前设备不支持震动", Toast.LENGTH_SHORT).show();
-                    }
-                });
+                toast("震动测试失败：当前设备不支持震动");
                 return;
             }
+            // 来电震动节奏的简化版（约 2 秒），一次播完，明显可感知
+            final long[] pattern = {0, 500, 250, 500, 250, 500};
             if (Build.VERSION.SDK_INT >= 26) {
-                vt.vibrate(android.os.VibrationEffect.createOneShot(500, android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+                vt.vibrate(android.os.VibrationEffect.createWaveform(pattern, -1));
             } else {
-                vt.vibrate(500);
+                vt.vibrate(pattern, -1);
             }
-        } catch (Exception ignored) {}
+            toast("震动已触发 ✓（约 2 秒）");
+        } catch (Exception e) {
+            toast("震动测试失败：" + (e.getMessage() == null ? "未知原因" : e.getMessage()));
+        }
     }
 
     // ─── 定时问候闹钟 ───
