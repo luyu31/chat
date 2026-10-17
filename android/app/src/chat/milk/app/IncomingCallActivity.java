@@ -210,8 +210,8 @@ public class IncomingCallActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
-        // 补响/补震：铃声被系统停了就按原本的设置重启（用户关了铃声就只补震动）
-        RingtonePlayer.start(this, RingtonePlayer.ringRequested);
+        // 补响/补震：铃声被系统停了就按原本的设置重启（用户关了铃声就只补震动，震动也遵循来电震动开关）
+        RingtonePlayer.start(this, RingtonePlayer.ringRequested, RingtonePlayer.vibrateRequested);
     }
 
     @Override

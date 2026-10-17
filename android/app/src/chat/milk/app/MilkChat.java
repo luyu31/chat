@@ -107,9 +107,10 @@ public class MilkChat {
      * @param name 对方名字
      * @param avatarDataUrl 头像 dataURL（http 链接或空则不显示头像）
      * @param ring 是否响铃（JS 侧根据用户音效设置传）
+     * @param vibrate 是否震动（JS 侧根据"来电震动"开关传，缺省按 true 处理）
      */
     @JavascriptInterface
-    public void startRinging(String name, String avatarDataUrl, boolean ring) {
+    public void startRinging(String name, String avatarDataUrl, boolean ring, Boolean vibrate) {
         try {
             if (avatarDataUrl != null && avatarDataUrl.startsWith("data:image/")) {
                 String b64 = avatarDataUrl.substring(avatarDataUrl.indexOf(",") + 1);
@@ -118,8 +119,9 @@ public class MilkChat {
                 fos.write(data); fos.flush(); fos.close();
             }
         } catch (Exception ignored) {}
-        if (ring) RingtonePlayer.start(ctx, true);
-        else RingtonePlayer.start(ctx, false); // 关铃声时仍走原生震动（比 navigator.vibrate 可靠）
+        boolean v = (vibrate == null) || vibrate;
+        if (ring) RingtonePlayer.start(ctx, true, v);
+        else RingtonePlayer.start(ctx, false, v); // 关铃声时仍可走原生震动（比 navigator.vibrate 可靠）
         NotificationHelper.showIncomingCallNotification(ctx, name);
 
         // 直接拉起全屏来电界面：锁屏走上面 fullScreenIntent，这里再兜底一遍，
@@ -189,10 +191,11 @@ public class MilkChat {
         RingtonePlayer.setPrefs(ctx, null, null);
     }
 
-    /** 试听当前铃声 3 秒 */
+    /** 试听当前铃声 3 秒（震动与否由 JS 侧"来电震动"开关决定） */
     @JavascriptInterface
-    public void previewRingtone() {
-        RingtonePlayer.start(ctx, true);
+    public void previewRingtone(Boolean vibrate) {
+        boolean v = (vibrate == null) || vibrate;
+        RingtonePlayer.start(ctx, true, v);
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -200,6 +203,29 @@ public class MilkChat {
                 RingtonePlayer.stop(ctx);
             }
         }).start();
+    }
+
+    /** 单次震动测试：设置里"震动测试"按钮用，只震不响铃 */
+    @JavascriptInterface
+    public void vibrateTest() {
+        try {
+            android.os.Vibrator vt = (android.os.Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
+            if (vt == null || !vt.hasVibrator()) {
+                MainActivity act = activityRef == null ? null : activityRef.get();
+                if (act != null) act.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Toast.makeText(ctx, "当前设备不支持震动", Toast.LENGTH_SHORT).show();
+                    }
+                });
+                return;
+            }
+            if (Build.VERSION.SDK_INT >= 26) {
+                vt.vibrate(android.os.VibrationEffect.createOneShot(500, android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+            } else {
+                vt.vibrate(500);
+            }
+        } catch (Exception ignored) {}
     }
 
     // ─── 定时问候闹钟 ───

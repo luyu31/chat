@@ -58,6 +58,7 @@
             // 补齐字段（老数据兼容）
             if (!d.stats) d.stats = { tasksDone: 0, locksPassed: 0, locksFailed: 0, streakDays: 0, lastActiveDate: null };
             if (!Array.isArray(d.passphraseBank)) d.passphraseBank = [];
+            if (d.lockEnabled === undefined) d.lockEnabled = true; // 老数据默认允许他锁我
             return d;
         } catch (e) {
             return _defaultData();
@@ -70,7 +71,8 @@
             xp: 0,
             stats: { tasksDone: 0, locksPassed: 0, locksFailed: 0, streakDays: 0, lastActiveDate: null },
             passphraseBank: [],
-            nextLockAt: null
+            nextLockAt: null,
+            lockEnabled: true
         };
     }
 
@@ -180,6 +182,7 @@
         +   '</div>'
         +   '<div id="ctrl-mastery"></div>'
         +   '<div id="ctrl-difficulty" style="margin-top:14px;"></div>'
+        +   '<div id="ctrl-lock-switch" style="margin-top:14px;"></div>'
         +   '<div id="ctrl-passphrases" style="margin-top:14px;"></div>'
         +   '<div style="display:flex;gap:8px;margin-top:14px;">'
         +     '<button type="button" id="ctrl-lock-partner" style="flex:1;padding:10px;border:none;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;background:#9a86e8;color:#fff;">把他锁起来</button>'
@@ -323,9 +326,52 @@
         });
     }
 
+    // ── 渲染锁软件开关 ──────────────────────
+    // 关掉之后他再也没法随机锁你（已经锁着的会立刻解除，重启后也不会再恢复）。
+    function renderLockSwitch() {
+        var el = document.getElementById('ctrl-lock-switch');
+        if (!el) return;
+        var d = load();
+        var on = d.lockEnabled !== false;
+
+        el.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:12px;'
+            + 'background:var(--primary-bg,transparent);border:1px solid ' + (on ? 'rgba(var(--accent-color-rgb),.45)' : 'var(--border-color,#e8e8e8)') + ';'
+            + 'cursor:pointer;" id="ctrl-lock-switch-row">'
+            +   '<div style="flex:1;min-width:0;">'
+            +     '<div style="font-size:13px;font-weight:600;color:var(--text-primary,#333);">允许' + _partnerName() + '锁软件</div>'
+            +     '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:2px;">' + (on ? '开着：他会在随机时刻锁你' : '已关闭：他再也不能锁你了') + '</div>'
+            +   '</div>'
+            +   '<div style="width:40px;height:22px;border-radius:22px;background:' + (on ? 'var(--accent-color,#c5a47e)' : '#bbb') + ';position:relative;transition:background .2s;flex-shrink:0;">'
+            +     '<div style="position:absolute;top:2px;left:' + (on ? '20px' : '2px') + ';width:18px;height:18px;border-radius:50%;background:#fff;transition:left .2s;"></div>'
+            +   '</div>'
+            + '</div>';
+
+        var row = el.querySelector('#ctrl-lock-switch-row');
+        if (row) row.addEventListener('click', function () {
+            var d2 = load();
+            var next = d2.lockEnabled === false; // 当前关 → 开
+            d2.lockEnabled = next;
+            if (!next) d2.nextLockAt = null; // 关闭时清掉待锁时间点
+            _saveData(d2);
+            if (!next) {
+                // 立即解除当前锁屏（如果有），并清掉重进时的恢复
+                if (window.LockScreen && typeof window.LockScreen.disable === 'function') {
+                    try { window.LockScreen.disable(); } catch (e) {}
+                }
+            } else {
+                _scheduleLock(); // 重新开启后恢复随机调度
+            }
+            renderLockSwitch();
+            if (typeof showNotification === 'function') {
+                showNotification(next ? '已开启：他仍会随机锁你' : '已关闭：他不能锁你了', next ? 'success' : 'success', 1800);
+            }
+        });
+    }
+
     function _renderAll() {
         renderMastery();
         renderDifficulty();
+        renderLockSwitch();
         renderPassphrases();
     }
 
@@ -376,6 +422,8 @@
     // 到点后尝试真的锁；条件不满足就把下一次时间排好
     function _fireIfPossible() {
         var d = load();
+        // 用户关掉了「锁软件」开关：永不再锁（nextLockAt 在关闭时已被清空，这里兜底）
+        if (d.lockEnabled === false) { d.nextLockAt = null; _saveData(d); return; }
         // 还没到点：按剩余时间精确排闹钟
         if (d.nextLockAt && Date.now() < d.nextLockAt) { _scheduleLock(); return; }
         // 页面不在前台：不锁，等 visibilitychange 回前台时立刻再试
@@ -475,6 +523,7 @@
         onTaskDone: onTaskDone,
         getDifficulty: getDifficulty,
         getNagStyle: getNagStyle,
-        _pickPassphrase: _pickPassphrase
+        _pickPassphrase: _pickPassphrase,
+        isLockEnabled: function () { return load().lockEnabled !== false; }
     };
 })();

@@ -281,7 +281,9 @@ autoSendInterval: 5,
         soundVolume: 0.15,
         bottomCollapseMode: false,
         emojiMixEnabled: true,
-        autoReactionEnabled: true
+        autoReactionEnabled: true,
+        // 来电震动（设置 → 音效 → 来电震动，默认开启）
+        callVibrateEnabled: true
             };
         }
 
@@ -2730,12 +2732,14 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.5) {
                      throttledSaveData();
                 }
             }
-            // ── 对方拍一拍 / 梦角搞怪彩蛋：四种结果等概率（各 25%）——
-            //    普通回复 / 只拍一拍 / 只搞怪 / 两个一起来；不配置偏向概率，
-            //    他爱发啥发啥，让两个惊喜都有均等机会 ──
-            const _surprise = Math.floor(Math.random() * 4);
-            const _doPoke = _surprise === 1 || _surprise === 3;
-            const _doThrow = (_surprise === 2 || _surprise === 3) && window.ThrowEgg && typeof window.ThrowEgg.partnerThrow === 'function';
+            // ── 对方拍一拍 / 梦角搞怪彩蛋：改为"正常回消息为主，惊喜偶尔来"——
+            //    70% 正常文字回复 / 15% 只拍一拍 / 15% 只搞怪。
+            //    之前是四种结果等概率（25%），75% 的时候他都在拍一拍/扔东西而不是回消息，
+            //    用户会觉得他老是不发消息。现在他大多数时候正常回话，拍一拍和搞怪只是调剂。
+            const _surprise = Math.random();
+            const _doPoke = _surprise < 0.15;
+            const _doThrow = _surprise >= 0.15 && _surprise < 0.30
+                && window.ThrowEgg && typeof window.ThrowEgg.partnerThrow === 'function';
             if (_doPoke) {
                 // 调用提取的通用函数（同时供 /测试拍一拍 指令使用）
                 if (typeof window._triggerPartnerPoke === 'function') window._triggerPartnerPoke();

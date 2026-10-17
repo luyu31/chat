@@ -65,14 +65,17 @@ public final class NotificationHelper {
         } catch (Exception ignored) {}
         nm.createNotificationChannel(msg);
 
-        // 来电通道：高优先级，横幅 + 锁屏，铃声由 RingtonePlayer 原生循环播放（不占通道音）
+        // 来电通道：高优先级，横幅 + 锁屏，铃声由 RingtonePlayer 原生循环播放（不占通道音）。
+        // 震动开着：前台来电走 RingtonePlayer 的来电震动节奏；万一系统拦了全屏来电 Activity
+        // （Android 10+ 后台启动限制），这条通知自带震动兜底，保证后台来电也有触感提醒。
         NotificationChannel call = new NotificationChannel(CHANNEL_CALL, "来电提醒",
                 NotificationManager.IMPORTANCE_HIGH);
         call.setDescription("梦角来电的全屏与横幅提醒");
         call.setShowBadge(true);
         call.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         call.setSound(null, null);
-        call.enableVibration(false);
+        call.enableVibration(true);
+        call.setVibrationPattern(new long[]{0, 800, 600, 800, 1200});
         call.enableLights(true);
         call.setLightColor(0xFFF2A9BC);
         nm.createNotificationChannel(call);

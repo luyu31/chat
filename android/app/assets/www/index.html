@@ -1021,7 +1021,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                             <div id="env-view-date-line" style="font-size:11px;color:var(--text-secondary);text-align:right;margin-bottom:16px;letter-spacing:1px;opacity:0.8;font-style:italic;"></div>
                             <div id="env-view-to-line" style="font-size:13px;color:var(--text-primary);margin-bottom:4px;font-weight:500;"></div>
                             <div id="env-view-greeting-line" style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;font-style:italic;opacity:0.8;"></div>
-                            <div id="env-view-text" class="env-letter-paper" style="border:none;background:transparent;padding:0 0 0 8px;line-height:32px;margin-bottom:16px;"></div>
+                            <div id="env-view-text" class="env-letter-paper" style="border:none;background:transparent;padding:0 0 0 8px;line-height:32px;margin-bottom:16px;white-space:pre-line;word-break:break-word;"></div>
                             <div style="border-top:1px dashed rgba(var(--accent-color-rgb),0.25);margin:12px 0;"></div>
                             <div id="env-view-sign-date" style="font-size:11px;color:var(--text-secondary);text-align:right;margin-bottom:4px;letter-spacing:0.5px;"></div>
                             <div id="env-view-sign-name" style="font-size:14px;color:var(--accent-color);text-align:right;font-weight:600;letter-spacing:1px;"></div>
@@ -2385,6 +2385,11 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                                         <button id="upload-sound-invite-videocall-btn" class="modal-btn modal-btn-secondary" style="padding:6px 10px;font-size:12px;white-space:nowrap;" title="上传本地音频文件"><i class="fas fa-upload"></i></button>
                                         <input type="file" id="upload-sound-invite-videocall-file" accept="audio/mp3,audio/mpeg,audio/wav,audio/ogg,audio/*" style="display:none;">
                                     </div>
+                                </div>
+                                <div class="setting-pill-row" id="call-vibrate-toggle" style="border:1px solid var(--border-color);border-radius:12px;padding:9px 12px;">
+                                    <span class="setting-pill-icon"><i class="fas fa-mobile-alt"></i></span>
+                                    <span class="setting-pill-label">来电震动 <span style="font-size:11px;color:var(--text-secondary);font-weight:400;">他打电话来时手机会震动提醒</span></span>
+                                    <div class="setting-pill-switch"><div class="setting-pill-knob"></div></div>
                                 </div>
                             </div>
                         </div>

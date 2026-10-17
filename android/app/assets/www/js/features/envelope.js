@@ -173,16 +173,42 @@ window.openEnvelopeAndViewReply = function(replyId) {
     }, 200);
 };
 
-function generateEnvelopeReplyText() {
-    const sourcePool = [...customReplies];
-    const sentenceCount = Math.floor(Math.random() * (12 - 8 + 1)) + 8;
-    let replyContent = "";
-    for (let i = 0; i < sentenceCount; i++) {
-        const randomSentence = sourcePool[Math.floor(Math.random() * sourcePool.length)];
-        const punctuation = Math.random() < 0.2 ? "！" : (Math.random() < 0.2 ? "..." : "。");
-        replyContent += randomSentence + punctuation;
+// 把一段文字按句号/叹号等断成短句列表（保留标点在句尾），供"一句一行"排版用。
+// 用偶数下标拼接的方式断句，避免使用正则 lookbehind（老 WebView 兼容性更好）。
+function _splitLetterLines(text) {
+    var parts = String(text || '').split(/([。！？!?…])/);
+    var out = [];
+    for (var i = 0; i < parts.length; i++) {
+        var cur = parts[i];
+        if (i % 2 === 1) {
+            if (out.length) out[out.length - 1] += cur; // 标点挂回上一句
+        } else {
+            var t = cur.trim();
+            if (t) out.push(t);
+        }
     }
-    return replyContent;
+    return out;
+}
+
+// 生成梦角来信/回信内容：一句一行（像手写信那种排版，每句话独立成行）。
+// 之前的写法是把 8~12 句话用标点拼成一整段，读起来像流水账；
+// 现在把字卡先断成短句、每句一行，信纸视图里节奏更接近图片里的效果。
+function generateEnvelopeReplyText() {
+    const sourcePool = [...customReplies].filter(s => s && String(s).trim());
+    if (sourcePool.length === 0) return '';
+    // 把所有字卡断成短句，凑成"短句池"
+    const fragments = [];
+    sourcePool.forEach(s => { _splitLetterLines(s).forEach(f => fragments.push(f)); });
+    if (fragments.length === 0) return '';
+    const lineCount = Math.min(fragments.length, Math.floor(Math.random() * 5) + 8); // 8~12 行
+    const lines = [];
+    for (let i = 0; i < lineCount; i++) {
+        let t = fragments[Math.floor(Math.random() * fragments.length)];
+        // 断出来的句尾可能没有标点，补一个，让每行都完整
+        if (!/[。！？!?…]$/.test(t)) t += Math.random() < 0.2 ? '！' : '。';
+        lines.push(t);
+    }
+    return lines.join('\n');
 }
 
 

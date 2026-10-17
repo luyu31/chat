@@ -87,10 +87,10 @@
         el.id = 'call-feature-style';
         el.textContent = `
 #call-incoming-overlay{
-    position:fixed;inset:0;z-index:99990;
+    position:fixed;inset:0;z-index:99995;
     display:none;align-items:center;justify-content:center;
     background:rgba(0,0,0,.62);
-    backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
 }
 #call-incoming-overlay.visible{display:flex;animation:cFi .35s ease;}
 .call-inc-card{
@@ -143,7 +143,7 @@
 .call-inc-lbl{font-size:12px;color:rgba(255,255,255,.48);font-weight:500;}
 
 #call-window{
-    position:fixed;z-index:99900;
+    position:fixed;z-index:99993;
     border-radius:22px;overflow:visible;
     display:none;flex-direction:column;
     box-shadow:0 20px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.1);
@@ -362,7 +362,7 @@
 }
 
 #call-size-presets{
-    position:fixed;z-index:99960;
+    position:fixed;z-index:99994;
     display:none;flex-direction:column;gap:2px;
     background:rgba(12,18,36,.94);backdrop-filter:blur(18px);
     border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:5px;
@@ -379,7 +379,7 @@
 .call-size-btn i{color:var(--accent-color,#e0698a);width:12px;}
 
 #call-mini-pill{
-    position:fixed;bottom:82px;right:16px;z-index:99901;
+    position:fixed;bottom:82px;right:16px;z-index:99992;
     display:none;align-items:center;gap:9px;
     background:rgba(10,18,38,.92);backdrop-filter:blur(20px);
     border:1px solid rgba(255,255,255,.12);
@@ -926,26 +926,28 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         clearTimeout(S.incomingTimer);
 
         // 铃声与震动：只要有原生桥就走原生（前台后台都走），原生自带循环铃声 + 来电震动节奏，
-        // 像真正的手机来电。ringAllowed 控制是否响铃；关了铃声时用网页震动兜底，
-        // 保证来电一定有触感提醒。
+        // 像真正的手机来电。ringAllowed 控制是否响铃，vibrateAllowed（来电震动开关）控制是否震动。
         const av = (document.querySelector('#partner-avatar img') || {}).src || '';
         const ringAllowed = (typeof settings === 'undefined' || settings.soundEnabled !== false)
             && ((settings && settings.inviteVideocallSoundPreset) || 'default') !== 'mute';
+        // 来电震动开关（设置 → 音效 → 来电震动，默认开启）。关掉后只有铃声没有震动
+        const vibrateAllowed = (typeof settings === 'undefined' || settings.callVibrateEnabled !== false);
         let nativeOk = false;
         try {
             if (window.MilkChat && typeof window.MilkChat.startRinging === 'function') {
-                window.MilkChat.startRinging(getName(), av, ringAllowed);
+                // 参数：对方名字、头像、是否响铃、是否震动
+                window.MilkChat.startRinging(getName(), av, ringAllowed, vibrateAllowed);
                 nativeOk = true;
             }
         } catch (e) { console.warn('[call] native ring error:', e); }
 
         if (nativeOk) {
-            // 原生接管了铃声；声音关着时原生不会震动，这里用网页震动补上
-            if (!ringAllowed) startWebVibrate();
+            // 原生接管了铃声与震动（震动与否由来电震动开关控制）；
+            // 这里不再叠加网页震动，避免和原生震动重复、双重震动
         } else {
-            // 没有原生桥：网页音效 + 网页震动
+            // 没有原生桥：网页音效 + 网页震动（震动同样受开关控制）
             try { if (typeof playSound === 'function' && ringAllowed) playSound('invite_videocall'); } catch (e) {}
-            startWebVibrate();
+            if (vibrateAllowed) startWebVibrate();
         }
 
         // 后台推送通知（仅当页面在后台 + 用户开启了通知）

@@ -37,8 +37,10 @@ public final class RingtonePlayer {
     private static Runnable stopCap;
     private static volatile boolean vibrating;
     private static PowerManager.WakeLock wakeLock;
-    /** 本次来电是否请求了响铃（震动永远请求），供 IncomingCallActivity 补响时判断 */
+    /** 本次来电是否请求了响铃，供 IncomingCallActivity 补响时判断 */
     static boolean ringRequested;
+    /** 本次来电是否请求了震动（由 JS 侧"来电震动"开关传入） */
+    static boolean vibrateRequested;
 
     private RingtonePlayer() {}
 
@@ -73,14 +75,15 @@ public final class RingtonePlayer {
     }
 
     /**
-     * 开始来电提醒：永远震动（像手机来电），铃声是否播放由 playSound 控制。
-     * 幂等：已在响/震则忽略。
+     * 开始来电提醒：是否响铃由 playSound 控制，是否震动由 vibrate 控制（JS 侧"来电震动"开关）。
+     * 幂等：已在响/正在震则忽略。
      */
-    public static synchronized void start(Context ctx, boolean playSound) {
+    public static synchronized void start(Context ctx, boolean playSound, boolean vibrate) {
         // 已经在响（或正在震）就不重复启动
-        if (playSound ? isPlaying() : vibrating) return;
+        if (playSound ? isPlaying() : (vibrate && vibrating)) return;
         stopInternal();
         ringRequested = playSound;
+        vibrateRequested = vibrate;
         Context app = ctx.getApplicationContext();
         if (handler == null) handler = new Handler(Looper.getMainLooper());
 
@@ -135,7 +138,7 @@ public final class RingtonePlayer {
             }
         }
 
-        startVibrate(app);
+        if (vibrate) startVibrate(app);
         if (stopCap == null) {
             stopCap = new Runnable() {
                 @Override
@@ -161,6 +164,7 @@ public final class RingtonePlayer {
             stopCap = null;
         }
         ringRequested = false;
+        vibrateRequested = false;
         stopVibrate();
         releaseWakeLock();
     }

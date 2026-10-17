@@ -90,8 +90,10 @@
 
         _overlay = document.createElement('div');
         _overlay.id = 'app-lock-overlay';
+        // 去掉了整屏 backdrop-filter 模糊：低端机上一加模糊，锁屏覆盖层重进时会把整个页面拖到非常卡，
+        // 来电邀请（z-index 更高）也会跟着掉帧。背景已经接近不透明，去掉模糊视觉上几乎无差别，性能却好很多。
         _overlay.style.cssText = 'position:fixed;inset:0;z-index:99990;'
-            + 'background:rgba(20,16,24,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);'
+            + 'background:rgba(24,20,28,.97);'
             + 'display:flex;align-items:center;justify-content:center;'
             + 'animation:fadeIn .3s ease;';
 
@@ -503,10 +505,35 @@
     }
 
     // ── 启动恢复：杀进程/重启后自动重新显示锁 ──────────────────────
+    // 用户关了「锁软件」开关时（Control.isLockEnabled() === false），不再恢复锁屏，
+    // 顺手把残留的 active 状态清掉，避免下次开开关又把旧锁带回来。
     function _restoreIfLocked() {
         var data = load();
+        if (window.Control && typeof window.Control.isLockEnabled === 'function' && !window.Control.isLockEnabled()) {
+            if (data.active === true) save({ active: false });
+            return;
+        }
         if (data.active === true && data.passphrase) {
             _show(data.passphrase, data.prompt || ('说，' + data.passphrase), data.startedAt || 0, data.failCount || 0);
+        }
+    }
+
+    // 立即解除封锁（供"关闭锁软件功能"开关使用）：清状态 + 移除覆盖层
+    function disable() {
+        save({ active: false });
+        if (_overlay) {
+            _overlay.style.transition = 'opacity .25s ease';
+            _overlay.style.opacity = '0';
+            var ov = _overlay;
+            setTimeout(function () { if (ov) ov.remove(); }, 250);
+            _overlay = null;
+        }
+        if (_partnerOverlay) {
+            _partnerOverlay.style.transition = 'opacity .25s ease';
+            _partnerOverlay.style.opacity = '0';
+            var po = _partnerOverlay;
+            setTimeout(function () { if (po) po.remove(); }, 250);
+            _partnerOverlay = null;
         }
     }
 
@@ -543,6 +570,7 @@
     window.LockScreen = {
         start: start,
         isActive: isActive,
-        lockPartner: lockPartner
+        lockPartner: lockPartner,
+        disable: disable
     };
 })();
