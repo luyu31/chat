@@ -26,14 +26,15 @@ REPLACEMENTS = [
      '<link rel="stylesheet" href="vendor/fontawesome/all.min.css">'),
     ('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">',
      '<link rel="stylesheet" href="vendor/tabler/tabler-icons.min.css">'),
-    ('<script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>',
-     '<script src="vendor/localforage.min.js"></script>'),
-    ('<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>',
-     '<script src="vendor/jszip.min.js"></script>'),
+    # 注意：index.html 里这两个已改成 <script defer ...>，替换串必须带 defer 才会命中
+    ('<script defer src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>',
+     '<script defer src="vendor/localforage.min.js"></script>'),
+    ('<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>',
+     '<script defer src="vendor/jszip.min.js"></script>'),
 ]
 
 BRIDGE_TAG = '<script src="js/native-bridge.js"></script>'
-JSZIP_LOCAL = '<script src="vendor/jszip.min.js"></script>'
+JSZIP_LOCAL = '<script defer src="vendor/jszip.min.js"></script>'
 
 def main():
     # 1. 复制仓库 web 代码

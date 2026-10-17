@@ -3388,20 +3388,29 @@ playlist.style.top = (rect.top + (player.classList.contains('collapsed') ? 65 : 
 
         function initCoreListeners() {
 
+            // 滚动事件在 WebView 上一帧可能触发好几次，原来每个事件都跑一遍判定、
+            // 还要读 scrollHeight 触发一次同步布局计算——这是"划拉聊天记录发涩"的一个来源。
+            // 改成 passive 监听 + rAF 合并：一帧最多检查一次，且不阻塞滚动线程。
+            let _scrollCheckPending = false;
             DOMElements.chatContainer.addEventListener('scroll', () => {
-                const container = DOMElements.chatContainer;
-                if (!container) return;
-                const hasMoreOlder = msgViewMode === 'window' ? msgWinStart > 0 : (messages.length > displayedMessageCount);
-                if (container.scrollTop < 50 && !isLoadingHistory && hasMoreOlder) {
-                    if (typeof loadMoreHistory === 'function') loadMoreHistory();
-                }
-                if (msgViewMode === 'window' && !isLoadingFuture && msgWinEnd < messages.length) {
-                    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-                    if (distanceFromBottom < 50) {
-                        if (typeof loadMoreFuture === 'function') loadMoreFuture();
+                if (_scrollCheckPending) return;
+                _scrollCheckPending = true;
+                requestAnimationFrame(() => {
+                    _scrollCheckPending = false;
+                    const container = DOMElements.chatContainer;
+                    if (!container) return;
+                    const hasMoreOlder = msgViewMode === 'window' ? msgWinStart > 0 : (messages.length > displayedMessageCount);
+                    if (container.scrollTop < 50 && !isLoadingHistory && hasMoreOlder) {
+                        if (typeof loadMoreHistory === 'function') loadMoreHistory();
                     }
-                }
-            });
+                    if (msgViewMode === 'window' && !isLoadingFuture && msgWinEnd < messages.length) {
+                        const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+                        if (distanceFromBottom < 50) {
+                            if (typeof loadMoreFuture === 'function') loadMoreFuture();
+                        }
+                    }
+                });
+            }, { passive: true });
 
             DOMElements.sendBtn.addEventListener('click', () => isBatchMode ? addToBatch(): sendMessage());
             DOMElements.messageInput.addEventListener('keydown', e => {
