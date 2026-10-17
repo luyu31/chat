@@ -60,6 +60,17 @@
             android:turnScreenOn="true"
             android:theme="@style/AppTheme"/>
 
+        <!-- 全屏闹钟界面：锁屏/息屏时由闹钟通知的 fullScreenIntent 直接拉起，
+             点亮屏幕并盖在锁屏上（和手机自带闹钟一样） -->
+        <activity
+            android:name=".AlarmActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/AppTheme"/>
+
         <receiver
             android:name=".AlarmReceiver"
             android:exported="false"/>

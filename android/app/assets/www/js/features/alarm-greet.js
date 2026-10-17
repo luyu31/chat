@@ -14,6 +14,23 @@
 
     const STORE_KEY = 'alarmGreets';
     const FIRED_KEY = 'alarmGreetFiredDates';
+    const SNOOZE_KEY = 'alarmGreetSnoozeMin';   // 贪睡时长（分钟）
+    const MAXRING_KEY = 'alarmGreetMaxRingMin'; // 最长响铃时长（分钟）
+
+    const DEFAULT_SNOOZE_MIN = 5;
+    const DEFAULT_MAX_RING_MIN = 10;
+    // 可选档位
+    const SNOOZE_OPTIONS = [1, 3, 5, 10, 15, 20];
+    const MAXRING_OPTIONS = [1, 3, 5, 10, 15, 30];
+
+    function getNum(key, def, min, max) {
+        const v = parseInt(localStorage.getItem(key) || '', 10);
+        if (!isFinite(v) || v < min || v > max) return def;
+        return v;
+    }
+    function getSnoozeMin() { return getNum(SNOOZE_KEY, DEFAULT_SNOOZE_MIN, 1, 60); }
+    function getMaxRingMin() { return getNum(MAXRING_KEY, DEFAULT_MAX_RING_MIN, 1, 60); }
+    function setNum(key, v) { try { localStorage.setItem(key, String(v)); } catch (e) {} }
 
     // ─── 默认闹钟（时间用户可随意改，文案每行一条随机抽） ───
     function defaultAlarms() {
@@ -98,11 +115,15 @@
     }
 
     // ─── 同步给原生（App 内生效；网页端静默跳过） ───
+    // 除了闹钟表，把「贪睡时长 / 最长响铃时长」一起带上，
+    // 原生到点响铃时才知道该响多久、贪睡按钮该写几分钟。
     function syncNative() {
         try {
             if (window.MilkChat && window.MilkChat.syncAlarms) {
                 window.MilkChat.syncAlarms(JSON.stringify({
                     partnerName: (typeof settings !== 'undefined' && settings.partnerName) || '对方',
+                    snoozeMinutes: getSnoozeMin(),
+                    maxRingMinutes: getMaxRingMin(),
                     alarms: getAlarms().filter(a => a.enabled && parseHM(a.time)).map(a => ({
                         id: a.id, name: a.name, time: a.time,
                         texts: (a.texts || []).filter(t => t && t.trim())
@@ -193,6 +214,63 @@
             fireAlarm(a, new Date());
         } catch (e) {}
     };
+
+    // ─── 响铃方式设置（贪睡时长 / 最长响铃时长） ───
+    // 这两项会随 syncNative 一起交给原生：决定到点响多久、点贪睡写几分钟
+    function renderConfig() {
+        const el = document.getElementById('alarm-greet-config');
+        if (!el) return;
+        const selStyle = 'flex:1;padding:7px 10px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:12px;background:var(--primary-bg,transparent);color:var(--text-primary,#333);outline:none;font-family:var(--font-family,inherit);';
+        const rowStyle = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+        const lbStyle = 'font-size:12px;color:var(--text-secondary,#888);flex:0 0 auto;width:88px;';
+
+        const snooze = getSnoozeMin();
+        const maxRing = getMaxRingMin();
+
+        el.innerHTML =
+            '<div style="' + rowStyle + '">' +
+                '<span style="' + lbStyle + '">贪睡时长</span>' +
+                '<select id="alarm-cfg-snooze" style="' + selStyle + '">' +
+                    SNOOZE_OPTIONS.map(n => '<option value="' + n + '"' + (n === snooze ? ' selected' : '') + '>' + n + ' 分钟</option>').join('') +
+                '</select>' +
+            '</div>' +
+            '<div style="' + rowStyle + 'margin-bottom:0;">' +
+                '<span style="' + lbStyle + '">最长响铃</span>' +
+                '<select id="alarm-cfg-maxring" style="' + selStyle + '">' +
+                    MAXRING_OPTIONS.map(n => '<option value="' + n + '"' + (n === maxRing ? ' selected' : '') + '>' + n + ' 分钟</option>').join('') +
+                '</select>' +
+            '</div>' +
+            '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:6px;line-height:1.6;" id="alarm-cfg-status"></div>';
+
+        const snSel = el.querySelector('#alarm-cfg-snooze');
+        if (snSel) snSel.onchange = function () {
+            setNum(SNOOZE_KEY, parseInt(this.value, 10) || DEFAULT_SNOOZE_MIN);
+            syncNative();
+            _flashCfgStatus();
+        };
+        const mrSel = el.querySelector('#alarm-cfg-maxring');
+        if (mrSel) mrSel.onchange = function () {
+            setNum(MAXRING_KEY, parseInt(this.value, 10) || DEFAULT_MAX_RING_MIN);
+            syncNative();
+            _flashCfgStatus();
+        };
+        _renderCfgStatus();
+    }
+
+    function _renderCfgStatus() {
+        const s = document.getElementById('alarm-cfg-status');
+        if (!s) return;
+        const native = !!(window.MilkChat && window.MilkChat.syncAlarms);
+        s.textContent = native
+            ? '已生效：到点会响铃 + 震动 + 弹出全屏闹钟界面'
+            : '网页版只发消息提醒；装成 App 后到点会像手机自带闹钟一样响铃 + 震动 + 全屏弹出';
+        s.style.color = native ? 'var(--accent-color,#c5a47e)' : 'var(--text-secondary,#999)';
+    }
+    function _flashCfgStatus() {
+        _renderCfgStatus();
+        const s = document.getElementById('alarm-cfg-status');
+        if (s) s.textContent = '已保存 ✓ ' + s.textContent;
+    }
 
     // ─────────────────────────────────────────────────────────
     // 设置界面渲染（设置 → 闹钟 面板）
@@ -320,6 +398,9 @@
                 : '尚未配置 MiniMax 语音：目前只发文字消息；想让他念出来，请到 语音设置 配置 MiniMax';
             hint.style.color = ready ? 'var(--accent-color,#c5a47e)' : 'var(--text-secondary,#999)';
         }
+
+        // 响铃方式（贪睡时长 / 最长响铃时长）
+        renderConfig();
     }
 
     function bindSettingsUI() {
@@ -340,6 +421,29 @@
                 renderSettings();
             };
         }
+
+        // 「试响一次」：立刻走一遍原生闹钟流程（响铃 + 震动 + 全屏界面），
+        // 不用等到设定时间就能确认效果（仅 App 内可用）
+        const testBtn = document.getElementById('alarm-greet-test');
+        if (testBtn && !testBtn._alarmBound) {
+            testBtn._alarmBound = true;
+            testBtn.onclick = function () {
+                try {
+                    if (window.MilkChat && typeof window.MilkChat.testAlarm === 'function') {
+                        const name = (typeof settings !== 'undefined' && settings.partnerName) || '对方';
+                        const first = getAlarms().find(a => a.enabled) || defaultAlarms()[0];
+                        const texts = (first && first.texts || []).filter(Boolean);
+                        const text = texts.length ? texts[Math.floor(Math.random() * texts.length)] : '闹钟试响一下～';
+                        window.MilkChat.testAlarm(name, text);
+                        if (typeof showNotification === 'function')
+                            showNotification('已试响：响铃 + 震动 + 全屏闹钟界面', 'success', 2600);
+                    } else if (typeof showNotification === 'function') {
+                        showNotification('「试响」只在装成 App 后可用', 'info', 2600);
+                    }
+                } catch (e) {}
+            };
+        }
+
         // 每次打开设置时刷新一次显示
         const settingsBtn = document.getElementById('settings-btn');
         if (settingsBtn && !settingsBtn._alarmBound) {
@@ -349,6 +453,29 @@
             });
         }
     }
+
+    // 原生侧用户在闹钟界面点了「停止 / 贪睡」：回一条系统小卡片，
+    // 让用户能在聊天里看到这次闹钟的结果（贪睡的那次不重复记）
+    window._onNativeAlarmAction = function (action, id) {
+        try {
+            if (action !== 'stop') return;
+            const a = getAlarms().find(x => x.id === id);
+            const name = a ? (a.name || '提醒') : '闹钟';
+            if (typeof addMessage === 'function') {
+                addMessage({
+                    id: Date.now() + Math.random(),
+                    sender: null,
+                    type: 'system',
+                    text: '<i class="fas fa-clock" style="margin-right:4px;"></i>你关掉了「' + name + '」',
+                    timestamp: new Date(),
+                    status: 'received',
+                    favorited: false,
+                    note: null,
+                    replyTo: null
+                });
+            }
+        } catch (e) {}
+    };
 
     // ─── 启动 ───
     function init() {

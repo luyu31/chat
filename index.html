@@ -2402,11 +2402,19 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                             <i class="fas fa-plus"></i> 添加闹钟
                         </button>
                     </div>
+                    <p class="cs-group-label">响铃方式</p>
+                    <div class="cs-card" style="margin-bottom:10px;padding:10px 14px;">
+                        <div id="alarm-greet-config"></div>
+                        <button type="button" id="alarm-greet-test" style="width:100%;margin-top:10px;padding:8px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;">
+                            <i class="fas fa-play"></i> 试响一次（响 1 分钟 / 可点停止）
+                        </button>
+                    </div>
                     <p class="cs-group-label">说明</p>
                     <div class="cs-card" style="font-size:12px;color:var(--text-secondary,#888);line-height:1.8;">
-                        每天到点后，他会主动给你发一条消息（文案随机抽一条）。<br>
-                        App 在后台或锁屏时：走系统闹钟 + 通知栏提醒，点开通知回到聊天；<br>
-                        错过的时间点（比如手机关机），打开 App 后会自动补发。<br>
+                        到点后像手机自带闹钟一样：<b>响铃 + 震动 + 弹出全屏闹钟界面</b>（锁屏时会点亮屏幕盖在锁屏上），
+                        界面上有「停止」和「贪睡」两个按钮，通知栏也能直接停/贪睡。<br>
+                        铃声走的是<b>闹钟音量</b>，手机静音或仅振动时照样会响。<br>
+                        同时他会在聊天里发来那句问候；错过的时间点（比如手机关机）打开 App 会自动补发。<br>
                         <span id="alarm-tts-hint" style="display:block;margin-top:4px;"></span>
                     </div>
                 </div>

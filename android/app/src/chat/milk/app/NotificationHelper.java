@@ -20,9 +20,11 @@ public final class NotificationHelper {
     public static final String CHANNEL_KEEP = "milk_keepalive";
     public static final String CHANNEL_MSG = "milk_messages";
     public static final String CHANNEL_CALL = "milk_call";
+    public static final String CHANNEL_ALARM = "milk_alarm";
     public static final int KEEP_ALIVE_NOTIF_ID = 1;
     public static final int MSG_NOTIF_ID = 2001;
     public static final int CALL_NOTIF_ID = 3001;
+    public static final int ALARM_NOTIF_ID = 4001;
     private static final String PREFS = "milk_notif";
     private static final String KEY_UNREAD = "unread";
     private static final String KEY_NOTIF_PERM_ASKED = "np_asked";
@@ -79,6 +81,21 @@ public final class NotificationHelper {
         call.enableLights(true);
         call.setLightColor(0xFFF2A9BC);
         nm.createNotificationChannel(call);
+
+        // 闹钟通道：专用"闹钟"类别。
+        // 声音交给 AlarmPlayer 走闹钟音量流循环播放（通道本身不发声，避免双重声音）；
+        // 类别设为 CATEGORY_ALARM + fullScreenIntent，锁屏时能像原生闹钟一样直接拉起全屏界面。
+        NotificationChannel alarm = new NotificationChannel(CHANNEL_ALARM, "闹钟提醒",
+                NotificationManager.IMPORTANCE_HIGH);
+        alarm.setDescription("定时问候到点时的响铃与全屏提醒");
+        alarm.setShowBadge(false);
+        alarm.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        alarm.setSound(null, null);
+        alarm.enableVibration(false);   // 震动由 AlarmPlayer 负责
+        alarm.enableLights(true);
+        alarm.setLightColor(0xFFF2A9BC);
+        try { alarm.setBypassDnd(true); } catch (Exception ignored) {}
+        nm.createNotificationChannel(alarm);
     }
 
     public static void startKeepAlive(Context ctx) {
@@ -205,6 +222,82 @@ public final class NotificationHelper {
         if (nm != null) {
             try { nm.cancel(CALL_NOTIF_ID); } catch (Exception ignored) {}
         }
+    }
+
+    /**
+     * 闹钟通知：像原生闹钟一样
+     *  - category = CATEGORY_ALARM + fullScreenIntent：锁屏/息屏时直接拉起 AlarmActivity（点亮屏幕）
+     *  - ongoing：一直挂着，直到用户「停止」或「贪睡」
+     *  - 自带「停止」「贪睡 N 分钟」两个按钮，不打开 App 也能直接操作
+     *  声音与震动由 AlarmPlayer 走「闹钟」音量流循环播放，通知本身不发声。
+     */
+    public static void showAlarmNotification(Context ctx, String name, String text,
+                                             String alarmId, int snoozeMinutes, int maxRingMinutes) {
+        init(ctx);
+        String who = (name == null || name.length() == 0) ? "对方" : name;
+        String body = (text == null || text.length() == 0) ? "时间到了" : text;
+        if (alarmId == null) alarmId = "";
+
+        Intent full = new Intent(ctx, AlarmActivity.class);
+        full.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        full.putExtra(AlarmActivity.EXTRA_ID, alarmId);
+        full.putExtra(AlarmActivity.EXTRA_PARTNER, who);
+        full.putExtra(AlarmActivity.EXTRA_TEXT, body);
+        full.putExtra(AlarmActivity.EXTRA_SNOOZE_MIN, snoozeMinutes);
+        full.putExtra(AlarmActivity.EXTRA_MAX_RING_MIN, maxRingMinutes);
+        full.putExtra(AlarmActivity.EXTRA_RING, true);
+        int pFlags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= 23) pFlags |= PendingIntent.FLAG_IMMUTABLE;
+        PendingIntent fullPi = PendingIntent.getActivity(ctx, 5001, full, pFlags);
+
+        Notification.Builder b;
+        if (Build.VERSION.SDK_INT >= 26) {
+            b = new Notification.Builder(ctx, CHANNEL_ALARM);
+        } else {
+            b = new Notification.Builder(ctx);
+            b.setPriority(Notification.PRIORITY_MAX);
+        }
+        b.setContentTitle(who + " 的闹钟")
+                .setContentText(body)
+                .setSmallIcon(R.drawable.ic_stat_notify)
+                .setCategory(Notification.CATEGORY_ALARM)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setOngoing(true)
+                .setAutoCancel(false)
+                .setContentIntent(fullPi)
+                .setFullScreenIntent(fullPi, true);
+
+        // 通知栏上的快捷操作（不进 App 也能停/贪睡）
+        try {
+            int min = snoozeMinutes > 0 ? snoozeMinutes : AlarmScheduler.DEFAULT_SNOOZE_MIN;
+            b.addAction(new Notification.Action.Builder(0, "贪睡 " + min + " 分钟",
+                    alarmActionPi(ctx, AlarmScheduler.ACTION_SNOOZE, alarmId)).build());
+            b.addAction(new Notification.Action.Builder(0, "停止",
+                    alarmActionPi(ctx, AlarmScheduler.ACTION_STOP, alarmId)).build());
+        } catch (Exception ignored) {}
+
+        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) {
+            try { nm.notify(ALARM_NOTIF_ID, b.build()); } catch (Exception ignored) {}
+        }
+    }
+
+    /** 闹钟结束（停止/贪睡/超时）后收起通知 */
+    public static void cancelAlarmNotification(Context ctx) {
+        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) {
+            try { nm.cancel(ALARM_NOTIF_ID); } catch (Exception ignored) {}
+        }
+    }
+
+    private static PendingIntent alarmActionPi(Context ctx, String action, String alarmId) {
+        Intent i = new Intent(ctx, AlarmReceiver.class);
+        i.setAction(action);
+        i.putExtra("id", alarmId);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
+        int rc = (action + "#" + alarmId).hashCode() & 0x7fffffff;
+        return PendingIntent.getBroadcast(ctx, rc, i, flags);
     }
 
     public static void setBadgeCount(Context ctx, int n) {

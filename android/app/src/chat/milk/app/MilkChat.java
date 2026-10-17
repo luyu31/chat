@@ -269,12 +269,62 @@ public class MilkChat {
 
     /**
      * JS 同步闹钟表（每次增删改/启动/回前台时调用）：
-     * {"partnerName":"xx","alarms":[{"id","name","time":"HH:MM","texts":[...]}]}
-     * 原生为每个启用的闹钟注册 AlarmManager 精确闹钟，后台/锁屏到点发通知。
+     * {"partnerName":"xx","snoozeMinutes":5,"maxRingMinutes":10,
+     *  "alarms":[{"id","name","time","texts":[...]}]}
+     * 原生为每个启用的闹钟注册 AlarmManager 闹钟（setAlarmClock 通道，
+     * 不受 Doze 压制），到点响铃 + 震动 + 全屏闹钟界面。
      */
     @JavascriptInterface
     public void syncAlarms(String json) {
         AlarmScheduler.syncFromJson(ctx, json);
+    }
+
+    /** 立刻试响一次闹钟（设置里的「试一下」按钮）：响 1 分钟或用户点停止 */
+    @JavascriptInterface
+    public void testAlarm(String name, String text) {
+        String who = (name == null || name.length() == 0) ? "对方" : name;
+        String body = (text == null || text.length() == 0) ? "闹钟试响一下～" : text;
+        final int cap = 1; // 试响最长 1 分钟，不吵太久
+        AlarmPlayer.start(ctx, "__test__", cap);
+        NotificationHelper.showAlarmNotification(ctx, who, body, "__test__",
+                AlarmScheduler.snoozeMinutes(ctx), cap);
+        try {
+            android.content.Intent act = new android.content.Intent(ctx, AlarmActivity.class);
+            act.setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                    | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            act.putExtra(AlarmActivity.EXTRA_ID, "__test__");
+            act.putExtra(AlarmActivity.EXTRA_PARTNER, who);
+            act.putExtra(AlarmActivity.EXTRA_TEXT, body);
+            act.putExtra(AlarmActivity.EXTRA_SNOOZE_MIN, AlarmScheduler.snoozeMinutes(ctx));
+            act.putExtra(AlarmActivity.EXTRA_MAX_RING_MIN, cap);
+            act.putExtra(AlarmActivity.EXTRA_RING, true);
+            ctx.startActivity(act);
+        } catch (Exception ignored) {}
+    }
+
+    /** 停止正在响的闹钟（用户在 App 里点了停止时调用） */
+    @JavascriptInterface
+    public void stopAlarm() {
+        AlarmPlayer.stop(ctx);
+        NotificationHelper.cancelAlarmNotification(ctx);
+    }
+
+    /** 贪睡：停响 + 排 N 分钟后再响一次 */
+    @JavascriptInterface
+    public void snoozeAlarm(String id, int minutes) {
+        AlarmPlayer.stop(ctx);
+        NotificationHelper.cancelAlarmNotification(ctx);
+        if (id != null && id.length() > 0) {
+            AlarmScheduler.scheduleSnooze(ctx, id,
+                    minutes > 0 ? minutes : AlarmScheduler.snoozeMinutes(ctx),
+                    AlarmScheduler.maxRingMinutes(ctx));
+        }
+    }
+
+    /** 当前是否有闹钟正在响 */
+    @JavascriptInterface
+    public boolean isAlarmRinging() {
+        return AlarmPlayer.isRinging();
     }
 
     // ─── 自定义应用图标（桌面快捷方式） ───

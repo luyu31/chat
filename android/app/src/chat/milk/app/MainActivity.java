@@ -63,6 +63,19 @@ public class MainActivity extends Activity {
         });
     }
 
+    /** 闹钟被用户「停止 / 贪睡」：把动作告诉 JS（记一笔 + 联动界面状态） */
+    public static void dispatchAlarmAction(final String action, final String id) {
+        final MainActivity a = instanceRef == null ? null : instanceRef.get();
+        if (a == null) return;
+        a.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                a.evaluateJsSafe("window._onNativeAlarmAction && window._onNativeAlarmAction('"
+                        + action + "','" + id + "')");
+            }
+        });
+    }
+
     public static class PendingSave {
         public String name;
         public byte[] data;
