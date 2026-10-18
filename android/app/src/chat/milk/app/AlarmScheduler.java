@@ -112,10 +112,11 @@ public final class AlarmScheduler {
     private static int reqCodeDaily(String id)  { return ("alarm_"  + id).hashCode() & 0x7fffffff; }
     private static int reqCodeSnooze(String id) { return ("snooze_" + id).hashCode() & 0x7fffffff; }
 
-    private static PendingIntent dailyPi(Context ctx, String id, int flagsExtra) {
+    private static PendingIntent dailyPi(Context ctx, String id, boolean gentle) {
         Intent i = new Intent(ctx, AlarmReceiver.class);
         i.setAction(ACTION_ALARM);
         i.putExtra("id", id);
+        i.putExtra("gentle", gentle);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
         return PendingIntent.getBroadcast(ctx, reqCodeDaily(id), i, flags);
@@ -143,12 +144,32 @@ public final class AlarmScheduler {
         return PendingIntent.getActivity(ctx, reqCodeDaily(id) + 7, i, flags);
     }
 
-    /** 注册某个每日闹钟的下一次触发（今天已过时间则排明天） */
+    /** 注册某个每日闹钟的下一次触发（今天已过时间则排明天）。
+     *  温柔提醒（gentle）走普通精确闹钟，不用 setAlarmClock —— 这样不显示状态栏闹钟图标、
+     *  也不走"闹钟优先"通道；真闹钟才用 setAlarmClock。 */
     static void scheduleNext(Context ctx, String id, String hhmm) {
         if (id == null || id.length() == 0) return;
         Calendar cal = nextOccurrence(hhmm);
         if (cal == null) return;
-        setAlarmClock(ctx, cal.getTimeInMillis(), dailyPi(ctx, id, 0), id);
+        JSONObject a = findAlarm(ctx, id);
+        boolean gentle = a != null && a.optBoolean("gentle", false);
+        if (gentle) {
+            setExactWake(ctx, cal.getTimeInMillis(), dailyPi(ctx, id, true));
+        } else {
+            setAlarmClock(ctx, cal.getTimeInMillis(), dailyPi(ctx, id, false), id);
+        }
+    }
+
+    private static void setExactWake(Context ctx, long triggerAtMs, PendingIntent operation) {
+        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+        try {
+            if (Build.VERSION.SDK_INT >= 23) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, operation);
+            else if (Build.VERSION.SDK_INT >= 19) am.setExact(AlarmManager.RTC_WAKEUP, triggerAtMs, operation);
+            else am.set(AlarmManager.RTC_WAKEUP, triggerAtMs, operation);
+        } catch (Exception e) {
+            try { am.set(AlarmManager.RTC_WAKEUP, triggerAtMs, operation); } catch (Exception ignored) {}
+        }
     }
 
     private static Calendar nextOccurrence(String hhmm) {
@@ -218,7 +239,7 @@ public final class AlarmScheduler {
                     for (int i = 0; i < arr.length(); i++) {
                         JSONObject a = arr.optJSONObject(i);
                         if (a == null) continue;
-                        try { am.cancel(dailyPi(ctx, a.optString("id"), 0)); } catch (Exception ignored) {}
+                        try { am.cancel(dailyPi(ctx, a.optString("id"), false)); } catch (Exception ignored) {}
                     }
                 }
             }

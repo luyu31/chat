@@ -75,6 +75,11 @@
             android:name=".AlarmReceiver"
             android:exported="false"/>
 
+        <!-- 后台主动消息：App 被从后台划掉后由它照常发消息（不依赖 WebView） -->
+        <receiver
+            android:name=".AutoMsgReceiver"
+            android:exported="false"/>
+
         <receiver
             android:name=".BootReceiver"
             android:exported="true">

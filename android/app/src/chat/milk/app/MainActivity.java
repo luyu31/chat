@@ -250,13 +250,41 @@ public class MainActivity extends Activity {
         handleJumpMsg(intent != null ? intent.getStringExtra(EXTRA_JUMP_MSG_ID) : null);
     }
 
+    /** App 是否在前台（后台主动消息靠它决定要不要弹通知） */
+    private static volatile boolean appForeground = false;
+
+    public static boolean isAppForeground() { return appForeground; }
+
+    /** 后台主动消息：把文案交给 JS，在聊天流里补一条 */
+    public static void dispatchAutoMsgToJs(final String text) {
+        final MainActivity a = instanceRef == null ? null : instanceRef.get();
+        if (a == null || text == null) return;
+        a.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                // 用 JSONObject.quote 做转义，避免文案里有引号/换行把 JS 打断
+                String arg = org.json.JSONObject.quote(text);
+                a.evaluateJsSafe("window._onNativeAutoMsg && window._onNativeAutoMsg(" + arg + ")");
+            }
+        });
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        appForeground = true;
         MilkChat.activityRef = new java.lang.ref.WeakReference<>(this);
         NotificationHelper.startKeepAlive(this);
         NotificationHelper.onAppOpen(this);
+        // 回前台时把后台主动消息重新排一遍（间隔重新随机）
+        AutoMsgScheduler.scheduleNext(this);
         requestNotificationPermissionIfNeeded();
+    }
+
+    @Override
+    protected void onPause() {
+        appForeground = false;
+        super.onPause();
     }
 
     private void requestNotificationPermissionIfNeeded() {

@@ -33,10 +33,13 @@
     function setNum(key, v) { try { localStorage.setItem(key, String(v)); } catch (e) {} }
 
     // ─── 默认闹钟（时间用户可随意改，文案每行一条随机抽） ───
+    // gentle: true  = 温柔提醒（只弹一条通知，不响铃、不弹全屏）
+    // gentle: false = 闹钟式（响铃 + 震动 + 全屏闹钟界面）
+    // 默认只有「早安 / 晚安」是真闹钟，吃饭类提醒用温柔提醒，不吵人
     function defaultAlarms() {
         return [
             {
-                id: 'goodMorning', name: '早安问候', time: '08:00', enabled: true, tts: true,
+                id: 'goodMorning', name: '早安问候', time: '08:00', enabled: true, tts: true, gentle: false,
                 texts: [
                     '早安，新的一天也要开心哦',
                     '起床啦～今天也一起加油',
@@ -45,7 +48,7 @@
                 ]
             },
             {
-                id: 'breakfast', name: '早餐提醒', time: '09:30', enabled: true, tts: false,
+                id: 'breakfast', name: '早餐提醒', time: '09:30', enabled: true, tts: false, gentle: true,
                 texts: [
                     '该吃早饭了，不许饿着肚子',
                     '早餐很重要，去吃点东西吧',
@@ -53,7 +56,7 @@
                 ]
             },
             {
-                id: 'lunch', name: '午餐提醒', time: '12:00', enabled: true, tts: false,
+                id: 'lunch', name: '午餐提醒', time: '12:00', enabled: true, tts: false, gentle: true,
                 texts: [
                     '到中午啦，去吃饭吧，我等你',
                     '别忘了吃午饭哦',
@@ -61,7 +64,7 @@
                 ]
             },
             {
-                id: 'goodNight', name: '晚安提醒', time: '22:10', enabled: true, tts: true,
+                id: 'goodNight', name: '晚安提醒', time: '22:10', enabled: true, tts: true, gentle: false,
                 texts: [
                     '十点多了，该睡觉了哦，晚安',
                     '别熬夜啦，早点睡，晚安好梦',
@@ -72,14 +75,23 @@
         ];
     }
 
+    // 老数据补 gentle 字段：吃饭类默认温柔，其余默认闹钟式
+    function _normalizeAlarm(a) {
+        if (!a || typeof a !== 'object') return a;
+        if (a.gentle === undefined) {
+            a.gentle = (a.id === 'breakfast' || a.id === 'lunch');
+        }
+        return a;
+    }
+
     // ─── 存取 ───
     function getAlarms() {
         try {
             const raw = localStorage.getItem(STORE_KEY);
-            if (!raw) return defaultAlarms();
+            if (!raw) return defaultAlarms().map(_normalizeAlarm);
             const arr = JSON.parse(raw);
-            return Array.isArray(arr) && arr.length >= 0 ? arr : defaultAlarms();
-        } catch (e) { return defaultAlarms(); }
+            return Array.isArray(arr) ? arr.map(_normalizeAlarm) : defaultAlarms().map(_normalizeAlarm);
+        } catch (e) { return defaultAlarms().map(_normalizeAlarm); }
     }
 
     function saveAlarms(list) {
@@ -126,6 +138,7 @@
                     maxRingMinutes: getMaxRingMin(),
                     alarms: getAlarms().filter(a => a.enabled && parseHM(a.time)).map(a => ({
                         id: a.id, name: a.name, time: a.time,
+                        gentle: !!a.gentle,
                         texts: (a.texts || []).filter(t => t && t.trim())
                     }))
                 }));
@@ -363,6 +376,34 @@
             ttsRow.appendChild(cb);
             ttsRow.appendChild(lb);
             row.appendChild(ttsRow);
+
+            // 响铃方式：闹钟式（响铃+震动+全屏） / 温柔提醒（只弹一条通知）
+            const modeRow = document.createElement('div');
+            modeRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:6px;';
+            const modeLb = document.createElement('span');
+            modeLb.style.cssText = 'font-size:11px;color:var(--text-secondary,#999);flex:0 0 auto;';
+            modeLb.textContent = '响铃方式';
+            modeRow.appendChild(modeLb);
+            [['alarm', '闹钟（响铃+全屏）'], ['gentle', '温柔提醒（只弹通知）']].forEach(pair => {
+                const isGentle = !!a.gentle;
+                const on = pair[0] === 'gentle' ? isGentle : !isGentle;
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.textContent = pair[1];
+                chip.style.cssText = 'padding:4px 9px;border-radius:999px;font-size:11px;cursor:pointer;font-family:inherit;'
+                    + (on ? 'border:1px solid var(--accent-color,#c5a47e);background:rgba(var(--accent-color-rgb,197,164,126),.16);color:var(--accent-color,#c5a47e);font-weight:700;'
+                        : 'border:1px solid var(--border-color,#ddd);background:transparent;color:var(--text-secondary,#888);');
+                chip.onclick = function () {
+                    const list = getAlarms();
+                    const it = list.find(x => x.id === a.id);
+                    if (!it) return;
+                    it.gentle = (pair[0] === 'gentle');
+                    saveAlarms(list);
+                    renderSettings();
+                };
+                modeRow.appendChild(chip);
+            });
+            row.appendChild(modeRow);
 
             // 第三行：文案（每行一条，随机抽一条发送）
             const taLabel = document.createElement('div');

@@ -283,7 +283,11 @@ autoSendInterval: 5,
         emojiMixEnabled: true,
         autoReactionEnabled: true,
         // 来电震动（设置 → 音效 → 来电震动，默认开启）
-        callVibrateEnabled: true
+        callVibrateEnabled: true,
+        // 随机回复速度：打开后不看「最短/最长等待」，时长忽快忽慢更像真人
+        randomReplySpeedEnabled: false,
+        // 随机问卷回复时间：打开后不看问卷那两个滑块，半小时~两天内随机
+        randomSurveyTimeEnabled: false
             };
         }
 
@@ -1625,6 +1629,21 @@ function _clampReactionBadges() {
     });
 }
 
+// 随机回复速度：打开「随机回复速度」后不看「最短/最长等待」，时长忽快忽慢更像真人。
+// 分布：25% 秒回 / 35% 正常 / 25% 偏慢 / 15% 很慢 —— 越慢越少见，但都能遇到。
+// 关闭该开关时调用方仍走原来的 min~max 均匀分布。
+window._pickRandomReplyDelay = function (baseMaxMs) {
+    const maxMs = (typeof baseMaxMs === 'number' && baseMaxMs > 0) ? baseMaxMs : 7000;
+    const cap = Math.max(30000, Math.min(maxMs * 8, 300000)); // 上限 5 分钟，别让人等到天荒地老
+    const r = Math.random();
+    let ms;
+    if (r < 0.25)      ms = 300 + Math.random() * 900;                              // 秒回
+    else if (r < 0.60) ms = 1000 + Math.random() * 4000;                            // 正常 1~5s
+    else if (r < 0.85) ms = 8000 + Math.random() * 22000;                           // 偏慢 8~30s
+    else               ms = Math.min(cap, 40000 + Math.random() * Math.max(1, cap - 40000)); // 很慢 40s~上限
+    return Math.round(ms);
+};
+
 // 跳转到某一条消息（搜索结果点击、引用消息点击都可以用这个统一入口），
 // 不管这条消息离最新消息有多远，只渲染它附近一小段，不会因为聊天记录很长就卡顿
 window._jumpToMessage = function(id) {
@@ -2588,7 +2607,9 @@ if (!isBatchMode && type === 'normal') {
                 }, index * 300);
             });
             const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-            const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
+            const randomDelay = settings.randomReplySpeedEnabled
+                ? window._pickRandomReplyDelay(settings.replyDelayMax)
+                : settings.replyDelayMin + Math.random() * delayRange;
             setTimeout(simulateReply, batchMessages.length * 300 + randomDelay);
             isBatchMode = false; batchMessages = [];
             DOMElements.batchBtn.classList.remove('active'); DOMElements.batchPreview.style.display = 'none';
@@ -2630,7 +2651,9 @@ if (!isBatchMode && type === 'normal') {
                 window._companionSilentTrigger = false;
             }
             const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-            const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
+            const randomDelay = settings.randomReplySpeedEnabled
+                ? window._pickRandomReplyDelay(settings.replyDelayMax)
+                : settings.replyDelayMin + Math.random() * delayRange;
 
             // 已读不回：开关打开后回不回对半随机（不做偏向概率）；开关关闭时必回
             const shouldIgnore = settings.allowReadNoReply && (Math.random() < 0.5);

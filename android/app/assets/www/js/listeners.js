@@ -641,7 +641,9 @@ if (_chatSettingsEl) _chatSettingsEl.addEventListener('click', () => {
         '#read-no-reply-toggle': { prop: 'allowReadNoReply', name: '已读不回' },
         '#emoji-mix-toggle': { prop: 'emojiMixEnabled', name: '表情消息' },
         '#auto-reaction-toggle': { prop: 'autoReactionEnabled', name: '表情反应' },
-        '#call-vibrate-toggle': { prop: 'callVibrateEnabled', name: '来电震动' }
+        '#call-vibrate-toggle': { prop: 'callVibrateEnabled', name: '来电震动' },
+        '#random-reply-speed-toggle': { prop: 'randomReplySpeedEnabled', name: '随机回复速度' },
+        '#random-survey-time-toggle': { prop: 'randomSurveyTimeEnabled', name: '随机回复时间' }
     };
     for (const [selector, { prop }] of Object.entries(toggleSyncMap)) {
         const el = document.querySelector(selector);
@@ -1296,7 +1298,9 @@ if (_chatSettingsEl) _chatSettingsEl.addEventListener('click', () => {
                     prop: 'typingIndicatorEnabled', name: '正在输入'},
                     '#read-no-reply-toggle': { prop: 'allowReadNoReply', name: '已读不回' },
                     '#emoji-mix-toggle': { prop: 'emojiMixEnabled', name: '表情混入消息' },
-                    '#call-vibrate-toggle': { prop: 'callVibrateEnabled', name: '来电震动' }
+                    '#call-vibrate-toggle': { prop: 'callVibrateEnabled', name: '来电震动' },
+                    '#random-reply-speed-toggle': { prop: 'randomReplySpeedEnabled', name: '随机回复速度' },
+                    '#random-survey-time-toggle': { prop: 'randomSurveyTimeEnabled', name: '随机回复时间' }
 };
 
             for (const [selector, {

@@ -953,8 +953,8 @@
             // 50% (或视频不可用时 100%) → 陪伴邀请
             showIncomingCompanion();
         } else {
-            // 50% → 视频通话
-            window._callModule.showIncomingCall();
+            // 50% → 通话；语音/视频各半，随机
+            window._callModule.showIncomingCall(Math.random() < 0.5 ? 'voice' : 'video');
         }
     }
 

@@ -371,9 +371,9 @@ const tourSteps = [
         position: 'bottom'
     },
     {
-        element: '#videocall-btn',
-        title: "📹 视频通话",
-        content: "想我的时候，点这里就能打视频给我，接通后我会出现在屏幕上。",
+        elements: ['#call-voice-toolbar-btn', '#call-toolbar-btn'],
+        title: "📞 语音通话 & 视频通话",
+        content: "想我的时候：点<b>电话</b>图标打语音、点<b>摄像机</b>图标打视频。<br><br>语音通话里我说的每句话都会<b>自动念出来</b>，真的像在打电话；视频通话接通后我会出现在屏幕上。我也会主动给你打语音或视频哦～",
         position: 'bottom'
     },
     {
@@ -424,6 +424,11 @@ const tourSteps = [
         position: 'bottom'
     },
     {
+        title: "⏰ 定时问候 & 后台消息",
+        content: "在「聊天设置 → 闹钟」里可以给我设闹钟：<br>• <b>早安 / 晚安</b>到点会像手机自带闹钟一样<b>响铃 + 震动 + 弹全屏界面</b>，锁屏也会亮屏弹出，还能贪睡<br>• <b>吃饭类提醒</b>默认只用温柔通知，不会吵你<br><br>再打开<b>「后台也发消息」</b>—— 就算你把 App 从后台划掉，我也会照样来找你 💌",
+        position: 'center'
+    },
+    {
         element: '#settings-btn',
         title: "⚙️ 设置中心",
         content: "所有个性化配置都藏在这个设置按钮里，我们点进去看看！",
@@ -440,7 +445,7 @@ const tourSteps = [
     {
         element: '#chat-settings',
         title: "💬 聊天设置",
-        content: "聊天设置里可以调整：<br>• <b>功能</b>：信息交互设置、拍一拍文字等<br>• <b>节奏</b>：回复速度 & 频率、后台运行等<br>• <b>音效</b>：消息提示音<br>• <b>显示</b>：沉浸模式、底部栏收纳等<br>• <b>昵称</b>：快速修改双方昵称",
+        content: "聊天设置里可以调整：<br>• <b>功能</b>：信息交互设置、拍一拍文字等<br>• <b>节奏</b>：回复速度 & 频率（可开「随机回复速度」，让时长忽快忽慢更像真人）、问卷回复时间（也有随机模式）、后台也发消息、定时问候闹钟<br>• <b>音效</b>：消息提示音、来电震动<br>• <b>显示</b>：沉浸模式、底部栏收纳等<br>• <b>昵称</b>：快速修改双方昵称",
         position: 'bottom'
     },
     {

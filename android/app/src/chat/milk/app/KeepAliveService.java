@@ -15,6 +15,8 @@ public class KeepAliveService extends Service {
         startKeepForeground();
         // 重启/被杀后恢复定时问候闹钟（AlarmManager 闹钟在重启后会丢失）
         AlarmScheduler.scheduleAll(this);
+        // 后台主动消息同理：开机/重启后重新排一条
+        AutoMsgScheduler.scheduleNext(this);
     }
 
     @Override

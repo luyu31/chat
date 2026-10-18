@@ -185,9 +185,14 @@ public final class NotificationHelper {
      *  - 铃声与震动由 RingtonePlayer 负责，通知本身不发声
      */
     public static void showIncomingCallNotification(Context ctx, String name) {
+        showIncomingCallNotification(ctx, name, false);
+    }
+
+    public static void showIncomingCallNotification(Context ctx, String name, boolean voice) {
         init(ctx);
         Intent full = new Intent(ctx, IncomingCallActivity.class);
         full.putExtra(IncomingCallActivity.EXTRA_NAME, name);
+        full.putExtra(IncomingCallActivity.EXTRA_VOICE, voice);
         full.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         int pFlags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= 23) pFlags |= PendingIntent.FLAG_IMMUTABLE;
@@ -201,7 +206,7 @@ public final class NotificationHelper {
             b.setPriority(Notification.PRIORITY_HIGH);
         }
         b.setContentTitle((name == null || name.length() == 0 ? "对方" : name) + " 来电")
-                .setContentText("邀请您进行视频通话")
+                .setContentText(voice ? "邀请您进行语音通话" : "邀请您进行视频通话")
                 .setSmallIcon(R.drawable.ic_stat_notify)
                 .setCategory(Notification.CATEGORY_CALL)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)

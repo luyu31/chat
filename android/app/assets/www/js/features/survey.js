@@ -520,6 +520,18 @@
     }
 
     function _randomDueAt() {
+        // 「随机回复时间」打开时：不看问卷那两个滑块，半小时~两天内随机，
+        // 而且分布倾向"很快就回"，偶尔才拖很久 —— 比均匀随机更像真人
+        var randomOn = (typeof settings !== 'undefined' && settings.randomSurveyTimeEnabled);
+        if (randomOn) {
+            var r = Math.random();
+            var hrs;
+            if (r < 0.40)      hrs = 0.5 + Math.random() * 2.5;   // 半小时~3 小时（常见）
+            else if (r < 0.75) hrs = 3 + Math.random() * 9;       // 3~12 小时
+            else if (r < 0.93) hrs = 12 + Math.random() * 20;     // 12~32 小时
+            else               hrs = 32 + Math.random() * 16;     // 32~48 小时（少见）
+            return Date.now() + hrs * 3600000;
+        }
         var minH = _data.replyDelayMinHours || 1;
         var maxH = Math.max(minH, _data.replyDelayMaxHours || 24);
         var hours = minH + Math.random() * (maxH - minH);

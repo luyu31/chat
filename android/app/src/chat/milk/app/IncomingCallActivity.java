@@ -33,6 +33,8 @@ import java.io.FileInputStream;
 public class IncomingCallActivity extends Activity {
 
     public static final String EXTRA_NAME = "name";
+    /** 语音通话（true）/ 视频通话（false），只影响界面文案 */
+    public static final String EXTRA_VOICE = "voice";
 
     /** 60 秒未接听自动收起（与 RingtonePlayer 超时一致，避免界面一直停在锁屏上） */
     private static final long AUTO_FINISH_MS = 60000;
@@ -63,6 +65,7 @@ public class IncomingCallActivity extends Activity {
 
         String name = getIntent().getStringExtra(EXTRA_NAME);
         if (name == null || name.length() == 0) name = "对方";
+        boolean voice = getIntent().getBooleanExtra(EXTRA_VOICE, false);
 
         // 背景：深色渐变（粉调，呼应 milk.chat）
         GradientDrawable bg = new GradientDrawable(
@@ -106,7 +109,7 @@ public class IncomingCallActivity extends Activity {
 
         // 副标题
         TextView subTv = new TextView(this);
-        subTv.setText("milk.chat · 邀请您进行视频通话");
+        subTv.setText(voice ? "milk.chat · 邀请您进行语音通话" : "milk.chat · 邀请您进行视频通话");
         subTv.setTextColor(0xB3F6F1EA);
         subTv.setTextSize(14);
         subTv.setPadding(dp(24), dp(8), dp(24), 0);

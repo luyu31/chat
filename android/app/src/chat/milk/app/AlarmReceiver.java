@@ -54,11 +54,22 @@ public class AlarmReceiver extends BroadcastReceiver {
         if (alarm == null) return; // 已被删除/停用
 
         boolean isSnooze = AlarmScheduler.ACTION_SNOOZE.equals(action) || intent.getBooleanExtra("snooze", false);
+        boolean gentle = intent.getBooleanExtra("gentle", false) || alarm.optBoolean("gentle", false);
 
         String text = pickText(alarm);
         String partnerName = partnerName(ctx);
         int snoozeMin = AlarmScheduler.snoozeMinutes(ctx);
         int maxRingMin = AlarmScheduler.maxRingMinutes(ctx);
+
+        // ── 温柔提醒（吃饭类）：只弹一条普通消息通知，不响铃、不震动、不弹全屏 ──
+        if (gentle) {
+            NotificationHelper.notifyMessage(ctx, partnerName, text, "alarm_" + id);
+            if (!isSnooze) {
+                AlarmScheduler.scheduleNext(ctx, id, alarm.optString("time"));
+                MainActivity.dispatchAlarmToJs(id);
+            }
+            return;
+        }
 
         // 1) 真的响起来：闹钟音量流循环 + 持续震动 + 持有唤醒锁
         AlarmPlayer.start(ctx, id, maxRingMin);

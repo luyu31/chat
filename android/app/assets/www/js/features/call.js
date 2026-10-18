@@ -32,6 +32,10 @@
         connectingTimer: null,
         randomCallTimer: null,
         isPartnerCall:   false,
+        // 通话模式：'video' = 视频通话（默认） / 'voice' = 语音通话
+        // 语音通话里梦角说的每句话都强制走 TTS 语音播报（见 startCall）
+        mode:            'video',
+        incomingMode:    'video',
     };
 
     // 通话中语音播报：梦角在通话期间发的消息（字卡回复）同步显示到通话窗口并自动 TTS 朗读
@@ -408,12 +412,13 @@
 }
 .call-mini-hangup:hover{background:#ff5252;transform:scale(1.12);}
 
-#call-toolbar-btn{
+#call-toolbar-btn, #call-voice-toolbar-btn{
     background-color:var(--toolbar-btn-bg, var(--message-received-bg)) !important;
     color:var(--toolbar-btn-color, var(--text-secondary)) !important;
 }
-#call-toolbar-btn:hover{color:var(--text-primary) !important;}
-body.bottom-collapse-mode #call-toolbar-btn{display:none !important;}
+#call-toolbar-btn:hover, #call-voice-toolbar-btn:hover{color:var(--text-primary) !important;}
+body.bottom-collapse-mode #call-toolbar-btn,
+body.bottom-collapse-mode #call-voice-toolbar-btn{display:none !important;}
 
 html[data-theme="dark"][data-color-theme="black-white"]{
     --accent-color: #c0c0c0;
@@ -451,7 +456,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
       <div class="call-inc-avatar" id="call-inc-avatar"><i class="fas fa-user" id="call-inc-av-icon"></i></div>
     </div>
     <div class="call-inc-name" id="call-inc-name">对方</div>
-    <div class="call-inc-sub"><span class="call-inc-sub-dot"></span><span>邀请您进行视频通话</span></div>
+    <div class="call-inc-sub"><span class="call-inc-sub-dot"></span><span id="call-inc-sub-text">邀请您进行视频通话</span></div>
     <div class="call-inc-actions">
       <button class="call-inc-btn call-inc-reject" id="call-inc-reject">
         <div class="call-inc-circle">${SVG_HU}</div>
@@ -498,7 +503,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         <div class="call-avatar" id="call-conn-avatar"><i class="fas fa-user" id="call-conn-av-icon"></i></div>
       </div>
       <div class="call-name" id="call-conn-name">对方</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.4);display:flex;align-items:center;gap:5px;">
+      <div id="call-conn-hint" style="font-size:11px;color:rgba(255,255,255,.4);display:flex;align-items:center;gap:5px;">
         <i class="fas fa-video" style="font-size:9px;"></i> 正在连接
       </div>
       <div class="call-conn-dots"><span></span><span></span><span></span></div>
@@ -511,6 +516,9 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         <div class="call-avatar" id="call-win-avatar"><i class="fas fa-user" id="call-win-av-icon"></i></div>
       </div>
       <div class="call-name" id="call-win-name">通话中</div>
+      <div id="call-mode-label" style="font-size:11px;color:rgba(255,255,255,.45);display:flex;align-items:center;gap:5px;">
+        <i class="fas fa-video" style="font-size:9px;"></i> 视频通话中
+      </div>
       <div class="call-wave"><span></span><span></span><span></span><span></span><span></span></div>
     </div>
 
@@ -556,6 +564,22 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         if (document.getElementById('call-toolbar-btn')) return;
         const anchor = document.getElementById('attachment-btn');
         if (!anchor) return;
+
+        // 语音通话按钮
+        const vBtn = document.createElement('button');
+        vBtn.id = 'call-voice-toolbar-btn';
+        vBtn.title = '语音通话';
+        vBtn.className = 'input-btn collapse-hideable';
+        vBtn.style.display = S.enabled ? '' : 'none';
+        vBtn.innerHTML = '<i class="fas fa-phone"></i>';
+        vBtn.addEventListener('click', () => {
+            if (!S.enabled) return;
+            if (S.active) { restoreWindow(); return; }
+            startCall(false, 'voice');
+        });
+        anchor.parentNode.insertBefore(vBtn, anchor);
+
+        // 视频通话按钮
         const btn = document.createElement('button');
         btn.id = 'call-toolbar-btn';
         btn.title = '视频通话';
@@ -565,7 +589,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         btn.addEventListener('click', () => {
             if (!S.enabled) return;
             if (S.active) { restoreWindow(); return; }
-            startCall(false);
+            startCall(false, 'video');
         });
         anchor.parentNode.insertBefore(btn, anchor);
     }
@@ -619,7 +643,8 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 isPartnerCall: !!S.isPartnerCall,
                 bgImage: S.bgImage || null,
                 immersive: !!S.immersive,
-                minimized: !!S.minimized
+                minimized: !!S.minimized,
+                mode: S.mode
             };
             localforage.setItem(getCallSessionKey(), payload).catch(() => {});
             _lastCallHeartbeatTs = Date.now();
@@ -702,11 +727,33 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
 
     function sendCallMsg(dur) {
         if (dur < 2000) return;
-        sendCallEvent('fa-video', '视频通话已结束', fmt(dur));
+        const isVoice = S.mode === 'voice';
+        sendCallEvent(isVoice ? 'fa-phone' : 'fa-video',
+            isVoice ? '语音通话已结束' : '视频通话已结束', fmt(dur));
     }
 
-    function startCall(isPartner) {
+    // 切换通话模式（视频 / 语音）：同步界面上的图标与文案
+    function setCallMode(mode) {
+        S.mode = (mode === 'voice') ? 'voice' : 'video';
+        const isVoice = S.mode === 'voice';
+        const icon = isVoice ? 'fa-phone' : 'fa-video';
+        const hint = document.getElementById('call-conn-hint');
+        if (hint) hint.innerHTML = '<i class="fas ' + icon + '" style="font-size:9px;"></i> '
+            + (isVoice ? '正在接通语音通话' : '正在连接');
+        const label = document.getElementById('call-mode-label');
+        if (label) label.innerHTML = '<i class="fas ' + icon + '" style="font-size:9px;"></i> '
+            + (isVoice ? '语音通话中' : '视频通话中');
+        document.getElementById('call-window')?.classList.toggle('voice-mode', isVoice);
+    }
+
+    function startCall(isPartner, mode) {
         if (!S.enabled) return;
+        setCallMode(mode);
+        // 语音通话：强制开启语音播报 —— 他一说话就念出来，不用手动点
+        if (S.mode === 'voice') {
+            VC.enabled = true;
+            localStorage.setItem(KEY_VC, 'true');
+        }
         VC.errorNotified = false; // 新通话重新允许"播报失败"提醒
         S.active = true; S.startTime = null; S.elapsed = 0;
         S.minimized = false; S.isPartnerCall = !!isPartner; S.immersive = false;
@@ -746,7 +793,8 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                     getName() + ' 暂时无法接听',
                 ];
                 const lbl = rejectLabels[Math.floor(Math.random() * rejectLabels.length)];
-                sendCallEvent('fa-phone-slash', lbl, null);
+                sendCallEvent(S.mode === 'voice' ? 'fa-phone-slash' : 'fa-video',
+                    (S.mode === 'voice' ? '语音通话未接通 · ' : '') + lbl, null);
                 if (typeof showNotification === 'function')
                     showNotification(lbl, 'info', 3000);
             }, rejectDelay);
@@ -759,12 +807,12 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 // 通话接通：立即写入第一次心跳
                 writeCallSession();
                 tick();
-                // 语音播报默认开启，但真实语音(TTS)没配置时之前会静默只显文字——
-                // 用户以为"选了他说话却不出声"。接通时主动提醒一次怎么配置
                 updateVcBtn(); // 按钮警告态也要跟着当前 TTS 状态刷新（接通前可能刚改过配置）
                 if (VC.enabled && !vcTtsReady()) {
                     if (typeof showNotification === 'function')
-                        showNotification('语音播报已开启，但尚未配置 ta 的真实语音：设置 → 聊天设置 → 真实语音(TTS)，配置后通话中 ta 的话会自动朗读', 'warning', 5200);
+                        showNotification(S.mode === 'voice'
+                            ? '语音通话已接通，但还没配置 ta 的真实语音：设置 → 聊天设置 → 真实语音(TTS)。配置后他说的每句话都会念出来'
+                            : '语音播报已开启，但尚未配置 ta 的真实语音：设置 → 聊天设置 → 真实语音(TTS)，配置后通话中 ta 的话会自动朗读', 'warning', 5200);
                 }
             }, 1400 + Math.random() * 1400);
         }
@@ -774,7 +822,10 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
     // 梦角在通话期间发的消息（字卡回复）→ 通话窗口顶部气泡 + 自动 TTS 朗读
     // 仅通话窗口展开时生效；缩小成胶囊时不播报（消息照常进聊天流）
     function vcCanShow() {
-        return S.active && !S.minimized;
+        if (!S.active) return false;
+        // 语音通话：就算把通话缩成小胶囊也继续念 —— 毕竟是"打电话"，不能因为收起界面就不出声
+        if (S.mode === 'voice') return true;
+        return !S.minimized;
     }
 
     function updateVcBtn() {
@@ -916,12 +967,15 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         stopWebVibrate();
     }
 
-    function showIncomingCall() {
+    function showIncomingCall(mode) {
         if (!S.enabled || S.active) return;
         if (typeof window._cinemaShouldBlockInterruptions === 'function' && window._cinemaShouldBlockInterruptions()) return; // 观影中/快到观影时间不弹通话邀请
+        S.incomingMode = (mode === 'voice') ? 'voice' : 'video';
         const ov = document.getElementById('call-incoming-overlay');
         if (!ov) return;
         fillAv('call-inc-avatar'); fillNm('call-inc-name');
+        const subEl = document.getElementById('call-inc-sub-text');
+        if (subEl) subEl.textContent = S.incomingMode === 'voice' ? '邀请您进行语音通话' : '邀请您进行视频通话';
         ov.classList.add('visible');
         clearTimeout(S.incomingTimer);
 
@@ -935,8 +989,8 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         let nativeOk = false;
         try {
             if (window.MilkChat && typeof window.MilkChat.startRinging === 'function') {
-                // 参数：对方名字、头像、是否响铃、是否震动
-                window.MilkChat.startRinging(getName(), av, ringAllowed, vibrateAllowed);
+                // 参数：对方名字、头像、是否响铃、是否震动、通话模式（决定原生界面写"语音/视频通话"）
+                window.MilkChat.startRinging(getName(), av, ringAllowed, vibrateAllowed, S.incomingMode);
                 nativeOk = true;
             }
         } catch (e) { console.warn('[call] native ring error:', e); }
@@ -954,9 +1008,10 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         try {
             if (typeof window._sendPartnerNotification === 'function') {
                 const partnerName = getName();
+                const isVoice = S.incomingMode === 'voice';
                 window._sendPartnerNotification(
-                    partnerName + ' 正在邀请你视频通话',
-                    '快接听吧 📹'
+                    partnerName + (isVoice ? ' 正在邀请你语音通话' : ' 正在邀请你视频通话'),
+                    isVoice ? '快接听吧 📞' : '快接听吧 📹'
                 );
             }
         } catch (e) { console.warn('[call] invite notification error:', e); }
@@ -999,7 +1054,8 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
 
     function minimizeWindow() {
         S.minimized = true;
-        vcStop(); // 缩小成胶囊后不再播报（消息照常进聊天）
+        // 语音通话缩成胶囊后继续念（见 vcCanShow）；视频通话收起界面就停播报
+        if (S.mode !== 'voice') vcStop();
         document.getElementById('call-window')?.classList.remove('visible');
         const pill = document.getElementById('call-mini-pill');
         if (pill) { pill.classList.add('visible'); positionPill(); }
@@ -1139,7 +1195,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             document.getElementById('call-incoming-overlay')?.classList.remove('visible');
             clearTimeout(S.incomingTimer);
             stopIncomingSignals();
-            startCall(true);
+            startCall(true, S.incomingMode);
         });
 
         document.getElementById('call-hangup-btn')?.addEventListener('click', endCall);
@@ -1223,6 +1279,8 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             localStorage.setItem(KEY_ENABLED, S.enabled);
             const btn = document.getElementById('call-toolbar-btn');
             if (btn) btn.style.display = S.enabled ? '' : 'none';
+            const vBtn = document.getElementById('call-voice-toolbar-btn');
+            if (vBtn) vBtn.style.display = S.enabled ? '' : 'none';
             const collapsedCallBtn = document.getElementById('collapsed-call-btn');
             if (collapsedCallBtn) collapsedCallBtn.style.display = S.enabled ? '' : 'none';
             if (!S.enabled && S.active) endCall();
@@ -1232,7 +1290,15 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         initDrag(); initPillDrag(); initResize();
     }
 
-    window.callFeature = { startCall, endCall, showIncomingCall, restoreWindow, minimizeWindow, isActive: () => S.active, isMinimized: () => !!S.minimized, chatVoiceAuto: () => S.active && S.minimized && VC.enabled };
+    window.callFeature = {
+        startCall, endCall, showIncomingCall, restoreWindow, minimizeWindow,
+        startVoiceCall: () => startCall(false, 'voice'),
+        startVideoCall: () => startCall(false, 'video'),
+        getMode: () => S.mode,
+        isActive: () => S.active,
+        isMinimized: () => !!S.minimized,
+        chatVoiceAuto: () => S.active && S.minimized && VC.enabled
+    };
 
     function init() {
         injectCSS();
@@ -1248,8 +1314,10 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 if (tog) {
                     tog.checked = S.enabled;
                 }
-                const collapsedCallBtn = document.getElementById('collapsed-call-btn');
-                if (collapsedCallBtn) collapsedCallBtn.style.display = S.enabled ? '' : 'none';
+                ['call-toolbar-btn', 'call-voice-toolbar-btn', 'collapsed-call-btn'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.style.display = S.enabled ? '' : 'none';
+                });
             };
             syncCallToggle();
             const chatModal = document.getElementById('chat-modal');
@@ -1269,8 +1337,8 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
 
     // v2.5: 暴露给 companion.js 用于统一来电调度
     window._callModule = {
-        showIncomingCall: () => {
-            if (S.enabled && !S.active) showIncomingCall();
+        showIncomingCall: (mode) => {
+            if (S.enabled && !S.active) showIncomingCall(mode);
         },
         isEnabled: () => S.enabled,
 
@@ -1289,6 +1357,8 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 S.isPartnerCall = !!session.isPartnerCall;
                 S.immersive = !!session.immersive;
                 if (session.bgImage) S.bgImage = session.bgImage;
+                setCallMode(session.mode || 'video');
+                if (S.mode === 'voice') { VC.enabled = true; localStorage.setItem(KEY_VC, 'true'); }
 
                 document.getElementById('call-window')?.classList.remove('immersive');
                 ['call-inc-avatar','call-conn-avatar','call-win-avatar','call-mini-av','clm-av'].forEach(fillAv);

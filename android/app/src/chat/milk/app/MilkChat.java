@@ -108,9 +108,10 @@ public class MilkChat {
      * @param avatarDataUrl 头像 dataURL（http 链接或空则不显示头像）
      * @param ring 是否响铃（JS 侧根据用户音效设置传）
      * @param vibrate 是否震动（JS 侧根据"来电震动"开关传，缺省按 true 处理）
+     * @param mode "voice"=语音通话 / 其它=视频通话（只影响原生界面的文案）
      */
     @JavascriptInterface
-    public void startRinging(String name, String avatarDataUrl, boolean ring, Boolean vibrate) {
+    public void startRinging(String name, String avatarDataUrl, boolean ring, Boolean vibrate, String mode) {
         try {
             if (avatarDataUrl != null && avatarDataUrl.startsWith("data:image/")) {
                 String b64 = avatarDataUrl.substring(avatarDataUrl.indexOf(",") + 1);
@@ -119,10 +120,11 @@ public class MilkChat {
                 fos.write(data); fos.flush(); fos.close();
             }
         } catch (Exception ignored) {}
+        boolean voice = "voice".equals(mode);
         boolean v = (vibrate == null) || vibrate;
         if (ring) RingtonePlayer.start(ctx, true, v);
         else RingtonePlayer.start(ctx, false, v); // 关铃声时仍可走原生震动（比 navigator.vibrate 可靠）
-        NotificationHelper.showIncomingCallNotification(ctx, name);
+        NotificationHelper.showIncomingCallNotification(ctx, name, voice);
 
         // 直接拉起全屏来电界面：锁屏走上面 fullScreenIntent，这里再兜底一遍，
         // 让"亮屏但 App 在后台/在别的 App 里"时也尽量像系统来电一样全屏弹出。
@@ -130,6 +132,7 @@ public class MilkChat {
         try {
             Intent i = new Intent(ctx, IncomingCallActivity.class);
             i.putExtra(IncomingCallActivity.EXTRA_NAME, name);
+            i.putExtra(IncomingCallActivity.EXTRA_VOICE, voice);
             i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             ctx.startActivity(i);
         } catch (Exception ignored) {}
@@ -325,6 +328,18 @@ public class MilkChat {
     @JavascriptInterface
     public boolean isAlarmRinging() {
         return AlarmPlayer.isRinging();
+    }
+
+    // ─── 后台主动消息（App 被划掉也能发） ───
+
+    /**
+     * JS 同步后台主动消息配置：
+     * {"enabled":true,"partnerName":"xx","minGapMin":30,"maxGapMin":120,"texts":[...]}
+     * 原生会按随机间隔自己发通知 —— 不依赖 WebView，所以后台划掉 App 也照发。
+     */
+    @JavascriptInterface
+    public void syncAutoMsg(String json) {
+        AutoMsgScheduler.syncFromJson(ctx, json);
     }
 
     // ─── 自定义应用图标（桌面快捷方式） ───
