@@ -2,8 +2,9 @@
  * peek.js — 查岗摸鱼：看他在干什么
  *
  * 跟查岗互补：查岗是他查你，摸鱼是你看他。
- * 每天第一次打开时用"日期字符串"当种子的伪随机（seededRandom）
- * 抽一个当天的状态，当天内保持不变，零点后重抽；
+ * 「他此刻在干嘛」和「他现在在哪」都用「日期+小时」当种子的伪随机（seededRandom），
+ * 每小时抽一次：同一个小时内稳定不变，跨过整点自动换一条 —— 不再是一整天一个状态。
+ * 状态和位置用不同的 salt，抽到的下标互相独立，不会看起来像联动。
  * 「偷看一下」抓不抓包完全随机（两种结果各占一半，不配置概率，
  * 60 分钟冷却，localStorage 记 lastCaughtAt）；
  * 状态池直接用字卡库的「摸鱼状态」字卡组（reply-library.js 的
@@ -15,7 +16,7 @@
 (function () {
     'use strict';
 
-    var KEY = 'peekStatus';               // { lastRefresh:'YYYY-MM-DD', current, lastCaughtAt }
+    var KEY = 'peekStatus';               // { lastCaughtAt }（状态/位置改成按时段现算，不再落库）
     var CAUGHT_COOLDOWN = 60 * 60 * 1000; // 被抓包后的冷却：60 分钟
 
     // ── 兜底状态池（字卡库没加载/被清空时才用） ──────────────────────
@@ -100,13 +101,38 @@
         return pool;
     }
 
-    // ── 他现在在哪：用「日期+小时」当种子，同一小时内稳定，跨小时自然换位置 ──────────────────────
+    // ── 每小时随机：用「日期+小时+用途」当种子，同一小时内稳定，跨小时自动换 ──────────────────────
+    // salt 让"在干嘛"和"在哪"抽到各自独立的下标，不会看起来像联动
+    function _hourlyIndex(len, day, hour, salt) {
+        var rnd = seededRandom(day + '-h' + hour + '-' + salt);
+        return Math.floor(rnd() * len) % len;
+    }
+    // 一次性把当天 0~23 点的下标序列算出来，遇到和上一条相同就往后挪一格 ——
+    // 这样"相邻两个小时一定不一样"，不会出现连着两小时都是一条、看起来像没换。
+    // 单次遍历 24 次，代价可忽略；而且这是纯函数：同一天同一小时内，
+    // 全应用任何地方算出来的结果都一样，状态始终一致。
+    function _daySequence(len, day, salt) {
+        var seq = [];
+        for (var h = 0; h < 24; h++) {
+            var idx = _hourlyIndex(len, day, h, salt);
+            if (h > 0 && idx === seq[h - 1] && len > 1) idx = (idx + 1) % len;
+            seq.push(idx);
+        }
+        return seq;
+    }
+    function _pickHourly(pool, salt) {
+        if (!Array.isArray(pool) || !pool.length) return '';
+        var len = pool.length;
+        if (len === 1) return pool[0];
+        var seq = _daySequence(len, todayStr(), salt);
+        var idx = seq[new Date().getHours()];
+        if (idx == null) idx = 0;
+        return pool[idx] || pool[0];
+    }
+
+    // ── 他现在在哪：每小时换，同一小时内稳定 ──────────────────────
     function getLocationNow() {
-        var d = new Date();
-        var seed = todayStr() + '-h' + d.getHours();
-        var pool = _getLocationPool();
-        var rnd = seededRandom(seed);
-        return pool[Math.floor(rnd() * pool.length)];
+        return _pickHourly(_getLocationPool(), 'loc');
     }
 
     // ── 日期字符串种子伪随机：同一天种子相同，抽出的状态全天稳定 ──────────────────────
@@ -126,19 +152,10 @@
         };
     }
 
-    // ── 今日状态：每天第一次取时抽签，当天内不再变（lastRefresh 记日期） ──────────────────────
+    // ── 此刻在干嘛：跟位置一样「每小时换」，同一小时内稳定 ──────────────────────
+    // 以前是每天 0 点抽一次、全天不变 —— 一天都是一个状态太无聊了，改成每小时自动换
     function getToday() {
-        var d = load();
-        var pool = _getPool();
-        var today = todayStr();
-        // 当天没抽过，或者昨天抽的那条已经不在字卡池里了 → 重抽
-        if (d.lastRefresh !== today || !d.current || pool.indexOf(d.current) === -1) {
-            var rnd = seededRandom(today);
-            d.current = pool[Math.floor(rnd() * pool.length)];
-            d.lastRefresh = today;
-            save(d);
-        }
-        return d.current;
+        return _pickHourly(_getPool(), 'act');
     }
 
     function _partnerName() {
@@ -195,7 +212,7 @@
             +     '</div>'
             +   '</div>'
             + '</div>'
-            + '<div style="font-size:11px;color:var(--text-secondary,#999);margin:8px 0 12px 2px;">今日状态每天 0 点刷新 · 位置每小时换 · 字卡来自「摸鱼状态」「他的位置」字卡组</div>';
+            + '<div style="font-size:11px;color:var(--text-secondary,#999);margin:8px 0 12px 2px;">「在干嘛」和「在哪」都<b>每小时自动换一次</b> · 字卡来自「摸鱼状态」「他的位置」字卡组</div>';
         var textEl = document.getElementById('peek-status-text');
         if (textEl) textEl.textContent = status;
         var locEl = document.getElementById('peek-location-text');
@@ -270,6 +287,12 @@
     }
 
     // ── 弹窗（照抄 checkin.js 的 buildModal 模式） ──────────────────────
+    // 状态/位置是"每小时换"，页面一直开着跨过整点时也要跟着变，所以开一个轻量对表定时器
+    var _tickTimer = null;
+    function _stopTick() {
+        if (_tickTimer) { clearInterval(_tickTimer); _tickTimer = null; }
+    }
+
     function buildModal() {
         if (document.getElementById('peek-modal')) return;
         var m = document.createElement('div');
@@ -285,15 +308,19 @@
         +   '<div style="display:flex;justify-content:flex-end;margin-top:12px;">'
         +     '<button type="button" id="peek-close" class="modal-btn modal-btn-secondary">关闭</button>'
         +   '</div>'
-        +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;">跟关心妹妹互补：关心妹妹是他来看你，摸鱼是你看他。今日状态每天 0 点用日期种子抽签，全天不变。</div>'
+        +   '<div style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;">跟关心妹妹互补：关心妹妹是他来看你，摸鱼是你看他。他现在在干嘛、在哪，都是每小时自动换一次（同一小时内保持一致）。</div>'
         + '</div>';
         document.body.appendChild(m);
 
         m.querySelector('#peek-close').addEventListener('click', function () {
+            _stopTick();
             if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none';
         });
         m.addEventListener('click', function (e) {
-            if (e.target === m) { if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none'; }
+            if (e.target === m) {
+                _stopTick();
+                if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none';
+            }
         });
         m.querySelector('#peek-peek-btn').addEventListener('click', peekHim);
     }
@@ -313,12 +340,17 @@
         if (m) {
             if (typeof showModal === 'function') showModal(m); else m.style.display = 'flex';
         }
+        // 页面开着时每分钟对一次表：跨过整点自动换成新的"在干嘛 / 在哪"
+        _stopTick();
+        _tickTimer = setInterval(function () {
+            var modal = document.getElementById('peek-modal');
+            if (!modal || modal.style.display === 'none') { _stopTick(); return; }
+            renderCard();
+        }, 60000);
     }
 
-    // ── 启动：DOMContentLoaded 自动初始化（抽今日状态） ──────────────────────
-    function init() {
-        getToday();
-    }
+    // ── 启动（状态/位置现在是按小时现算的纯函数，这里不需要预热） ──────────────────────
+    function init() {}
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
@@ -326,8 +358,8 @@
         init();
     }
 
-    // 对外：getToday=他此刻在做什么（今日唯一状态字卡），
-    //       getLocationNow=他此刻在哪（本小时唯一地点字卡）。
-    // 双向打卡等所有功能都必须从这里取，保证全应用状态一致
+    // 对外：getToday=他此刻在做什么（本小时唯一状态字卡），
+    //       getLocationNow=他此刻在哪（本小时唯一地点字卡，和状态各抽各的）。
+    // 双向打卡等所有功能都必须从这里取，保证同一小时内全应用状态一致
     window.Peek = { open: open, getToday: getToday, getLocationNow: getLocationNow };
 })();
