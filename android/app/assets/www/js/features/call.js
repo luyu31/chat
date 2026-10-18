@@ -165,10 +165,16 @@
 #call-window-bg{position:absolute;inset:0;z-index:0;}
 .call-bg-grad{position:absolute;inset:0;background:linear-gradient(155deg,#0d1b2a 0%,#1b263b 50%,#415a77 100%);}
 #call-window-bg img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none;}
-.call-orb{position:absolute;border-radius:50%;filter:blur(44px);opacity:.28;animation:cOrb linear infinite;pointer-events:none;}
-.call-orb-1{width:130px;height:130px;background:var(--accent-color,#e0698a);top:-25px;left:-25px;animation-duration:18s;}
-.call-orb-2{width:90px;height:90px;background:#4a90d9;bottom:10px;right:-10px;animation-duration:23s;animation-delay:-9s;}
-.call-orb-3{width:70px;height:70px;background:#9b59b6;top:40%;left:45%;animation-duration:28s;animation-delay:-14s;}
+/* 背景光斑：原来是实心圆 + filter:blur(44px)。
+   44px 大模糊会让这块每帧都要重新栅格化一整层，低端机上开着通话窗口就发涩。
+   改成「径向渐变自己渐隐」的圆 —— 观感几乎一样，但完全没有 filter 开销。 */
+.call-orb{position:absolute;border-radius:50%;opacity:.30;animation:cOrb linear infinite;pointer-events:none;}
+.call-orb-1{width:230px;height:230px;top:-62px;left:-62px;animation-duration:18s;
+    background:radial-gradient(circle,rgba(var(--accent-color-rgb,224,105,138),.85) 0%,rgba(var(--accent-color-rgb,224,105,138),.34) 45%,transparent 72%);}
+.call-orb-2{width:170px;height:170px;bottom:-34px;right:-34px;animation-duration:23s;animation-delay:-9s;
+    background:radial-gradient(circle,rgba(74,144,217,.80) 0%,rgba(74,144,217,.30) 45%,transparent 72%);}
+.call-orb-3{width:130px;height:130px;top:40%;left:42%;animation-duration:28s;animation-delay:-14s;
+    background:radial-gradient(circle,rgba(155,89,182,.75) 0%,rgba(155,89,182,.28) 45%,transparent 72%);}
 .call-overlay{
     position:absolute;inset:0;z-index:1;transition:opacity .4s;
     background:linear-gradient(to bottom,rgba(0,0,0,.5) 0%,rgba(0,0,0,.04) 35%,rgba(0,0,0,.04) 60%,rgba(0,0,0,.65) 100%);
@@ -1092,24 +1098,45 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         const win = document.getElementById('call-window');
         if (!hdr || !win) return;
         let on = false;
+        let dragging = false;            // 是否已进入"跟手"状态
+        let baseLeft = 0, baseTop = 0;   // 拖动开始时的 left/top，transform 以它为基准
         hdr.addEventListener('pointerdown', e => {
             if (e.pointerType === 'mouse' && e.button !== 0) return;
             e.preventDefault();
             const r = win.getBoundingClientRect();
             S.dragOff = { x: e.clientX - r.left, y: e.clientY - r.top };
+            baseLeft = r.left; baseTop = r.top;
+            dragging = false;
             on = true;
             try { hdr.setPointerCapture(e.pointerId); } catch(_) {}
         });
         hdr.addEventListener('pointermove', e => {
             if (!on || !S.dragOff) return; e.preventDefault();
-            win.style.left   = clamp(e.clientX - S.dragOff.x, 0, window.innerWidth  - win.offsetWidth)  + 'px';
-            win.style.top    = clamp(e.clientY - S.dragOff.y, 0, window.innerHeight - win.offsetHeight) + 'px';
-            win.style.right  = 'auto'; win.style.bottom = 'auto';
+            const nl = clamp(e.clientX - S.dragOff.x, 0, window.innerWidth  - win.offsetWidth);
+            const nt = clamp(e.clientY - S.dragOff.y, 0, window.innerHeight - win.offsetHeight);
+            // 拖动全程只改 transform：走合成器，不重排、不重绘那块大阴影；松手时才写回 left/top。
+            // 原来每个 pointermove 都改 left/top，会带着阴影一起重排重绘，低端机上拖着明显发涩。
+            if (!dragging) {
+                dragging = true;
+                win.style.left = baseLeft + 'px';
+                win.style.top  = baseTop  + 'px';
+                win.style.right = 'auto'; win.style.bottom = 'auto';
+            }
+            win.style.transform = 'translate3d(' + Math.round(nl - baseLeft) + 'px,' + Math.round(nt - baseTop) + 'px,0)';
+            S.pos = { x: nl, y: nt };
         });
         const stop = e => {
             if (!on) return; on = false; S.dragOff = null;
-            const r = win.getBoundingClientRect(); S.pos = { x: r.left, y: r.top };
-            localStorage.setItem(KEY_POS, JSON.stringify(S.pos));
+            if (dragging) {
+                // 把 transform 落成真实位置，免得之后和 positionWindow 写的 left/top 打架
+                dragging = false;
+                win.style.transform = '';
+                if (S.pos) {
+                    win.style.left = S.pos.x + 'px';
+                    win.style.top  = S.pos.y + 'px';
+                    localStorage.setItem(KEY_POS, JSON.stringify(S.pos));
+                }
+            }
             try { hdr.releasePointerCapture(e.pointerId); } catch(_) {}
         };
         hdr.addEventListener('pointerup', stop);
