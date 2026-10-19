@@ -2662,6 +2662,15 @@
 
     async function _runPartnerInviteCheck() {
         await Promise.all([_wlLoad(), _histLoad(), _negoLoad(), _apptLoad()]);
+        // 关键：必须等主聊天数据 loadData 完成之后再发邀请卡。
+        // 否则 addMessage 加进去的卡片会在 loadData 恢复历史时被整个覆盖掉，
+        // 表现就是"他明明邀请了你，对话里却什么都看不到"。
+        // （用户侧回复那条路早就用 _pendingBootResolve 处理了这个坑，梦角主动邀请这条漏了）
+        if (!_appDataLoaded) {
+            if (_partnerInviteTimer) { clearTimeout(_partnerInviteTimer); _partnerInviteTimer = null; }
+            _partnerInviteTimer = setTimeout(_runPartnerInviteCheck, 600);
+            return;
+        }
         // 只有在"没有约定、没有协商中"的时候才可能触发，不然会跟用户自己发的邀请撞车
         // 到检查点、又没有进行中的约定时就邀请：对半随机，不做递增保底
         var canInvite = _uiState === 'empty' && !(_negoState && _negoState.active);

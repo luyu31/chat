@@ -153,6 +153,7 @@ function _renderListContentOnly() {
         else if (currentSubTab === 'statuses') itemsToRender = customStatuses;
         else if (currentSubTab === 'slacking') { _renderSlackingTab(list); return; }
         else if (currentSubTab === 'locationBank') { _locationBank.render(list, '位置字卡'); return; }
+        else if (currentSubTab === 'partnerDayActs') { _partnerDayActBank.render(list, '他在做什么'); return; }
         else if (currentSubTab === 'qaQuestions') { _qaQuestionBank.render(list, 'TA的题库'); return; }
         else if (currentSubTab === 'qaPraise') { _qaPraiseBank.render(list, '夸奖字卡'); return; }
         else if (currentSubTab === 'qaTease') { _qaTeaseBank.render(list, '嘲讽字卡'); return; }
@@ -262,6 +263,7 @@ function renderReplyLibrary() {
         else if (currentSubTab === 'statuses') itemsToRender = customStatuses;
         else if (currentSubTab === 'slacking') { _renderSlackingTab(list); return; }
         else if (currentSubTab === 'locationBank') { _locationBank.render(list, '位置字卡'); return; }
+        else if (currentSubTab === 'partnerDayActs') { _partnerDayActBank.render(list, '他在做什么'); return; }
         else if (currentSubTab === 'qaQuestions') { _qaQuestionBank.render(list, 'TA的题库'); return; }
         else if (currentSubTab === 'qaPraise') { _qaPraiseBank.render(list, '夸奖字卡'); return; }
         else if (currentSubTab === 'qaTease') { _qaTeaseBank.render(list, '嘲讽字卡'); return; }
@@ -325,7 +327,7 @@ function _renderModernToolbar() {
     // 问卷题库这个 tab 是自己单独一套渲染（对象结构，不是纯字符串数组），
     // 不走下面这套批量管理/分组/去重逻辑——那些都是照着字符串数组写的，硬塞进来只会出岔子
     // 摸鱼状态也是 {id,text} 对象结构，单独一套渲染，同样不走通用批量逻辑
-    if (currentMajorTab === 'atmosphere' && (currentSubTab === 'surveyBank' || currentSubTab === 'redpacketBank' || currentSubTab === 'slacking' || currentSubTab === 'locationBank' || currentSubTab === 'qaQuestions' || currentSubTab === 'qaPraise' || currentSubTab === 'qaTease' || currentSubTab === 'peekCaught' || currentSubTab === 'foodReact')) {
+    if (currentMajorTab === 'atmosphere' && (currentSubTab === 'surveyBank' || currentSubTab === 'redpacketBank' || currentSubTab === 'slacking' || currentSubTab === 'locationBank' || currentSubTab === 'partnerDayActs' || currentSubTab === 'qaQuestions' || currentSubTab === 'qaPraise' || currentSubTab === 'qaTease' || currentSubTab === 'peekCaught' || currentSubTab === 'foodReact')) {
         if (toolbar) toolbar.style.display = 'none';
         return;
     }
@@ -1216,6 +1218,7 @@ function _makeObjectBank(storageKey, builtin) {
 function _getObjectBankByTab(subTab) {
     var map = {
         locationBank: (typeof _locationBank !== 'undefined') ? _locationBank : null,
+        partnerDayActs: (typeof _partnerDayActBank !== 'undefined') ? _partnerDayActBank : null,
         qaQuestions: (typeof _qaQuestionBank !== 'undefined') ? _qaQuestionBank : null,
         qaPraise: (typeof _qaPraiseBank !== 'undefined') ? _qaPraiseBank : null,
         qaTease: (typeof _qaTeaseBank !== 'undefined') ? _qaTeaseBank : null,
@@ -1243,6 +1246,30 @@ var _locationBank = _makeObjectBank('customPartnerLocations', [
     { id: 'l_10', text: '在楼下遛弯' }
 ]);
 window._getPartnerLocationPool = _locationBank.pool;
+
+// ─── 他在做什么（你我之间 / 他今天做了什么 里展示「他在干嘛」）字卡组 ──────────────────────
+// 只放"动作"，地点由时间轴每个时间段自己决定，所以这里都是放哪儿都说得通的句子
+var _partnerDayActBank = _makeObjectBank('customPartnerDayActs', [
+    { id: 'pa_1', text: '在发呆' },
+    { id: 'pa_2', text: '在认真工作' },
+    { id: 'pa_3', text: '在摸鱼' },
+    { id: 'pa_4', text: '在开会' },
+    { id: 'pa_5', text: '在忙' },
+    { id: 'pa_6', text: '在打游戏' },
+    { id: 'pa_7', text: '在看剧' },
+    { id: 'pa_8', text: '在看书' },
+    { id: 'pa_9', text: '在听歌' },
+    { id: 'pa_10', text: '在和朋友聊天' },
+    { id: 'pa_11', text: '在赶进度' },
+    { id: 'pa_12', text: '在休息' },
+    { id: 'pa_13', text: '在散步' },
+    { id: 'pa_14', text: '在刷视频' },
+    { id: 'pa_15', text: '在写东西' },
+    { id: 'pa_16', text: '在打瞌睡' },
+    { id: 'pa_17', text: '在偷偷想你' },
+    { id: 'pa_18', text: '在走神，想你了' }
+]);
+window._getPartnerDayActPool = _partnerDayActBank.pool;
 
 // ─── 快问快答 · 问题字卡（格式：问题|选项1|选项2|...，问卷式点选） ───────────────────────────────
 // 题目全部中性化：不预设对方的身份/性别/称呼，任何梦角都问得出口
@@ -2959,6 +2986,10 @@ function initReplyLibraryListeners() {
             }
             if (currentSubTab === 'locationBank') {
                 _locationBank.add('位置字卡', '请输入新的位置（比如：在江边散步）:');
+                return;
+            }
+            if (currentSubTab === 'partnerDayActs') {
+                _partnerDayActBank.add('他在做什么', '请输入他新的"在做什么"（比如：在偷偷想你）:');
                 return;
             }
             if (currentSubTab === 'qaQuestions') {

@@ -5,8 +5,10 @@
  * 类似《未定事件簿》的「你我之间」，一眼看完他一整天。
  *
  * 特点：
- *  - 时间段、做什么、在哪全部由用户自己设置（支持一个时间段填多条候选，
+ *  - 时间段、在哪由用户自己设置（「在哪」每段可填多条候选，
  *    每天按日期固定随机抽一条 —— 同一天内结果稳定，不会刷新一次变一次）
+ *  - 「他在做什么」不再每段单写，统一从共享字卡组「他在做什么」里随机抽
+ *    （自定义回复 → 氛围感配置 → 他在做什么），想改内容改字卡就行
  *  - 当前时间段高亮显示「现在」，已过去的暗下去，还没到的正常显示
  *  - 跨零点的时段（如 23:30–06:30）也能正确算进"现在"
  *  - 页面做得比较大（宽 94vw / 高 92vh），不是为了塞进小弹窗
@@ -38,35 +40,19 @@
     ];
 
     // 默认模板：一整天覆盖完整（最后一个时段跨零点）
+    // 注意：「做什么」不再每个时段各写一份，而是全部从共享的「他在做什么」字卡组里抽
+    //       （自定义回复 → 氛围感配置 → 他在做什么），所以这里只留时间、图标、在哪
     function defaultSlots() {
         return [
-            { id: 'pd1', start: '06:30', end: '08:00', icon: 'fa-mug-hot',
-              acts: ['刚起床，在洗漱', '赖床中，还不太想起来', '已经起来晨跑了一会儿'],
-              locs: ['家', '家里'] },
-            { id: 'pd2', start: '08:00', end: '09:00', icon: 'fa-utensils',
-              acts: ['在吃早饭', '随便垫了两口就去忙了'],
-              locs: ['家', '楼下的早餐店'] },
-            { id: 'pd3', start: '09:00', end: '12:00', icon: 'fa-briefcase',
-              acts: ['在上班，正开会', '在处理今天的工作', '在写方案，有点忙'],
-              locs: ['公司', '办公室', '会议室'] },
-            { id: 'pd4', start: '12:00', end: '13:30', icon: 'fa-bowl-food',
-              acts: ['在吃午饭', '和同事一起吃饭', '在楼下随便吃了点'],
-              locs: ['公司附近', '食堂', '常去的小店'] },
-            { id: 'pd5', start: '13:30', end: '18:00', icon: 'fa-laptop',
-              acts: ['在继续工作', '在开下午的会', '在改稿子，有点头大'],
-              locs: ['公司', '办公室'] },
-            { id: 'pd6', start: '18:00', end: '19:30', icon: 'fa-car',
-              acts: ['在下班的路上', '刚到家，在换衣服'],
-              locs: ['路上', '家'] },
-            { id: 'pd7', start: '19:30', end: '22:00', icon: 'fa-couch',
-              acts: ['在家休息，在看剧', '在打游戏', '在看书', '在发呆想你'],
-              locs: ['家', '沙发上'] },
-            { id: 'pd8', start: '22:00', end: '23:30', icon: 'fa-shower',
-              acts: ['在洗澡', '洗完澡在跟你聊天'],
-              locs: ['家', '浴室'] },
-            { id: 'pd9', start: '23:30', end: '06:30', icon: 'fa-moon',
-              acts: ['已经睡了，在做梦', '还醒着，在想你'],
-              locs: ['家', '床上'] }
+            { id: 'pd1', start: '06:30', end: '08:00', icon: 'fa-mug-hot',  locs: ['家', '家里'] },
+            { id: 'pd2', start: '08:00', end: '09:00', icon: 'fa-utensils', locs: ['家', '楼下的早餐店'] },
+            { id: 'pd3', start: '09:00', end: '12:00', icon: 'fa-briefcase', locs: ['公司', '办公室', '会议室'] },
+            { id: 'pd4', start: '12:00', end: '13:30', icon: 'fa-bowl-food', locs: ['公司附近', '食堂', '常去的小店'] },
+            { id: 'pd5', start: '13:30', end: '18:00', icon: 'fa-laptop',   locs: ['公司', '办公室'] },
+            { id: 'pd6', start: '18:00', end: '19:30', icon: 'fa-car',      locs: ['路上', '家'] },
+            { id: 'pd7', start: '19:30', end: '22:00', icon: 'fa-couch',    locs: ['家', '沙发上'] },
+            { id: 'pd8', start: '22:00', end: '23:30', icon: 'fa-shower',   locs: ['家', '浴室'] },
+            { id: 'pd9', start: '23:30', end: '06:30', icon: 'fa-moon',     locs: ['家', '床上'] }
         ];
     }
 
@@ -74,9 +60,8 @@
         try {
             var d = JSON.parse(localStorage.getItem(KEY));
             if (!d || !Array.isArray(d.slots) || !d.slots.length) return { slots: defaultSlots() };
-            // 补齐字段
+            // 补齐字段（旧数据里可能还有每段自己的 acts，忽略即可 —— 现在统一走共享字卡组）
             d.slots.forEach(function (s) {
-                if (!s.acts || !s.acts.length) s.acts = [s.acts || ''].filter(Boolean);
                 if (!s.locs || !s.locs.length) s.locs = [s.locs || ''].filter(Boolean);
                 if (!s.icon) s.icon = 'fa-clock';
             });
@@ -124,10 +109,16 @@
         return arr[_hash(seedStr) % arr.length] || '';
     }
 
-    // 某个时段"今天"的具体内容
+    // 「他在做什么」现在统一从共享字卡组抽（自定义回复 → 氛围感配置 → 他在做什么）
+    function actPool() {
+        var p = (typeof window._getPartnerDayActPool === 'function') ? window._getPartnerDayActPool() : null;
+        return (Array.isArray(p) && p.length) ? p : [''];
+    }
+
+    // 某个时段"今天"的具体内容（都在同一天内固定，换天才变）
     function resolveSlot(s, dayKey) {
         return {
-            act: pickForDay(s.acts, dayKey + '#' + s.id + '#a'),
+            act: pickForDay(actPool(), dayKey + '#' + s.id + '#a'),
             loc: pickForDay(s.locs, dayKey + '#' + s.id + '#l')
         };
     }
@@ -226,7 +217,7 @@
         if (cur && curInfo) {
             html += '<div class="pd-now-card">' +
                 '<div class="pd-now-label">现在</div>' +
-                '<div class="pd-now-act">' + esc(curInfo.act || '（还没写他在做什么）') + '</div>' +
+                '<div class="pd-now-act">' + esc(curInfo.act || '（「他在做什么」字卡组是空的）') + '</div>' +
                 '<div class="pd-now-loc"><i class="fas fa-location-dot"></i>' + esc(curInfo.loc || '（地点待补充）') +
                 '<span style="opacity:.6;">· ' + esc(fmtRange(cur)) + '</span></div>' +
                 '</div>';
@@ -254,7 +245,7 @@
             html += '<div class="pd-item' + (isCur ? ' cur' : (isPast ? ' past' : '')) + '">' +
                 '<span class="pd-dot"><i class="fas ' + esc(s.icon || 'fa-clock') + '"></i></span>' +
                 '<div class="pd-time">' + esc(fmtRange(s)) + (isCur ? '<span class="pd-badge">现在</span>' : '') + '</div>' +
-                '<div class="pd-act">' + esc(info.act || '（还没写他在做什么）') + '</div>' +
+                '<div class="pd-act">' + esc(info.act || '（「他在做什么」字卡组是空的）') + '</div>' +
                 '<div class="pd-loc"><i class="fas fa-location-dot"></i>' + esc(info.loc || '（地点待补充）') + '</div>' +
                 '</div>';
         });
@@ -265,7 +256,9 @@
     // ─── 编辑视图 ───
     function renderEdit(d) {
         var html = '<div style="font-size:11.5px;color:var(--text-secondary,#999);line-height:1.7;margin-bottom:10px;">' +
-            '每个时段可以填多条「在做什么 / 在哪」，每行一条 —— 每天会随机抽一条（同一天内不会变）。' +
+            '「他在做什么」统一从字卡组随机抽 —— 改字卡走：自定义回复 → 氛围感配置 → <b>他在做什么</b>，' +
+            '不用在这儿一个个时段写。<br>' +
+            '这里只排<b>时间段</b>和<b>在哪</b>；「在哪」每行一条，每天随机抽一条（同一天内不变）。' +
             '最后一个时段可以跨零点（比如 23:30 – 06:30）。</div>';
 
         d.slots.forEach(function (s, idx) {
@@ -284,9 +277,7 @@
                         }).join('') +
                     '</select>' +
                 '</div>' +
-                '<div style="margin-top:8px;font-size:11px;color:var(--text-secondary,#999);">在做什么（每行一条）</div>' +
-                '<textarea class="pd-input pd-e-acts" rows="3" style="margin-top:5px;resize:vertical;line-height:1.6;">' + esc((s.acts || []).join('\n')) + '</textarea>' +
-                '<div style="margin-top:6px;font-size:11px;color:var(--text-secondary,#999);">在哪（每行一条）</div>' +
+                '<div style="margin-top:8px;font-size:11px;color:var(--text-secondary,#999);">在哪（每行一条）</div>' +
                 '<textarea class="pd-input pd-e-locs" rows="2" style="margin-top:5px;resize:vertical;line-height:1.6;">' + esc((s.locs || []).join('\n')) + '</textarea>' +
                 '<div class="pd-row" style="justify-content:flex-end;">' +
                     '<button type="button" class="pd-del" data-idx="' + idx + '" style="padding:5px 12px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:12px;background:transparent;color:#e53935;cursor:pointer;font-family:inherit;"><i class="fas fa-trash-can"></i> 删除时段</button>' +
@@ -336,14 +327,12 @@
                 var idx = parseInt(it.getAttribute('data-idx'), 10);
                 var src = d.slots[idx];
                 if (!src) return;
-                var acts = (it.querySelector('.pd-e-acts').value || '').split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
                 var locs = (it.querySelector('.pd-e-locs').value || '').split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
                 next.push({
                     id: src.id,
                     start: it.querySelector('.pd-e-start').value || src.start,
                     end: it.querySelector('.pd-e-end').value || src.end,
                     icon: it.querySelector('.pd-e-icon').value || src.icon,
-                    acts: acts.length ? acts : [''],
                     locs: locs.length ? locs : ['']
                 });
             });
@@ -354,7 +343,7 @@
         body.querySelectorAll('.pd-e-start, .pd-e-end, .pd-e-icon').forEach(function (el) {
             el.addEventListener('change', function () { commit(); render(); });
         });
-        body.querySelectorAll('.pd-e-acts, .pd-e-locs').forEach(function (el) {
+        body.querySelectorAll('.pd-e-locs').forEach(function (el) {
             el.addEventListener('blur', function () { commit(); });
         });
         body.querySelectorAll('.pd-del').forEach(function (el) {
@@ -380,7 +369,7 @@
             d.slots.push({
                 id: 'pd_' + Date.now(),
                 start: '09:00', end: '10:00', icon: 'fa-clock',
-                acts: ['在忙别的事情'], locs: ['家']
+                locs: ['家']
             });
             save(d);
             render();

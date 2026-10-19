@@ -734,6 +734,7 @@ const LIBRARY_CONFIG = {
             { id: 'statuses', name: '对方状态', mode: 'list' },
             { id: 'slacking', name: '摸鱼状态', mode: 'list' },
             { id: 'locationBank', name: '他的位置', mode: 'list' },
+            { id: 'partnerDayActs', name: '他在做什么', mode: 'list' },
             { id: 'qaQuestions', name: 'TA的题库', mode: 'list' },
             { id: 'qaPraise', name: '快答夸奖', mode: 'list' },
             { id: 'qaTease', name: '快答嘲讽', mode: 'list' },
