@@ -444,17 +444,45 @@ window._mShowAllCmt=function(postId){_showAllCmtSet.add(postId);_rerenderCmtSect
 window._mFocusCmt=function(postId){const inp=document.getElementById('cs-ci-'+postId);if(inp)inp.focus();};
 
 // ─── 评论区 HTML ───
+function _fmtCmtTime(ts){if(!ts)return'';const dt=new Date(ts);return`${dt.getMonth()+1}月${String(dt.getDate()).padStart(2,'0')}日 ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;}
+
+// 一条评论块。nested=true 时是"回复"块：缩进成引用小卡片，头部是「谁 回复 @谁」
+function _cmtBlockHtml(post,c,nested){
+    const isP=c.authorType==='partner';
+    const cName=isP?_mPName():_mMName();
+    const dot=isP&&c.isNew?'<span class="cs-cmt-newdot"></span>':'';
+    const imgHtml=c.image?`<div class="cs-cmt-img">${_imgElThumb(c.image,'max-width:100px;border-radius:8px;cursor:pointer;')}</div>`:'';
+    const target=(c.replyTo&&c.replyTo.authorName)?c.replyTo.authorName:'';
+    const head=nested
+        ?`<span class="cs-cmt-name">${cName}</span><span class="cs-cmt-reply-word">回复</span><span class="cs-cmt-reply-target">@${target}</span>`
+        :`<span class="cs-cmt-name">${cName}</span><span class="cs-cmt-time">${_fmtCmtTime(c.timestamp)}</span>`;
+    return`<div class="cs-cmt-item${nested?' cs-cmt-item--nested':''}" onclick="event.stopPropagation();window._mClickComment('${post.id}','${c.id}','${cName}')">
+        ${nested?'':`<div class="cs-cmt-avatar">${_avEl(isP,26)}</div>`}
+        <div class="cs-cmt-content">
+            <div class="cs-cmt-head">${head}${dot}</div>
+            ${c.text?`<div class="cs-cmt-text">${c.text}</div>`:''}
+            ${imgHtml}
+        </div>
+    </div>`;
+}
+
 function _renderCmtSectionHtml(post){
     const showAll=_showAllCmtSet.has(post.id);
     const cmts=post.comments, toShow=showAll?cmts:cmts.slice(0,3), needMore=!showAll&&cmts.length>3;
-    let cmtListHtml='';
+    // 分两层：没有 replyTo 的是主评论；带 replyTo 的挂到它上面那条主评论下面，
+    // 渲染成缩进的引用小卡片 —— 就是"他回复我 / 我回复他"那种一上一下的层次感。
+    const groups=[];let g=null;
     toShow.forEach(c=>{
-        const isP=c.authorType==='partner';
-        const cName=isP?_mPName():_mMName();
-        const replyPart=c.replyTo?` <span class="cs-cmt-reply-word">回复</span> <span class="cs-cmt-reply-target">${c.replyTo.authorName}</span>`:'';
-        const dot=isP&&c.isNew?'<span style="width:5px;height:5px;background:var(--accent-color);border-radius:50%;display:inline-block;margin-left:3px;vertical-align:middle;"></span>':'';
-        const imgHtml=c.image?`<div style="margin-top:5px;">${_imgElThumb(c.image,'max-width:100px;border-radius:8px;cursor:pointer;')}</div>`:'';
-        cmtListHtml+=`<div class="cs-cmt-item" onclick="event.stopPropagation();window._mClickComment('${post.id}','${c.id}','${cName}')"><div class="cs-cmt-content"><span class="cs-cmt-name">${cName}</span>${replyPart}：${c.text?`<span class="cs-cmt-text">${c.text}${dot}</span>`:''}${imgHtml}</div></div>`;
+        if(c.replyTo&&g){g.replies.push(c);}
+        else{g={main:c,replies:[]};groups.push(g);}
+    });
+    let cmtListHtml='';
+    groups.forEach(gr=>{
+        cmtListHtml+=_cmtBlockHtml(post,gr.main,false);
+        if(gr.replies.length){
+            cmtListHtml+='<div class="cs-cmt-divider"><span>回复</span></div>';
+            gr.replies.forEach(rc=>{cmtListHtml+=_cmtBlockHtml(post,rc,true);});
+        }
     });
     if(needMore)cmtListHtml+=`<div class="cs-show-all-cmt" onclick="event.stopPropagation();window._mShowAllCmt('${post.id}')">查看全部 ${cmts.length} 条评论</div>`;
     const ri=_replyInfoMap[post.id];
@@ -762,7 +790,10 @@ window._mChangePartnerMotto = function () {
 window.openCoupleSpace=window.openMomentsModal=function(scrollToPostId){
     const page=document.getElementById('couple-space-page');if(!page)return;
     page.style.display='flex';
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    // 关掉「进入家园动画」的人：直接到位，不滑那一下（也省掉两层 rAF 的等待）
+    const skipAnim=!!(window._skipHomeEnterAnim&&window._skipHomeEnterAnim());
+    page.style.transition=skipAnim?'none':'';
+    const _csEnter=()=>{
         // 页面动画前先把 header 放好（此时整页还在 translateY(100%) 不可见）
         const outerHeader=document.getElementById('cs-outer-header');
         const feedPanel=document.getElementById('cs-panel-feed');
@@ -776,12 +807,15 @@ window.openCoupleSpace=window.openMomentsModal=function(scrollToPostId){
         }else{_updateDaysCounter();}
         _updateBadge();_csExpandFeedHeader();_csSetupFeedScroll();
         if(scrollToPostId)setTimeout(()=>_csScrollTo(scrollToPostId),350);
-    }));
+    };
+    if(skipAnim)_csEnter();else requestAnimationFrame(()=>requestAnimationFrame(_csEnter));
 };
 window.closeCoupleSpace=window.closeMomentsModal=function(){
     const page=document.getElementById('couple-space-page');if(!page)return;
     page.classList.remove('cs-open');window.closeAllCsSheets();_csExpandFeedHeader();
     [document.getElementById('cs-notif-popup'),document.getElementById('cs-sticker-picker')].forEach(el=>{if(el)el.style.display='none';});
+    // 关掉动画的人：退出也是瞬间，不留那 380ms 的空等
+    if(window._skipHomeEnterAnim&&window._skipHomeEnterAnim()){page.style.transition='';page.style.display='none';return;}
     setTimeout(()=>{page.style.display='none';},380);
 };
 window.csSwitchTab=function(tab){

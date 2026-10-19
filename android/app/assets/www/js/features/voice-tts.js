@@ -522,11 +522,53 @@
         return h.toString(36);
     }
 
+    // ─────────── TTS 前的文本清洗：颜文字 / emoji 一律拿掉 ───────────
+    // 之前直接把原文丢给翻译和 TTS，结果颜文字会被念成"左括号 波浪线 下划线 右括号"，
+    // 非常出戏。这里只洗"要念出来的文本"，聊天里显示的内容一个字都不动。
+    function _stripForSpeech(text) {
+        let s = String(text || '');
+        if (!s) return '';
+
+        // 1) emoji / 符号 / 箭头 / 几何图形 / 变体选择符 / 零宽连接符
+        s = s.replace(
+            /[\u{1F000}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{2190}-\u{21FF}\u{2300}-\u{23FF}\u{25A0}-\u{25FF}\u{2900}-\u{297F}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{3030}\u{303D}]/gu,
+            ''
+        );
+
+        // 2) 括号颜文字：(＾▽＾) (´•ω•`) (>_<) (=^･ω･^=) 之类
+        //    括号里只要有中文/日文，或者有字母数字（比如 "（真的）"、"(hello)"、"(1)"）就保留，
+        //    否则整块当颜文字删掉
+        s = s.replace(/[（(【\[]([^）)】\]]{0,40})[）)】\]]/g, (m, inner) => {
+            if (/[\u4e00-\u9fff\u3040-\u30ff]/.test(inner)) return m;
+            if (/[A-Za-z0-9]/.test(inner)) return m;
+            return '';
+        });
+
+        // 3) 没有括号的常见颜文字 / 网络缩写
+        s = s.replace(/(^|[\s，。！？!?,、~～])[oO]?[rR][zZ]|[oO][tT][lL]|2333*|xswl|hhh+|www+|[qQ][wW][qQ]|[qQ][aA][qQ]|[tT]_[tT]|>[_\-.]<|>[_.]?>|<[_.]?<|=_=|\^[_\-]\^/g, '$1');
+
+        // 波浪线单独清：它落在全角区里，光靠白名单会漏过去，被念成"波浪波浪"
+        s = s.replace(/[~～〜]+/g, ' ');
+
+        // 4) 收尾用"白名单"：只留说得出口的字符（中日文字、拉丁字母数字、常见标点），
+        //    剩下像 و ㅂ ̀ 这类颜文字残渣一律清掉。
+        //    这一步比继续列黑名单可靠 —— 颜文字用的符号太杂，列不完
+        s = s.replace(/[^\u4e00-\u9fff\u3041-\u3096\u30a0-\u30fa\u3000-\u303f\uff00-\uffef\u2026A-Za-z0-9\s,.:;!?'"()\-]/g, ' ');
+        // 日文浊点、片假名"手脚"（ノ ヽ ミ）也是颜文字常客，单独清一遍
+        s = s.replace(/[゛゜ヽヾノミ]/g, ' ');
+        s = s.replace(/\s+/g, ' ').trim();
+
+        return s;
+    }
+
     async function getAudioForMessage(msgId, chineseText) {
         const { voiceId, model, targetLang } = _getConfig();
-        const textHash = _hashText(chineseText);
+        // 洗掉颜文字再翻译/合成：显示不动，只改念出来的内容。
+        // 整条都是颜文字时洗完会变空 —— 兜一个字，免得白白报错
+        const speakText = _stripForSpeech(chineseText) || '嗯';
+        const textHash = _hashText(speakText);
         const cacheKey = [
-            msgId || chineseText,
+            msgId || speakText,
             textHash,                       // ← 关键：文本内容指纹
             voiceId || '',
             model || DEFAULT_TTS_MODEL,
@@ -536,7 +578,7 @@
         if (_audioPending[cacheKey]) return _audioPending[cacheKey];
 
         _audioPending[cacheKey] = (async () => {
-            const translatedText = await translateToJapanese(chineseText);
+            const translatedText = await translateToJapanese(speakText);
             const blobUrl = await generateSpeech(translatedText);
             _setAudioCache(cacheKey, blobUrl);
             return blobUrl;
