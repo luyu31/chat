@@ -4551,6 +4551,74 @@
         #session-modal .modal-content {
             max-width: 500px;
         }
+
+        /* ── 我的梦角 · 联系人列表（微信那种：头像 + 名字 + 在线状态，点一下进） ── */
+        .ct-row {
+            display: flex; align-items: center; gap: 12px;
+            padding: 11px 12px; margin-bottom: 8px;
+            border-radius: 12px; cursor: pointer;
+            border: 1px solid transparent;
+            background: var(--primary-bg, rgba(0, 0, 0, 0.02));
+            -webkit-tap-highlight-color: transparent;
+            transition: background-color .18s, border-color .18s;
+        }
+        .ct-row:active { background: var(--secondary-bg, rgba(0, 0, 0, 0.06)); }
+        .ct-row--cur { border-color: var(--accent-color); background: rgba(var(--accent-color-rgb), 0.09); }
+        .ct-av { position: relative; flex-shrink: 0; line-height: 0; }
+        .ct-dot {
+            position: absolute; right: -1px; bottom: -1px;
+            width: 12px; height: 12px; border-radius: 50%;
+            background: #4cd471; border: 2px solid var(--modal-bg, #fff);
+        }
+        .ct-dot--off { background: #b6b6b6; }
+        .ct-info { flex: 1; min-width: 0; }
+        .ct-name {
+            font-size: 15px; font-weight: 600; color: var(--text-primary);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .ct-status { font-size: 12px; color: var(--text-secondary); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+        .ct-cur-tag {
+            font-size: 10px; padding: 1px 6px; border-radius: 20px;
+            background: var(--accent-color); color: #fff; font-weight: 500;
+        }
+        .ct-edit {
+            flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px;
+            border: none; background: transparent; cursor: pointer;
+            color: var(--text-secondary); font-size: 14px;
+        }
+        .ct-edit:active { background: var(--secondary-bg, rgba(0, 0, 0, 0.08)); }
+        .ct-row--new { border: 1px dashed var(--border-color); background: transparent; }
+        .ct-new-ic {
+            width: 44px; height: 44px; border-radius: 50%;
+            border: 1.5px dashed var(--border-color);
+            display: inline-flex; align-items: center; justify-content: center;
+            color: var(--accent-color); font-size: 16px;
+        }
+        .ct-row--new .ct-name { font-weight: 500; color: var(--accent-color); }
+        .ct-row--new .ct-status { white-space: normal; line-height: 1.5; }
+        .ct-empty { text-align: center; color: var(--text-secondary); font-size: 13px; padding: 24px 0; }
+
+        /* 切换梦角时的过场（避免"点一下像闪退"） */
+        #ct-switch-overlay {
+            position: fixed; inset: 0; z-index: 99999;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--modal-overlay, rgba(0, 0, 0, 0.55));
+            opacity: 0; pointer-events: none; transition: opacity .18s ease;
+        }
+        #ct-switch-overlay.on { opacity: 1; pointer-events: auto; }
+        .ct-switch-box {
+            display: flex; flex-direction: column; align-items: center; gap: 12px;
+            padding: 22px 28px; border-radius: 16px;
+            background: var(--modal-bg, #fff); box-shadow: 0 12px 40px rgba(0, 0, 0, .28);
+        }
+        .ct-switch-spin {
+            width: 26px; height: 26px; border-radius: 50%;
+            border: 3px solid rgba(var(--accent-color-rgb), 0.25);
+            border-top-color: var(--accent-color);
+            animation: ctSpin .8s linear infinite;
+        }
+        @keyframes ctSpin { to { transform: rotate(360deg); } }
+        .ct-switch-txt { font-size: 13px; color: var(--text-primary); }
         .session-list {
             flex: 1;
             overflow-y: auto;
@@ -11074,7 +11142,8 @@
    閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓 */
 
 /* 妞ゅ爼鍎撮弽蹇ョ窗闂呮劘妫屾导姘崇樈缁狅紕鎮� + 缂囥倛浜扮拋鍓х枂 + 閺勭厧顧侀崚鍥ㄥ床閿涘牆鍑￠弨閫涜礋鐠虹喖娈㈢化鑽ょ埠閿涳拷*/
-#session-manager-btn,
+/* 曾被隐藏的入口按钮里，只放回「我的梦角」——多梦角是现在要用的功能，得有个点得进去的口子；
+   群聊、主题开关两个入口先继续藏着 */
 #group-chat-btn,
 #theme-toggle {
     display: none !important;
@@ -11082,11 +11151,12 @@
 
 /* 妞ゅ爼鍎撮弽蹇斿瘻闁筋噣銆庢惔蹇ョ窗娣囷紕顔� 璺� 闂勵亙鍗� 璺� 閸忣剙鎲� 璺� 閹懍鑽嗙粚娲？ 璺� 鐠佸墽鐤� */
 .header-actions { display: flex; }
-#envelope-header-btn  { order: 1; }
-#companion-btn        { order: 2; }
-#daily-greeting-btn   { order: 3; }
-#moments-header-btn   { order: 4; }
-#settings-btn         { order: 5; }
+#session-manager-btn  { order: 1; }   /* 我的梦角：放在最前面，跟微信的通讯录一样好找 */
+#envelope-header-btn  { order: 2; }
+#companion-btn        { order: 3; }
+#daily-greeting-btn   { order: 4; }
+#moments-header-btn   { order: 5; }
+#settings-btn         { order: 6; }
 
 /* 鎼存洟鍎存潏鎾冲弳閸栫尨绱伴梾鎰閹靛綊鍣洪崣鎴︹偓浣碘偓浣稿絺闁焦瀵滈柦顕嗙礄鐠佲晛顕弬鍦埛缂侇叀顕╁鍙夋暭娑撶儤妯夌粈鐚寸礉鐟欎椒绗呴弬锟�"缁楊兛绗佸锟�"閿涳拷 */
 #batch-btn,
