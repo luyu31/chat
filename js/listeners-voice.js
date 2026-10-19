@@ -16,6 +16,12 @@
         return stored === null ? true : stored === 'true';
     }
 
+    // 正在"打电话"（语音通话）时：他说的每句话都当语音条走，不看开关、不看概率。
+    // 视频通话不受影响，保持原来那套对半随机。
+    function _inVoiceCall() {
+        return !!(window.callFeature && window.callFeature.isVoiceCall && window.callFeature.isVoiceCall());
+    }
+
     function _syncFakeVoiceUI() {
         const row = document.getElementById('fake-voice-toggle');
         if (row) row.classList.toggle('active', _isFakeVoiceOn());
@@ -149,8 +155,11 @@
             if (msg._fakeVoiceConsidered) return;
             msg._fakeVoiceConsidered = true;
 
-            if (!_isFakeVoiceOn()) return;
-            if (Math.random() >= FAKE_VOICE_PROBABILITY) return;
+            // 电话中：一句不落，全都变语音条 —— 打电话本来就不该在聊天框里读文字
+            if (!_inVoiceCall()) {
+                if (!_isFakeVoiceOn()) return;
+                if (Math.random() >= FAKE_VOICE_PROBABILITY) return;
+            }
 
             const textLen = msg.text.trim().length;
             const duration = Math.max(1, Math.floor(textLen / 3) + Math.floor(Math.random() * 4));
@@ -322,14 +331,20 @@
             if (_autoConsidered.has(msgId)) return;
             _autoConsidered.add(msgId);
             if (!window.callFeature || !window.callFeature.chatVoiceAuto || !window.callFeature.chatVoiceAuto()) return;
-            if (!window.voiceTTS || !window.voiceTTS.isTtsReady()) return; // 没配真实语音：保持点击播放
+            // 平时没配真实语音就只能手动点播放；但电话里例外 —— 通话窗口念不出声，
+            // 就让语音条自己排队"假装播放"，保证一打开电话他说的每句都会依次播出来
+            const ttsReady = !!(window.voiceTTS && window.voiceTTS.isTtsReady());
+            if (!ttsReady && !_inVoiceCall()) return; // 没配真实语音：保持点击播放
             const msg = findMessage(msgId);
             if (!msg || !msg.voice || !msg.voice.fakeText) return;
             // 只自动播"刚刚收到"的消息：进页面/翻页把历史重新渲染出来时不播
             const ts = msg.timestamp ? new Date(msg.timestamp).getTime() : 0;
             if (!ts || Date.now() - ts > 8000) return;
             const bubble = wrapper.querySelector('.voice-bubble');
-            if (bubble) _autoQueue.push({ bubble: bubble, msgId: msgId, text: msg.voice.fakeText });
+            if (bubble) _autoQueue.push({
+                bubble: bubble, msgId: msgId, text: msg.voice.fakeText,
+                duration: Number(bubble.dataset.duration) || 3
+            });
             _drainAutoQueue();
         }
 
@@ -339,12 +354,25 @@
             const item = _autoQueue.shift();
             if (!item.bubble.isConnected) { _drainAutoQueue(); return; } // 消息已被移出DOM
             _autoBusy = true;
-            _speakBubbleAuto(item.bubble, item.msgId, item.text)
+            _speakBubbleAuto(item.bubble, item.msgId, item.text, item.duration)
                 .catch(() => {})
                 .finally(() => { _autoBusy = false; _drainAutoQueue(); });
         }
 
-        async function _speakBubbleAuto(bubble, msgId, text) {
+        async function _speakBubbleAuto(bubble, msgId, text, duration) {
+            // 没配真实语音：按语音条上标的秒数跑一遍"正在播放"的动效
+            // （伪语音本来就是这么设计的 —— 看着在讲，只是没声音）
+            if (!window.voiceTTS || !window.voiceTTS.isTtsReady()) {
+                currentBubble = bubble;
+                bubble.classList.add('playing');
+                await new Promise(res => {
+                    bubble._fakeTimer = setTimeout(() => { bubble._fakeTimer = null; res(); },
+                        Math.max(1, duration || 3) * 1000);
+                });
+                bubble.classList.remove('playing');
+                if (currentBubble === bubble) currentBubble = null;
+                return;
+            }
             let audio = null;
             bubble.classList.add('tts-loading');
             try {

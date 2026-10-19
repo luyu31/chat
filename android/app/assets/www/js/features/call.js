@@ -1324,7 +1324,18 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         getMode: () => S.mode,
         isActive: () => S.active,
         isMinimized: () => !!S.minimized,
-        chatVoiceAuto: () => S.active && S.minimized && VC.enabled
+        // 正在接通的"电话"（不是视频）—— 电话期间他的消息一律当语音条处理，见 listeners-voice.js
+        isVoiceCall: () => S.active && S.mode === 'voice',
+        // 聊天里的语音条要不要自动排队播放
+        //  电话：配了真实语音 + 小喇叭开着 → 交给通话窗口念（缩小了也继续念，跟真打电话一样）；
+        //        否则（没配真实语音 / 小喇叭关了）→ 由聊天里的语音条自己排队"假装播放"，
+        //        保证"电话一打开他说的每句都会依次播出来"，不会静悄悄没反应
+        //  视频：保持原样 —— 通话窗口收起时才自动播，展开时由语音播报负责
+        chatVoiceAuto: () => {
+            if (!S.active) return false;
+            if (S.mode === 'voice') return !(VC.enabled && vcTtsReady());
+            return !!S.minimized && VC.enabled;
+        }
     };
 
     function init() {
