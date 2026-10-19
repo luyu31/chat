@@ -4656,7 +4656,7 @@
         /* 聊天页头部左侧的返回键 */
         #wx-back-btn { order: 0 !important; margin-right: 2px; }
         #ct-switch-overlay {
-            position: fixed; inset: 0; z-index: 99999;
+            position: fixed; inset: 0; z-index: 1000000; /* 必须高于开屏层(999999)，切梦角时才能一直盖住它 */
             display: flex; align-items: center; justify-content: center;
             background: var(--modal-overlay, rgba(0, 0, 0, 0.55));
             opacity: 0; pointer-events: none; transition: opacity .18s ease;

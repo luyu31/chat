@@ -124,8 +124,9 @@
 
     function switchTo(id, name) {
         if (!id || id === _currentId()) return;
+        // 统一走微信首页那套切换：过场 + 跳过开场动画，两个入口手感一致
+        if (typeof window.WxSwitchTo === 'function') { window.WxSwitchTo(id, name); return; }
         _switchOverlay(name || '梦角');
-        // 给过场留一帧，再跳；数据本来就是按 session 存的，重开才是安全的切法
         setTimeout(function () {
             try { window.location.hash = id; } catch (e) {}
             try { window.location.reload(); } catch (e) {}

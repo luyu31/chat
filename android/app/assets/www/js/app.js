@@ -10,10 +10,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (loaderBar) loaderBar.style.width = width;
     };
 
+    // 从别的梦角切过来的这一页：跳过开场动画，别让"切换"看起来像重新启动一次 App
+    const _fastBoot = () => {
+        try { return sessionStorage.getItem('wxFastBoot') === '1'; } catch (e) { return false; }
+    };
+    const _skipEntry = () => _fastBoot() || !!(window._skipEntryAnim && window._skipEntryAnim());
+
     const hideWelcomeScreen = () => {
         if (!welcomeScreen) return;
-        // 关掉「进入动画」的人：直接消失，不等那 0.45s 渐隐
-        if (window._skipEntryAnim && window._skipEntryAnim()) {
+        // 关掉「进入动画」的人 / 正在切梦角：直接消失，不等那 0.45s 渐隐
+        if (_skipEntry()) {
             welcomeScreen.classList.add('hidden');
             welcomeScreen.style.display = 'none';
             return;
@@ -95,8 +101,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         updateLoader('和你在一起的每一天', '100%');
         // 老用户快速进入（0.25s + 渐隐），首次安装也只留短开场（1.2s + 渐隐）
-        // 关掉「进入动画」的人：不等，立刻消失
-        const entryDelay = (window._skipEntryAnim && window._skipEntryAnim()) ? 0 : (tourSeen ? 250 : 1200);
+        // 关掉「进入动画」的人 / 正在切梦角：不等，立刻消失
+        const entryDelay = _skipEntry() ? 0 : (tourSeen ? 250 : 1200);
         setTimeout(hideWelcomeScreen, entryDelay);
 
         document.addEventListener('visibilitychange', () => {

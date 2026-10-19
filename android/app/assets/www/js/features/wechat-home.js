@@ -87,6 +87,64 @@
         return { id: s.id, name: name, avatar: avatar, preview: preview, time: time, isCurrent: s.id === _currentId() };
     }
 
+    // ─── 切换过场：跨越"整页重载"保持连续，别让人看到白屏和开场动画 ───
+    function showSwitchOverlay(name) {
+        var el = document.getElementById('ct-switch-overlay');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'ct-switch-overlay';
+            document.body.appendChild(el);
+        }
+        el.innerHTML = '<div class="ct-switch-box"><div class="ct-switch-spin"></div>' +
+            '<div class="ct-switch-txt">正在进入 ' + _esc(name || '梦角') + '…</div></div>';
+        void el.offsetWidth;
+        el.classList.add('on');
+    }
+    function hideSwitchOverlay() {
+        var el = document.getElementById('ct-switch-overlay');
+        if (el) el.classList.remove('on');
+    }
+
+    // 聊天渲染好了没？（用来决定什么时候把过场收掉）
+    // renderMessages 跑过就是 App 把数据加载完并渲染完的可靠信号（cinema.js 用的也是这一招），
+    // 比单纯看"消息容器里有没有子节点"更准 —— 新梦角一条消息都没有时也不会白等
+    var _rendered = false;
+    (function hookRender(retry) {
+        if (typeof window.renderMessages !== 'function') {
+            if ((retry || 0) < 60) setTimeout(function () { hookRender((retry || 0) + 1); }, 50);
+            return;
+        }
+        if (window.renderMessages._wxHooked) return;
+        var orig = window.renderMessages;
+        var wrapped = function () { _rendered = true; return orig.apply(this, arguments); };
+        wrapped._wxHooked = true;
+        window.renderMessages = wrapped;
+    })();
+
+    function _chatReady() {
+        if (_rendered) return true;
+        var box = document.querySelector('.chat-container') || document.getElementById('messages-container');
+        if (!box) return false;
+        var inner = box.querySelector('#messages-container') || box;
+        return inner.children && inner.children.length > 0;
+    }
+
+    // 切换：先把过场铺上 → 记标记 → 重载。重载后 boot() 会把过场接着铺住，
+    // 等聊天真的渲染出来再淡出，所以整个过程是"一条连续的过场"，不是"闪一下白屏"
+    function switchToSession(id, name) {
+        if (!id || id === _currentId()) { enterChat(); return; }
+        try {
+            sessionStorage.setItem(FLAG, '1');
+            sessionStorage.setItem('wxSwitchName', name || '梦角');
+            sessionStorage.setItem('wxFastBoot', '1');   // 让下一页面跳过开场动画
+        } catch (e) {}
+        showSwitchOverlay(name);
+        setTimeout(function () {
+            try { window.location.hash = id; } catch (e) {}
+            try { window.location.reload(); } catch (e) {}
+        }, 140);   // 让过场先淡入一帧，别有断层
+    }
+
     // ─── DOM ───
     function buildHome() {
         if (document.getElementById('wx-home')) return;
@@ -121,14 +179,7 @@
             var nm = (row.querySelector('.wx-conv-name') || {}).textContent || '梦角';
             if (!id) return;
             if (id === _currentId()) { enterChat(); return; }
-            // 换梦角：先记个标记，重开之后直接进聊天（而不是又回到首页）
-            try { sessionStorage.setItem(FLAG, '1'); } catch (e) {}
-            if (typeof window.ContactsSwitchTo === 'function') { window.ContactsSwitchTo(id, nm); return; }
-            if (typeof showNotification === 'function') showNotification('正在进入 ' + nm + '…', 'info', 900);
-            setTimeout(function () {
-                try { window.location.hash = id; } catch (e) {}
-                try { window.location.reload(); } catch (e) {}
-            }, 160);
+            switchToSession(id, nm);
         });
     }
 
@@ -186,6 +237,13 @@
         _booted = true;
         buildHome();
         injectBackBtn();
+
+        // 是不是"刚从另一个梦角切过来"？是的话把过场接着铺住，
+        // 等这一页的聊天渲染好再淡出 —— 视觉上就是一条连续的过场
+        var switchName = null;
+        try { switchName = sessionStorage.getItem('wxSwitchName'); } catch (e) {}
+        if (switchName) { showSwitchOverlay(switchName); resumeAfterSwitch(); }
+
         var goChat = false;
         try { goChat = sessionStorage.getItem(FLAG) === '1'; } catch (e) {}
         if (goChat) {
@@ -196,6 +254,24 @@
             showHome();
         }
         waitSessionsAndRender();
+    }
+
+    // 切换后：等聊天真的渲染出来（或最多等 2.5 秒）再把过场淡出
+    function resumeAfterSwitch() {
+        var t0 = Date.now();
+        (function poll() {
+            var ready = false;
+            try { ready = _chatReady(); } catch (e) {}
+            if (ready || Date.now() - t0 > 2500) {
+                hideSwitchOverlay();
+                try {
+                    sessionStorage.removeItem('wxSwitchName');
+                    sessionStorage.removeItem('wxFastBoot');
+                } catch (e) {}
+                return;
+            }
+            requestAnimationFrame(poll);
+        })();
     }
 
     // sessionList 是 core.js 在 DOMContentLoaded 之后异步从 localforage 读回来的，
@@ -211,9 +287,11 @@
         setTimeout(function () { waitSessionsAndRender(tries + 1); }, 250);
     }
 
-    // 暴露给"我的梦角"面板复用（同一套切换逻辑）
+    // 暴露给「我的梦角」面板复用（同一套切换 + 过场逻辑，保证两条入口手感一致）
     window.WxHomeShow = showHome;
     window.WxHomeEnter = enterChat;
+    window.WxSwitchTo = switchToSession;
+    window.WxSwitchOverlay = showSwitchOverlay;
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else setTimeout(boot, 0);
