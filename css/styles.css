@@ -4598,7 +4598,63 @@
         .ct-row--new .ct-status { white-space: normal; line-height: 1.5; }
         .ct-empty { text-align: center; color: var(--text-secondary); font-size: 13px; padding: 24px 0; }
 
-        /* 切换梦角时的过场（避免"点一下像闪退"） */
+        /* ── 微信式首页：会话列表 + 底部「聊天 / 朋友圈」标签 ── */
+        #wx-home {
+            position: fixed; inset: 0; z-index: 400;
+            display: none; flex-direction: column;
+            background: var(--primary-bg, #f7f7f7);
+        }
+        .wx-head {
+            flex-shrink: 0; height: 50px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 14px; padding-top: env(safe-area-inset-top, 0);
+            background: var(--header-bg, #ededed);
+            border-bottom: 1px solid var(--border-color, #e2e2e2);
+        }
+        .wx-head-title { font-size: 17px; font-weight: 600; color: var(--text-primary); }
+        .wx-head-add {
+            width: 32px; height: 32px; border-radius: 50%; border: none;
+            background: transparent; color: var(--text-primary); font-size: 16px; cursor: pointer;
+        }
+        .wx-head-add:active { background: rgba(0, 0, 0, .06); }
+        .wx-conv-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .wx-conv {
+            display: flex; align-items: center; gap: 12px;
+            padding: 11px 14px; cursor: pointer;
+            background: var(--modal-bg, #fff);
+            border-bottom: 1px solid var(--border-color, #f0f0f0);
+            -webkit-tap-highlight-color: transparent;
+        }
+        .wx-conv:active { background: var(--secondary-bg, rgba(0, 0, 0, .05)); }
+        .wx-conv--cur .wx-conv-name { color: var(--accent-color); }
+        .wx-conv-av { line-height: 0; flex-shrink: 0; }
+        .wx-conv-main { flex: 1; min-width: 0; }
+        .wx-conv-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+        .wx-conv-name {
+            font-size: 15.5px; font-weight: 500; color: var(--text-primary);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .wx-conv-time { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+        .wx-conv-prev {
+            font-size: 12.5px; color: var(--text-secondary); margin-top: 3px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .wx-empty { text-align: center; color: var(--text-secondary); font-size: 13px; padding: 40px 0; }
+        .wx-tabbar {
+            flex-shrink: 0; display: flex;
+            background: var(--header-bg, #f7f7f7);
+            border-top: 1px solid var(--border-color, #e2e2e2);
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+        .wx-tab {
+            flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+            padding: 8px 0 7px; cursor: pointer; color: var(--text-secondary); font-size: 11px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .wx-tab i { font-size: 19px; }
+        .wx-tab--on { color: var(--accent-color); }
+        /* 聊天页头部左侧的返回键 */
+        #wx-back-btn { order: 0 !important; margin-right: 2px; }
         #ct-switch-overlay {
             position: fixed; inset: 0; z-index: 99999;
             display: flex; align-items: center; justify-content: center;

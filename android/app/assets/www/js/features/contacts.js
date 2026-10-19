@@ -251,6 +251,9 @@
         if (modal && typeof showModal === 'function') showModal(modal);
     };
 
+    // 给微信首页复用同一套切换逻辑（点会话列表里不是当前那条时走这里）
+    window.ContactsSwitchTo = function (id, name) { switchTo(id, name); };
+
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install);
     else setTimeout(install, 0);
     setTimeout(install, 800);
