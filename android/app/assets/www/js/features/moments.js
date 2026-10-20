@@ -1173,7 +1173,7 @@ function _csSetupFeedScroll() {
     const title  = document.getElementById('cs-topbar-feed-title');
     const fab    = document.getElementById('cs-feed-fab');
     const topbar = document.getElementById('cs-topbar');
-    if (title) title.textContent = '动态';
+    if (title) title.textContent = '朋友圈';
 
     // ① IntersectionObserver：outer-header 滚出视窗 → 显示 topbar 标题
     const outerHeader = document.getElementById('cs-outer-header');

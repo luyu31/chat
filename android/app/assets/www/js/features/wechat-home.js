@@ -312,10 +312,19 @@
         if (!instant) hideSwitchOverlay();
     }
 
-    // ─── 「朋友圈」：先选看谁的朋友圈，再进他的家园 ───
-    function openMomentsOf(meta) {
+    // ─── 「朋友圈」：默认是所有人的动态混在一起；点某个人的头像才进他本人的空间 ───
+    function openAllMoments() {
+        // 从首页/发现进来：首页留在下面别关，这样退出朋友圈还是回到原来的那一页
+        try {
+            if (typeof window._mShowAllPeople === 'function') window._mShowAllPeople();
+            if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
+            else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
+        } catch (e) { console.warn('[wx-home] 打开家园失败', e); }
+    }
+    function openOwnerMoments() {
         enterChat();
         try {
+            if (typeof window._mShowOwner === 'function') { window._mShowOwner(); return; }
             if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
             else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
         } catch (e) { console.warn('[wx-home] 打开家园失败', e); }
@@ -363,7 +372,7 @@
                 var nm = row.getAttribute('data-name');
                 el.classList.remove('on');
                 setTimeout(function () { el.remove(); }, 200);
-                if (id === _currentId()) { openMomentsOf(); return; }
+                if (id === _currentId()) { openOwnerMoments(); return; }
                 // 换一个梦角看他的朋友圈：切过去，并且到了之后直接进家园
                 try { sessionStorage.setItem('wxOpenMoments', '1'); } catch (e2) {}
                 setTimeout(function () { switchToSession(id, nm); }, 180);
@@ -378,12 +387,62 @@
         if (typeof showNotification === 'function') showNotification('这个功能还没就绪', 'warning');
         return false;
     }
-    // 朋友圈入口（多个梦角先问看谁）
+    // 朋友圈入口：直接进"所有人混在一起"的那条流（不再先问看谁）
     function _momentsEntry() {
-        var n = 0;
-        try { n = _sessions().length; } catch (e) {}
-        if (n > 1) openMomentsPicker();
-        else openMomentsOf();
+        openAllMoments();
+    }
+
+    // 今日公告是"按人"的：多个梦角时先选看谁，再打开他今天的公告
+    function openDailyGreetingPicker() {
+        var list = _sessions();
+        if (list.length <= 1) { _click('daily-greeting-btn'); return; }
+        openPersonPicker('看谁的今日公告', function () {
+            setTimeout(function () { _click('daily-greeting-btn'); }, 120);
+        });
+    }
+
+    // 通用「选个人」面板：给"今日公告"这种需要区分是谁的功能用
+    async function openPersonPicker(title, onPick) {
+        var old = document.getElementById('wx-pp');
+        if (old) old.remove();
+        var sessions = _sessions();
+        var metas = await Promise.all(sessions.map(_convMeta));
+        var el = document.createElement('div');
+        el.id = 'wx-pp';
+        el.innerHTML =
+            '<div class="wx-mp-sheet">' +
+                '<div class="wx-mp-title">' + _esc(title || '选一个人') + '</div>' +
+                '<div class="wx-mp-list" id="wx-pp-list">' + metas.map(function (m) {
+                    return '<div class="wx-mp-row' + (m.isCurrent ? ' wx-mp-row--cur' : '') + '" data-id="' + _esc(m.id) + '" data-name="' + _esc(m.name) + '">' +
+                        _avatarHtml(m.avatar, 40) +
+                        '<div class="wx-mp-name">' + _esc(m.name) + '</div>' +
+                        (m.isCurrent ? '<span class="wx-mp-tag">当前</span>' : '<i class="fas fa-chevron-right wx-mp-arrow"></i>') +
+                    '</div>';
+                }).join('') + '</div>' +
+                '<button class="wx-mp-cancel" id="wx-pp-cancel">取消</button>' +
+            '</div>';
+        document.body.appendChild(el);
+        void el.offsetWidth;
+        el.classList.add('on');
+        function close() { el.classList.remove('on'); setTimeout(function () { el.remove(); }, 200); }
+        el.querySelector('#wx-pp-cancel').addEventListener('click', close);
+        el.addEventListener('click', function (e) { if (e.target === el) close(); });
+        el.querySelector('#wx-pp-list').addEventListener('click', function (e) {
+            var row = e.target.closest('.wx-mp-row');
+            if (!row) return;
+            var id = row.getAttribute('data-id');
+            var nm = row.getAttribute('data-name');
+            close();
+            if (id !== _currentId()) {
+                try {
+                    var pr = switchToSession(id, nm);
+                    var run = function () { setTimeout(function () { try { onPick && onPick(id, nm); } catch (err) {} }, 80); };
+                    if (pr && typeof pr.then === 'function') pr.then(run); else run();
+                } catch (err) {}
+            } else {
+                try { onPick && onPick(id, nm); } catch (err) {}
+            }
+        });
     }
 
     // 底部标签切换：聊天列表 / 发现
@@ -394,7 +453,8 @@
         var tDisc = document.getElementById('wx-tab-discover');
         var isChat = tab !== 'discover';
         if (list) list.style.display = isChat ? '' : 'none';
-        if (disc) disc.style.display = isChat ? 'none' : 'flex';
+        // 注意：必须用 grid，之前写成 flex 会把网格布局打散，图标被压成"细长条"
+        if (disc) disc.style.display = isChat ? 'none' : 'grid';
         if (tChat) tChat.classList.toggle('wx-tab--on', isChat);
         if (tDisc) tDisc.classList.toggle('wx-tab--on', !isChat);
     }
@@ -498,9 +558,9 @@
         var disc = el.querySelector('#wx-discover');
         var tiles = [
             { ic: 'fa-envelope-open-text', nm: '信箱', sub: '集中收所有人的信', act: function () { openUnifiedInbox(); } },
-            { ic: 'fa-home-heart', nm: '家园', sub: '朋友圈形态', act: function () { _momentsEntry(); } },
+            { ic: 'fa-house', nm: '家园', sub: '朋友圈形态', act: function () { _momentsEntry(); } },
             { ic: 'fa-hand-holding-heart', nm: '陪伴', sub: '进他的日常', act: function () { _click('companion-btn'); } },
-            { ic: 'fa-newspaper', nm: '今日公告', sub: '今天的他', act: function () { _click('daily-greeting-btn'); } },
+            { ic: 'fa-newspaper', nm: '今日公告', sub: '按人查看', act: function () { openDailyGreetingPicker(); } },
             { ic: 'fa-user-group', nm: '我的梦角', sub: '管理 / 切换', act: function () { if (typeof window.openContactsPanel === 'function') window.openContactsPanel(); } },
             { ic: 'fa-cog', nm: '设置', sub: '外观 / 聊天 / 节奏', act: function () { _click('settings-btn'); } }
         ];
@@ -593,12 +653,43 @@
         inner.insertBefore(b, inner.firstChild);
     }
 
+    // ─── 聊天页头部整理：像微信一样清爽 ───
+    //  · 中间那排功能按钮全部收掉（都搬到「发现」里了），只留返回 + 两边头像
+    //  · 他的头像在左、我的头像在右，各自带自己的状态，左右对称
+    //  · 点他的头像 → 进他的朋友圈空间；点我的头像 → 只看我发的
+    function tidyChatHeader() {
+        try { document.body.classList.add('header-clean'); } catch (e) {}
+
+        var openHis = function (e) {
+            if (e) { e.stopPropagation(); e.preventDefault(); }
+            openOwnerMoments();
+        };
+        var openMine = function (e) {
+            if (e) { e.stopPropagation(); e.preventDefault(); }
+            try {
+                if (typeof window._mShowOnlyMine === 'function') window._mShowOnlyMine();
+                else if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
+            } catch (err) {}
+        };
+        var bind = function (id, fn) {
+            var el = document.getElementById(id);
+            if (!el || el._wxBound) return;
+            el._wxBound = true;
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', fn);
+        };
+        // 绑整个头像容器：点到头像/边框/空白都算，手指更好点
+        bind('partner-avatar-container', openHis);
+        bind('my-avatar-container', openMine);
+    }
+
     var _booted = false;
     function boot() {
         if (_booted) return;
         _booted = true;
         buildHome();
         injectBackBtn();
+        tidyChatHeader();
 
         // 是不是"刚从另一个梦角切过来"？是的话把过场接着铺住，
         // 等这一页的聊天渲染好再淡出 —— 视觉上就是一条连续的过场。
@@ -638,7 +729,7 @@
             try { sessionStorage.removeItem('wxOpenMoments'); } catch (e) {}
             var t0 = Date.now();
             (function waitThenOpen() {
-                if (_chatReady() || Date.now() - t0 > 2500) { openMomentsOf(); return; }
+                if (_chatReady() || Date.now() - t0 > 2500) { openOwnerMoments(); return; }
                 requestAnimationFrame(waitThenOpen);
             })();
         }

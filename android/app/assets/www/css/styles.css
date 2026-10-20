@@ -4683,7 +4683,7 @@
             background: transparent; color: var(--text-primary); font-size: 16px; cursor: pointer;
         }
         .wx-head-add:active { background: rgba(0, 0, 0, .06); }
-        .wx-conv-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .wx-conv-list { order: 1; flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
         .wx-conv {
             display: flex; align-items: center; gap: 12px;
             padding: 11px 14px; cursor: pointer;
@@ -4707,6 +4707,7 @@
         }
         .wx-empty { text-align: center; color: var(--text-secondary); font-size: 13px; padding: 40px 0; }
         .wx-tabbar {
+            order: 3;
             flex-shrink: 0; display: flex;
             background: var(--header-bg, #f7f7f7);
             border-top: 1px solid var(--border-color, #e2e2e2);
@@ -4722,6 +4723,7 @@
 
         /* 发现页：功能网格 */
         .wx-discover {
+            order: 2;
             flex: 1; display: none; overflow-y: auto;
             padding: 14px 12px 20px;
             grid-template-columns: repeat(3, 1fr);
@@ -4736,7 +4738,12 @@
             text-align: center;
         }
         .wx-d-tile:active { background: var(--secondary-bg, rgba(0, 0, 0, .05)); }
-        .wx-d-tile > i { font-size: 21px; color: var(--accent-color); }
+        .wx-d-tile > i {
+            font-size: 18px; color: var(--accent-color);
+            width: 40px; height: 40px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(var(--accent-color-rgb), .10);
+        }
         .wx-d-nm { font-size: 13px; font-weight: 600; color: var(--text-primary); }
         .wx-d-sub { font-size: 10px; color: var(--text-secondary); line-height: 1.3; }
 
@@ -4770,13 +4777,13 @@
         #wx-back-btn { order: 0 !important; margin-right: 2px; }
 
         /* 「看谁的朋友圈」选择面板 */
-        #wx-mp {
+        #wx-mp, #wx-pp {
             position: fixed; inset: 0; z-index: 1000001;
             display: flex; align-items: flex-end;
             background: rgba(0, 0, 0, .45);
             opacity: 0; pointer-events: none; transition: opacity .2s ease;
         }
-        #wx-mp.on { opacity: 1; pointer-events: auto; }
+        #wx-mp.on, #wx-pp.on { opacity: 1; pointer-events: auto; }
         .wx-mp-sheet {
             width: 100%; max-height: 70vh;
             display: flex; flex-direction: column;
@@ -4785,7 +4792,7 @@
             padding-bottom: env(safe-area-inset-bottom, 0);
             transform: translateY(8px); transition: transform .2s ease;
         }
-        #wx-mp.on .wx-mp-sheet { transform: translateY(0); }
+        #wx-mp.on .wx-mp-sheet, #wx-pp.on .wx-mp-sheet { transform: translateY(0); }
         .wx-mp-title {
             flex-shrink: 0; text-align: center; font-size: 14px; font-weight: 600;
             color: var(--text-primary); padding: 14px 0 10px;
@@ -4845,6 +4852,70 @@
             font-weight: 600; cursor: pointer; font-family: inherit;
         }
         .wx-head-ops { display: flex; align-items: center; gap: 4px; }
+
+        /* ── 聊天页头部"清爽模式"：像微信一样只看两边头像，功能都收进「发现」 ── */
+        body.header-clean .header-actions { display: none !important; }
+        body.header-clean .header-inner {
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+        }
+        /* 左：他的头像贴左边，名字/状态在里侧；右：我的头像贴右边，镜像对称 */
+        body.header-clean .user-info {
+            flex: 1 1 0;
+            min-width: 0;
+            display: grid;
+            grid-template-columns: 40px minmax(0, 1fr);
+            grid-template-areas: "av nm" "av st" "av tz";
+            grid-template-rows: 18px 14px 16px;
+            align-items: center;
+            justify-items: start;
+            column-gap: 8px;
+            row-gap: 1px;
+        }
+        body.header-clean .user-info .avatar-container {
+            grid-area: av;
+            width: 40px !important;
+            height: 40px !important;
+            margin: 0;
+        }
+        body.header-clean .user-info .username {
+            grid-area: nm;
+            font-size: 13px;
+            max-width: 100%;
+            text-align: left;
+            line-height: 1.2;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        body.header-clean .user-info .status {
+            grid-area: st;
+            font-size: 10.5px;
+            line-height: 1.2;
+            padding: 0;
+            text-align: left;
+            background: none;
+            opacity: .85;
+            max-width: 100%;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        body.header-clean .user-info:last-of-type {
+            grid-template-columns: minmax(0, 1fr) 40px;
+            grid-template-areas: "nm av" "st av" "tz av";
+            justify-items: end;
+        }
+        body.header-clean .user-info:last-of-type .username,
+        body.header-clean .user-info:last-of-type .status { text-align: right; }
+        /* 返回键在最左；右侧补一个等宽占位，保证两边头像左右对称 */
+        body.header-clean #wx-back-btn {
+            order: 0;
+            flex: 0 0 32px;
+            width: 32px; height: 32px;
+            margin: 0;
+        }
+        body.header-clean .header-inner::after { content: ''; flex: 0 0 32px; width: 32px; }
+        /* 时差胶囊：跟在他的状态下面，不把网格挤乱 */
+        body.header-clean #tz-badge { grid-column: 2; grid-row: 3; justify-self: start; margin: 1px 0 0 !important; }
         /* 开了「减少动画」：切换过场整块隐藏 —— 连转圈都不想让你看到 */
         html.motion-off #ct-switch-overlay { display: none !important; }
 
@@ -12327,7 +12398,8 @@ body #user-sticker-picker .empty-sticker-tip {
     transition: all 0.2s;
     -webkit-tap-highlight-color: transparent;
 }
-.cs-pill.cs-pill-on { background: rgba(var(--accent-color-rgb),.14); }
+.cs-pill.cs-pill-on { background: rgba(var(--accent-color-rgb),.14); color: var(--accent-color); }
+.cs-pill > .cs-pill-i { font-size: 18px; line-height: 1; }
 .cs-pill:active { transform: scale(0.86); }
 
 /* PNG 閸ョ偓鐖� mask-image閿涘牓顤侀懝鑼剁闂呭繋瀵屾０妯垮閿涳拷 */
@@ -13262,6 +13334,9 @@ body #user-sticker-picker .empty-sticker-tip {
     transform: scale(0.75);
     pointer-events: none;
 }
+/* 看他的朋友圈：只读浏览，把发帖入口收起来 */
+#couple-space-page.cs-viewing-owner .cs-compose-row,
+#couple-space-page.cs-viewing-owner #cs-feed-fab { display: none !important; }
 
 /* 閳光偓閳光偓 cs-outer-header 娑撱倗顫掗悩鑸碘偓浣风瑓鐎硅棄瀹虫穱婵囧瘮娑撯偓閼凤拷 閳光偓閳光偓 */
 #cs-outer-header {

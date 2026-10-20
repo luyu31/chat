@@ -77,7 +77,7 @@
 html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle at 50% 36%,rgba(45,45,45,.95),rgba(30,30,30,.9) 30%,rgba(18,18,18,.98) 72%),#121212;}
 </style>
 </head>
-<body>
+<body class="header-clean">
 <div id="splash-declaration">
     <div class="splash-bg-stars" id="splash-stars"></div>
     <div class="splash-glow-1"></div>
@@ -586,11 +586,11 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
         </div>
         <div class="cs-pills-wrap">
             <div class="cs-pills">
-                <button class="cs-pill cs-pill-on" id="csp-feed"    onclick="csSwitchTab('feed')"   title="动态"><span class="cs-pill-icon"></span></button>
-                <button class="cs-pill"             id="csp-album"   onclick="csSwitchTab('album')"  title="相册"><span class="cs-pill-icon"></span></button>
-                <button class="cs-pill"             id="csp-mood"    onclick="csSwitchTab('mood')"   title="心情手账"><span class="cs-pill-icon"></span></button>
-                <button class="cs-pill"             id="csp-ann"     onclick="csSwitchTab('ann')"    title="纪念日"><span class="cs-pill-icon"></span></button>
-                <button class="cs-pill"             id="csp-cinema"  onclick="csSwitchTab('cinema')" title="电影院"><span class="cs-pill-icon"></span></button>
+                <button class="cs-pill cs-pill-on" id="csp-feed"    onclick="csSwitchTab('feed')"   title="动态"><i class="fas fa-stream cs-pill-i"></i></button>
+                <button class="cs-pill"             id="csp-album"   onclick="csSwitchTab('album')"  title="相册"><i class="fas fa-images cs-pill-i"></i></button>
+                <button class="cs-pill"             id="csp-mood"    onclick="csSwitchTab('mood')"   title="心情手账"><i class="fas fa-face-smile cs-pill-i"></i></button>
+                <button class="cs-pill"             id="csp-ann"     onclick="csSwitchTab('ann')"    title="纪念日"><i class="fas fa-calendar-alt cs-pill-i"></i></button>
+                <button class="cs-pill"             id="csp-cinema"  onclick="csSwitchTab('cinema')" title="电影院"><i class="fas fa-film cs-pill-i"></i></button>
             </div>
         </div>
     </div>
@@ -601,7 +601,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
         <div class="cs-panel cs-panel-active" id="cs-panel-feed">
             <!-- 动态 section header -->
             <div class="cs-feed-hd">
-                <span class="cs-feed-hd-title">动态</span>
+                <span class="cs-feed-hd-title">朋友圈</span>
                 <button class="cs-icon-btn cs-bell-btn" id="cs-bell-btn" onclick="window._mOpenBell()">
                     <i class="fas fa-bell"></i>
                     <span class="cs-bell-dot" id="cs-bell-dot" style="display:none;"></span>

@@ -312,10 +312,19 @@
         if (!instant) hideSwitchOverlay();
     }
 
-    // ─── 「朋友圈」：先选看谁的朋友圈，再进他的家园 ───
-    function openMomentsOf(meta) {
+    // ─── 「朋友圈」：默认是所有人的动态混在一起；点某个人的头像才进他本人的空间 ───
+    function openAllMoments() {
+        // 从首页/发现进来：首页留在下面别关，这样退出朋友圈还是回到原来的那一页
+        try {
+            if (typeof window._mShowAllPeople === 'function') window._mShowAllPeople();
+            if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
+            else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
+        } catch (e) { console.warn('[wx-home] 打开家园失败', e); }
+    }
+    function openOwnerMoments() {
         enterChat();
         try {
+            if (typeof window._mShowOwner === 'function') { window._mShowOwner(); return; }
             if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
             else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
         } catch (e) { console.warn('[wx-home] 打开家园失败', e); }
@@ -363,7 +372,7 @@
                 var nm = row.getAttribute('data-name');
                 el.classList.remove('on');
                 setTimeout(function () { el.remove(); }, 200);
-                if (id === _currentId()) { openMomentsOf(); return; }
+                if (id === _currentId()) { openOwnerMoments(); return; }
                 // 换一个梦角看他的朋友圈：切过去，并且到了之后直接进家园
                 try { sessionStorage.setItem('wxOpenMoments', '1'); } catch (e2) {}
                 setTimeout(function () { switchToSession(id, nm); }, 180);
@@ -380,7 +389,16 @@
     }
     // 朋友圈入口：直接进"所有人混在一起"的那条流（不再先问看谁）
     function _momentsEntry() {
-        openMomentsOf();
+        openAllMoments();
+    }
+
+    // 今日公告是"按人"的：多个梦角时先选看谁，再打开他今天的公告
+    function openDailyGreetingPicker() {
+        var list = _sessions();
+        if (list.length <= 1) { _click('daily-greeting-btn'); return; }
+        openPersonPicker('看谁的今日公告', function () {
+            setTimeout(function () { _click('daily-greeting-btn'); }, 120);
+        });
     }
 
     // 通用「选个人」面板：给"今日公告"这种需要区分是谁的功能用
@@ -416,8 +434,11 @@
             var nm = row.getAttribute('data-name');
             close();
             if (id !== _currentId()) {
-                switchToSession(id, nm);
-                setTimeout(function () { try { onPick && onPick(id, nm); } catch (err) {} }, 220);
+                try {
+                    var pr = switchToSession(id, nm);
+                    var run = function () { setTimeout(function () { try { onPick && onPick(id, nm); } catch (err) {} }, 80); };
+                    if (pr && typeof pr.then === 'function') pr.then(run); else run();
+                } catch (err) {}
             } else {
                 try { onPick && onPick(id, nm); } catch (err) {}
             }
@@ -537,9 +558,9 @@
         var disc = el.querySelector('#wx-discover');
         var tiles = [
             { ic: 'fa-envelope-open-text', nm: '信箱', sub: '集中收所有人的信', act: function () { openUnifiedInbox(); } },
-            { ic: 'fa-home-heart', nm: '家园', sub: '朋友圈形态', act: function () { _momentsEntry(); } },
+            { ic: 'fa-house', nm: '家园', sub: '朋友圈形态', act: function () { _momentsEntry(); } },
             { ic: 'fa-hand-holding-heart', nm: '陪伴', sub: '进他的日常', act: function () { _click('companion-btn'); } },
-            { ic: 'fa-newspaper', nm: '今日公告', sub: '今天的他', act: function () { _click('daily-greeting-btn'); } },
+            { ic: 'fa-newspaper', nm: '今日公告', sub: '按人查看', act: function () { openDailyGreetingPicker(); } },
             { ic: 'fa-user-group', nm: '我的梦角', sub: '管理 / 切换', act: function () { if (typeof window.openContactsPanel === 'function') window.openContactsPanel(); } },
             { ic: 'fa-cog', nm: '设置', sub: '外观 / 聊天 / 节奏', act: function () { _click('settings-btn'); } }
         ];
@@ -641,10 +662,7 @@
 
         var openHis = function (e) {
             if (e) { e.stopPropagation(); e.preventDefault(); }
-            try {
-                if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
-                else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
-            } catch (err) {}
+            openOwnerMoments();
         };
         var openMine = function (e) {
             if (e) { e.stopPropagation(); e.preventDefault(); }
@@ -660,8 +678,9 @@
             el.style.cursor = 'pointer';
             el.addEventListener('click', fn);
         };
-        bind('partner-avatar', openHis);
-        bind('my-avatar', openMine);
+        // 绑整个头像容器：点到头像/边框/空白都算，手指更好点
+        bind('partner-avatar-container', openHis);
+        bind('my-avatar-container', openMine);
     }
 
     var _booted = false;
@@ -710,7 +729,7 @@
             try { sessionStorage.removeItem('wxOpenMoments'); } catch (e) {}
             var t0 = Date.now();
             (function waitThenOpen() {
-                if (_chatReady() || Date.now() - t0 > 2500) { openMomentsOf(); return; }
+                if (_chatReady() || Date.now() - t0 > 2500) { openOwnerMoments(); return; }
                 requestAnimationFrame(waitThenOpen);
             })();
         }
