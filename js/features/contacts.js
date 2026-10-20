@@ -211,6 +211,172 @@
         renderContacts();
     }
 
+    // ─── 联系人详情页（只有你选的 4 项：发消息 / 编辑主页 / 在线状态 / 聊天背景） ───
+    function _sessKey(id, base) { return _prefix() + id + '_' + base; }
+
+    // 当前梦角：改完要同步到"活着"的那一份，不然界面要等重载才变
+    function _applyToLiveProfile(meta, patch) {
+        if (meta.id !== _currentId()) return;
+        try {
+            if (patch.name != null && typeof settings !== 'undefined' && settings) {
+                settings.partnerName = patch.name;
+                var nEl = document.getElementById('partner-name');
+                if (nEl) nEl.textContent = patch.name;
+            }
+            if (patch.signature != null && typeof settings !== 'undefined' && settings) {
+                settings.partnerSignature = patch.signature;
+            }
+            if (patch.avatar !== undefined) {
+                window._avatarCache = window._avatarCache || {};
+                window._avatarCache.partner = patch.avatar || null;
+                var host = (typeof DOMElements !== 'undefined' && DOMElements.partner) ? DOMElements.partner.avatar : null;
+                if (host) {
+                    host.innerHTML = patch.avatar
+                        ? '<img src="' + _esc(patch.avatar) + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">'
+                        : '<i class="fas fa-user"></i>';
+                }
+            }
+            if (patch.bg !== undefined && typeof window.applyBackground === 'function') {
+                window.applyBackground(patch.bg || '');
+            }
+            if (typeof saveData === 'function') saveData();
+        } catch (e) { console.warn('[contacts] 同步到当前梦角失败', e); }
+    }
+
+    async function openContactDetail(id) {
+        var s = _sessions().filter(function (x) { return x.id === id; })[0];
+        if (!s) return;
+        var m = await _meta(s);
+        var sheet = await _readProfile(id);
+        var old = document.getElementById('ct-detail');
+        if (old) old.remove();
+
+        var el = document.createElement('div');
+        el.id = 'ct-detail';
+        el.innerHTML =
+            '<div class="ct-d-sheet">' +
+                '<div class="ct-d-head">' +
+                    '<div class="ct-d-av">' + _avatarHtml({ avatar: sheet.avatar }, 64) + '</div>' +
+                    '<div class="ct-d-names">' +
+                        '<div class="ct-d-name">' + _esc(sheet.name) + '</div>' +
+                        '<div class="ct-d-sig">' + _esc(sheet.signature || '这个人很懒，什么都没写') + '</div>' +
+                        '<div class="ct-d-online' + (m.online ? '' : ' off') + '">' +
+                            '<span class="ct-d-dot"></span>' + (m.online ? '在线' : '离线') +
+                            (m.isCurrent ? '<span class="ct-d-cur">当前</span>' : '') +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="ct-d-rows">' +
+                    '<div class="ct-d-row" data-act="msg"><i class="fas fa-comment"></i><span>发消息</span><i class="fas fa-chevron-right"></i></div>' +
+                    '<div class="ct-d-row" data-act="edit"><i class="fas fa-pen"></i><span>编辑主页</span><i class="fas fa-chevron-right"></i></div>' +
+                    '<div class="ct-d-row" data-act="online"><i class="fas fa-circle"></i><span>在线状态</span><span class="ct-d-val">' + (m.online ? '在线' : '离线') + '</span></div>' +
+                    '<div class="ct-d-row" data-act="bg"><i class="fas fa-image"></i><span>聊天背景</span><i class="fas fa-chevron-right"></i></div>' +
+                '</div>' +
+                (m.isCurrent ? '' : '<div class="ct-d-tip">改动会直接写进他本人的存档，他下次进来就生效；当前这一位改完立刻生效</div>') +
+                '<button class="ct-d-cancel" id="ct-d-cancel">关闭</button>' +
+                '<input type="file" id="ct-d-avatar-input" accept="image/*" style="display:none;">' +
+                '<input type="file" id="ct-d-bg-input" accept="image/*,.gif" style="display:none;">' +
+            '</div>';
+        document.body.appendChild(el);
+        void el.offsetWidth;
+        el.classList.add('on');
+
+        function close() { el.classList.remove('on'); setTimeout(function () { el.remove(); }, 200); }
+        el.querySelector('#ct-d-cancel').addEventListener('click', close);
+        el.addEventListener('click', function (e) { if (e.target === el) close(); });
+
+        // 头像选择
+        el.querySelector('#ct-d-avatar-input').addEventListener('change', async function (e) {
+            var f = e.target.files && e.target.files[0];
+            if (!f) return;
+            var dataUrl = await new Promise(function (res) {
+                var r = new FileReader(); r.onload = function (ev) { res(ev.target.result); }; r.readAsDataURL(f);
+            });
+            try { await localforage.setItem(_sessKey(id, 'partnerAvatar'), dataUrl); } catch (err) {}
+            _applyToLiveProfile(m, { avatar: dataUrl });
+            close(); openContactDetail(id);
+            if (typeof showNotification === 'function') showNotification('头像已更新', 'success');
+        });
+        // 背景选择
+        el.querySelector('#ct-d-bg-input').addEventListener('change', async function (e) {
+            var f = e.target.files && e.target.files[0];
+            if (!f) return;
+            var dataUrl = await new Promise(function (res) {
+                var r = new FileReader(); r.onload = function (ev) { res(ev.target.result); }; r.readAsDataURL(f);
+            });
+            try { await localforage.setItem(_sessKey(id, 'chatBackground'), dataUrl); } catch (err) {}
+            try { localStorage.setItem(_sessKey(id, 'chatBackground'), dataUrl); } catch (err) {}
+            _applyToLiveProfile(m, { bg: dataUrl });
+            close();
+            if (typeof showNotification === 'function') showNotification('聊天背景已更新', 'success');
+        });
+
+        el.querySelector('.ct-d-rows').addEventListener('click', async function (e) {
+            var row = e.target.closest('.ct-d-row');
+            if (!row) return;
+            var act = row.getAttribute('data-act');
+
+            if (act === 'msg') {
+                close();
+                if (id === _currentId()) { if (typeof window.WxHomeEnter === 'function') window.WxHomeEnter(); return; }
+                setTimeout(function () { switchTo(id, sheet.name); }, 180);
+                return;
+            }
+            if (act === 'edit') {
+                var nn = prompt('昵称：', sheet.name);
+                if (nn !== null && String(nn).trim()) {
+                    try {
+                        var st = (await localforage.getItem(_sessKey(id, 'chatSettings'))) || {};
+                        st.partnerName = String(nn).trim();
+                        await localforage.setItem(_sessKey(id, 'chatSettings'), st);
+                    } catch (err) {}
+                    _applyToLiveProfile(m, { name: String(nn).trim() });
+                }
+                var sg = prompt('个性签名（留空则不显示）：', sheet.signature || '');
+                if (sg !== null) {
+                    try {
+                        var st2 = (await localforage.getItem(_sessKey(id, 'chatSettings'))) || {};
+                        st2.partnerSignature = String(sg).trim();
+                        await localforage.setItem(_sessKey(id, 'chatSettings'), st2);
+                    } catch (err) {}
+                    _applyToLiveProfile(m, { signature: String(sg).trim() });
+                }
+                if (confirm('要不要顺便换头像？')) {
+                    document.getElementById('ct-d-avatar-input').click();
+                    return;
+                }
+                close(); openContactDetail(id);
+                renderContacts();
+                if (typeof showNotification === 'function') showNotification('主页已更新', 'success');
+                return;
+            }
+            if (act === 'online') {
+                var arr = _sessions();
+                var rec = arr.filter(function (x) { return x.id === id; })[0];
+                if (rec) {
+                    rec.online = !(rec.online !== false);
+                    try { await localforage.setItem(_prefix() + 'sessionList', arr); } catch (err) {}
+                }
+                close(); openContactDetail(id);
+                renderContacts();
+                return;
+            }
+            if (act === 'bg') { document.getElementById('ct-d-bg-input').click(); return; }
+        });
+    }
+
+    // 读某个梦角的资料（昵称/签名/头像）
+    async function _readProfile(id) {
+        var name = '未命名', signature = '', avatar = null;
+        try {
+            var st = await localforage.getItem(_sessKey(id, 'chatSettings'));
+            if (st && st.partnerName && String(st.partnerName).trim()) name = st.partnerName;
+            if (st && st.partnerSignature) signature = st.partnerSignature;
+        } catch (e) {}
+        try { avatar = await localforage.getItem(_sessKey(id, 'partnerAvatar')); } catch (e) {}
+        return { name: name, signature: signature, avatar: avatar };
+    }
+
     // ─── 接管列表点击 ───
     function bind() {
         var list = document.getElementById('session-list');
@@ -223,9 +389,7 @@
             var row = e.target.closest('.ct-row');
             if (!row || !row.getAttribute('data-id')) return;
             e.stopPropagation();
-            var id = row.getAttribute('data-id');
-            var nm = (row.querySelector('.ct-name') || {}).textContent || '梦角';
-            switchTo(id, nm);
+            openContactDetail(row.getAttribute('data-id'));   // 点进他的资料页，发消息在资料页里
         });
     }
 
