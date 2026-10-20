@@ -121,7 +121,11 @@
         }
         if (window.renderMessages._wxHooked) return;
         var orig = window.renderMessages;
-        var wrapped = function () { _rendered = true; return orig.apply(this, arguments); };
+        var wrapped = function () {
+            _rendered = true;
+            if (!_prefetchedOnce) { _prefetchedOnce = true; prefetchAll(); }  // 数据一就绪就开始预读
+            return orig.apply(this, arguments);
+        };
         wrapped._wxHooked = true;
         window.renderMessages = wrapped;
     })();
@@ -139,6 +143,7 @@
     // 存储的读写全部丢到后台 —— 点下去的那一帧就已经是新梦角的聊天了。
     var _cache = {};         // id → { messages, settings }
     var _prefetching = {};
+    var _prefetchedOnce = false;
 
     function _cacheCurrent() {
         try {
@@ -171,16 +176,15 @@
         return _cache[id];
     }
 
-    // 空闲时把所有会话预读一遍（不抢首屏）
+    // 把所有会话预读一遍。并发读（IndexedDB 读很快），不再一个个排队等 120ms ——
+    // 这样刚打开 App 就想切也会命中缓存，不会出现"第一次慢一下"。
     function prefetchAll() {
         var list = [];
         try { list = _sessions(); } catch (e) { return; }
-        var i = 0;
-        (function next() {
-            if (i >= list.length) return;
-            var s = list[i++];
-            _prefetchSession(s.id).then(function () { setTimeout(next, 120); });
-        })();
+        list.forEach(function (s) {
+            if (_cache[s.id] || _prefetching[s.id]) return;
+            _prefetchSession(s.id).catch(function () {});
+        });
     }
 
     // 关掉「减少动画」的人：切换时连过场都不给看 —— 不转圈、不淡入，点一下直接到位
@@ -666,9 +670,13 @@
         tries = tries || 0;
         var n = 0;
         try { n = _sessions().length; } catch (e) {}
-        if (n > 0) { renderConvs(); return; }
-        if (tries >= 40) { renderConvs(); return; }   // 最多等 10 秒，等不到就渲染空态
-        setTimeout(function () { waitSessionsAndRender(tries + 1); }, 250);
+        if (n > 0) {
+            renderConvs();
+            prefetchAll();          // 会话一就绪就立刻并发预读，别等到点的时候才读
+            return;
+        }
+        if (tries >= 80) { renderConvs(); return; }   // 最多等 10 秒，等不到就渲染空态
+        setTimeout(function () { waitSessionsAndRender(tries + 1); }, 120);
     }
 
     // 暴露给「我的梦角」面板复用（同一套切换 + 过场逻辑，保证两条入口手感一致）
