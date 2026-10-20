@@ -84,7 +84,7 @@
                 }
             }
         } catch (e) {}
-        return { id: s.id, name: name, avatar: avatar, preview: preview, time: time, isCurrent: s.id === _currentId() };
+        return { id: s.id, name: name, avatar: avatar, preview: preview, time: time, isCurrent: s.id === _currentId(), isGroup: s.type === 'group' };
     }
 
     // ─── 切换过场：跨越"整页重载"保持连续，别让人看到白屏和开场动画 ───
@@ -211,7 +211,10 @@
         el.id = 'wx-home';
         el.innerHTML =
             '<div class="wx-head"><span class="wx-head-title">微信</span>' +
-                '<button class="wx-head-add" id="wx-add-btn" title="添加梦角"><i class="fas fa-plus"></i></button></div>' +
+                '<div class="wx-head-ops">' +
+                    '<button class="wx-head-add" id="wx-add-group" title="拉个群"><i class="fas fa-user-group"></i></button>' +
+                    '<button class="wx-head-add" id="wx-add-btn" title="添加梦角"><i class="fas fa-plus"></i></button>' +
+                '</div></div>' +
             '<div class="wx-conv-list" id="wx-conv-list"></div>' +
             '<div class="wx-tabbar">' +
                 '<div class="wx-tab wx-tab--on" id="wx-tab-chat"><i class="fas fa-comment-dots"></i><span>聊天</span></div>' +
@@ -221,6 +224,10 @@
 
         el.querySelector('#wx-add-btn').addEventListener('click', function () {
             if (typeof window.openContactsPanel === 'function') window.openContactsPanel();
+        });
+        el.querySelector('#wx-add-group').addEventListener('click', function () {
+            if (typeof window.openCreateGroupPicker === 'function') window.openCreateGroupPicker();
+            else if (typeof showNotification === 'function') showNotification('群聊模块未就绪', 'warning');
         });
         el.querySelector('#wx-tab-chat').addEventListener('click', function () { /* 已经在这一页 */ });
         el.querySelector('#wx-tab-moments').addEventListener('click', function () {
@@ -253,7 +260,7 @@
                 '<div class="wx-conv-av">' + _avatarHtml(m.avatar, 48) + '</div>' +
                 '<div class="wx-conv-main">' +
                     '<div class="wx-conv-top">' +
-                        '<span class="wx-conv-name">' + _esc(m.name) + '</span>' +
+                        '<span class="wx-conv-name">' + (m.isGroup ? '<i class="fas fa-user-group" style="font-size:12px;color:var(--text-secondary);margin-right:4px;"></i>' : '') + _esc(m.name) + '</span>' +
                         '<span class="wx-conv-time">' + _esc(_relTime(m.time)) + '</span>' +
                     '</div>' +
                     '<div class="wx-conv-prev">' + _esc(m.preview || '还没有聊过，点进去说句话吧') + '</div>' +
