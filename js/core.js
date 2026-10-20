@@ -526,7 +526,12 @@ const loadData = async () => {
             }));
         } else {
             const backup = _tryRecoverFromBackup();
-            if (backup && Array.isArray(backup.messages) && backup.messages.length > 0) {
+            // 关键：备份是**全局单份**的（BACKUP_V1_critical）。以前只要当前会话没消息就直接拿它恢复，
+            // 于是"新建/切到一个还没聊过的梦角"时，会把**上一个梦角**的消息和名字灌进来 ——
+            // 表现出来就是"新加的角色显示的还是上一个角色"。
+            // 现在必须是同一个会话（或备份没记录会话）才允许恢复。
+            const backupForThisSession = backup && (!backup.sessionId || String(backup.sessionId) === String(SESSION_ID));
+            if (backupForThisSession && Array.isArray(backup.messages) && backup.messages.length > 0) {
                 const timeSince = Math.round((Date.now() - backup.ts) / 60000);
                 console.warn(`[loadData] 主存储无消息，正在从备份恢复（备份时间：${timeSince} 分钟前）`);
                 messages = backup.messages.map(m => ({

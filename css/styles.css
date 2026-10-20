@@ -4719,6 +4719,26 @@
         }
         .wx-tab i { font-size: 19px; }
         .wx-tab--on { color: var(--accent-color); }
+
+        /* 发现页：功能网格 */
+        .wx-discover {
+            flex: 1; display: none; overflow-y: auto;
+            padding: 14px 12px 20px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px; align-content: start;
+        }
+        .wx-d-tile {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 5px; padding: 16px 6px; border-radius: 14px; cursor: pointer;
+            background: var(--modal-bg, #fff);
+            border: 1px solid var(--border-color, #eee);
+            -webkit-tap-highlight-color: transparent;
+            text-align: center;
+        }
+        .wx-d-tile:active { background: var(--secondary-bg, rgba(0, 0, 0, .05)); }
+        .wx-d-tile > i { font-size: 21px; color: var(--accent-color); }
+        .wx-d-nm { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+        .wx-d-sub { font-size: 10px; color: var(--text-secondary); line-height: 1.3; }
         /* 聊天页头部左侧的返回键 */
         #wx-back-btn { order: 0 !important; margin-right: 2px; }
 

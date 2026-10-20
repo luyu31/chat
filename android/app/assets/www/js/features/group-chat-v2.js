@@ -210,6 +210,17 @@
 
     window.openCreateGroupPicker = openCreateGroupPicker;
     window.createGroupChat = createGroupChat;
+    // 原地切换会话后，让群聊模块按新会话重新同步（成员/字卡/群名）
+    window._groupSyncNow = function () {
+        try { _installResolver(); _syncForCurrentSession(); _enforceGroupName(); } catch (e) {}
+        var rec = _curRecord();
+        if (rec && rec.type === 'group' && Array.isArray(rec.members) && rec.members.length) {
+            _resolveMembers(rec.members).then(function (list) {
+                _curMembers = list;
+                return _loadMemberLibs(rec.members);
+            }).catch(function () {});
+        }
+    };
 
     // ─── 强制纠正群名 ───
     // 实测踩到过：建完群切过去之后，群会话的 chatSettings.partnerName 会被

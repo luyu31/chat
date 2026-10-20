@@ -330,6 +330,8 @@
         open: open,
         toggle: toggle,
         getPartnerTime: getPartnerTime,
-        isEnabled: isEnabled
+        isEnabled: isEnabled,
+        // 原地切换梦角后让顶部时差胶囊换成新梦角（不然还挂着上一个名字）
+        refresh: function () { try { render(); } catch (e) {} }
     };
 })();

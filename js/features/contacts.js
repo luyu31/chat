@@ -42,11 +42,13 @@
     // 读某个梦角的名字和头像（都按 session 键存在 localforage 里）
     async function _meta(s) {
         var p = _prefix();
-        var name = s.name || '未命名';
+        var recName = s.name || '';
+        var userNamed = recName && recName.indexOf('会话 ') !== 0;
+        var name = userNamed ? recName : '未命名';
         var avatar = null;
         try {
             var st = await localforage.getItem(p + s.id + '_chatSettings');
-            if (st && st.partnerName && String(st.partnerName).trim()) name = st.partnerName;
+            if (!userNamed && st && st.partnerName && String(st.partnerName).trim()) name = st.partnerName;
         } catch (e) {}
         try { avatar = await localforage.getItem(p + s.id + '_partnerAvatar'); } catch (e) {}
         return {
@@ -151,7 +153,16 @@
             rec.online = true;
             try { await localforage.setItem(_prefix() + 'sessionList', arr); } catch (e) {}
         }
+        // 关键：把名字也写进这个新会话自己的 chatSettings。
+        // 不写的话它一进去是"空设置"，聊天头部会沿用上一个梦角的名字 ——
+        // 这就是"新加的角色显示的却是上一个角色"的由来。
+        try {
+            var st = (await localforage.getItem(_prefix() + id + '_chatSettings')) || {};
+            st.partnerName = name;
+            await localforage.setItem(_prefix() + id + '_chatSettings', st);
+        } catch (e) {}
         renderContacts();
+        if (typeof window.WxRefreshConvs === 'function') window.WxRefreshConvs();
         if (typeof showNotification === 'function') showNotification('已添加梦角：' + name, 'success');
     }
 

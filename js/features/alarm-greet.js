@@ -138,7 +138,10 @@
                     maxRingMinutes: getMaxRingMin(),
                     alarms: getAlarms().filter(a => a.enabled && parseHM(a.time)).map(a => ({
                         id: a.id, name: a.name, time: a.time,
-                        gentle: !!a.gentle,
+                        // gentle 给原生用（true = 只弹通知、不响铃）
+                        // voice 模式在原生那边也按"温柔"处理（不响铃），语音由 App 内念出来
+                        gentle: !!(a.gentle || (a.mode === 'voice')),
+                        mode: a.mode || (a.gentle ? 'gentle' : 'alarm'),
                         texts: (a.texts || []).filter(t => t && t.trim())
                     }))
                 }));
@@ -178,8 +181,14 @@
             });
         } catch (e) { console.warn('[alarm-greet] addMessage error:', e); return; }
         markFired(alarm.id);
-        try { playSound('message'); } catch (e) {}
-        if (alarm.tts) speakText(text);
+        const _mode = alarm.mode || (alarm.gentle ? 'gentle' : 'alarm');
+        if (_mode === 'voice') {
+            // 语音模式：不响提示音，直接把这句话念出来（就当他在你耳边说话）
+            speakText(text);
+        } else {
+            try { playSound('message'); } catch (e) {}
+            if (alarm.tts) speakText(text);
+        }
     }
 
     // ─── 前台自检（30 秒一次） ───
@@ -377,16 +386,16 @@
             ttsRow.appendChild(lb);
             row.appendChild(ttsRow);
 
-            // 响铃方式：闹钟式（响铃+震动+全屏） / 温柔提醒（只弹一条通知）
+            // 响铃方式：闹钟（响铃+全屏） / 温柔提醒（只弹通知） / 语音（他挑一句念给你听）
             const modeRow = document.createElement('div');
-            modeRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:6px;';
+            modeRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;';
             const modeLb = document.createElement('span');
             modeLb.style.cssText = 'font-size:11px;color:var(--text-secondary,#999);flex:0 0 auto;';
             modeLb.textContent = '响铃方式';
             modeRow.appendChild(modeLb);
-            [['alarm', '闹钟（响铃+全屏）'], ['gentle', '温柔提醒（只弹通知）']].forEach(pair => {
-                const isGentle = !!a.gentle;
-                const on = pair[0] === 'gentle' ? isGentle : !isGentle;
+            const curMode = a.mode || (a.gentle ? 'gentle' : 'alarm');
+            [['alarm', '闹钟（响铃+全屏）'], ['gentle', '温柔提醒（只通知）'], ['voice', '语音（他念一句）']].forEach(pair => {
+                const on = curMode === pair[0];
                 const chip = document.createElement('button');
                 chip.type = 'button';
                 chip.textContent = pair[1];
@@ -397,7 +406,10 @@
                     const list = getAlarms();
                     const it = list.find(x => x.id === a.id);
                     if (!it) return;
-                    it.gentle = (pair[0] === 'gentle');
+                    it.mode = pair[0];
+                    it.gentle = (pair[0] === 'gentle');   // 兼容老逻辑
+                    // 语音模式必须真的出声，顺手把 tts 打开（否则念不出来）
+                    if (pair[0] === 'voice') it.tts = true;
                     saveAlarms(list);
                     renderSettings();
                 };

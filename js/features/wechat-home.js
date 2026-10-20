@@ -62,11 +62,16 @@
     // 一条会话的摘要信息
     async function _convMeta(s) {
         var p = _prefix();
-        var name = s.name || '未命名';
+        var recName = s.name || '';
+        // 会话列表里的名字若是用户自己起的（不是系统默认的"会话 日期"），就以它为准；
+        // 否则再看这个会话自己的 chatSettings。这样即使旧数据被污染过，列表也不会全都同名。
+        var userNamed = recName && recName.indexOf('会话 ') !== 0;
+        var name = userNamed ? recName : '未命名';
         var avatar = null, preview = '', time = 0;
         try {
             var st = await localforage.getItem(p + s.id + '_chatSettings');
-            if (st && st.partnerName && String(st.partnerName).trim()) name = st.partnerName;
+            if (!userNamed && st && st.partnerName && String(st.partnerName).trim()) name = st.partnerName;
+            if (userNamed && (!st || !st.partnerName)) name = recName;
         } catch (e) {}
         try { avatar = await localforage.getItem(p + s.id + '_partnerAvatar'); } catch (e) {}
         try {
@@ -129,20 +134,98 @@
         return inner.children && inner.children.length > 0;
     }
 
-    // 切换：先把过场铺上 → 记标记 → 重载。重载后 boot() 会把过场接着铺住，
-    // 等聊天真的渲染出来再淡出，所以整个过程是"一条连续的过场"，不是"闪一下白屏"
-    function switchToSession(id, name) {
+    // 切换：原地换会话，不重载页面
+    // 之前是 hash+reload，所以每点一个梦角都像"重新打开一次软件"。
+    // 现在改成：把当前会话存好 → 换 SESSION_ID → 重新加载该会话的数据 → 重画。
+    // 关键点是"存好再换"：否则切换前那个 500ms 延时保存会拿旧数据写进新会话，
+    // 表现就是"新加的角色显示的却是上一个角色的名字"。
+    async function switchToSession(id, name) {
         if (!id || id === _currentId()) { enterChat(); return; }
-        try {
-            sessionStorage.setItem(FLAG, '1');
-            sessionStorage.setItem('wxSwitchName', name || '梦角');
-            sessionStorage.setItem('wxFastBoot', '1');   // 让下一页面跳过开场动画
-        } catch (e) {}
         showSwitchOverlay(name);
-        setTimeout(function () {
-            try { window.location.hash = id; } catch (e) {}
-            try { window.location.reload(); } catch (e) {}
-        }, 140);   // 让过场先淡入一帧，别有断层
+        await new Promise(r => setTimeout(r, 60));   // 让过场先画出来一帧
+
+        try {
+            // ① 掐掉还没触发的延时保存，并把当前会话落盘
+            try { if (typeof saveTimeout !== 'undefined') clearTimeout(saveTimeout); } catch (e) {}
+            try {
+                if (typeof window._flushSaveBeforeSwitch === 'function') await window._flushSaveBeforeSwitch();
+                else if (typeof saveData === 'function') await saveData();
+            } catch (e) { console.warn('[wx-home] 切换前保存失败', e); }
+
+            // ② 换会话
+            SESSION_ID = id;
+            try { await localforage.setItem(_prefix() + 'lastSessionId', id); } catch (e) {}
+            try { history.replaceState(null, '', '#' + id); } catch (e) {}
+
+            // ③ 把这个梦角的数据读回来，重画
+            await loadData();
+            if (typeof window.renderMessages === 'function') window.renderMessages();
+            if (typeof window.updateUI === 'function') { try { window.updateUI(); } catch (e) {} }
+
+            // ③b 名字以这个会话自己的存档为准。
+            // 万一它的 chatSettings 还没有名字，就用会话列表里的名字补上并写回去 ——
+            // 这样绝不会出现"新角色显示上一个角色的名字"。
+            try {
+                var rec = _sessions().filter(function (s) { return s.id === id; })[0];
+                var key = _prefix() + id + '_chatSettings';
+                var st = null;
+                try { st = await localforage.getItem(key); } catch (e) {}
+                var wantName = (rec && rec.name && rec.name.indexOf('会话 ') !== 0) ? rec.name
+                             : (st && st.partnerName && String(st.partnerName).trim()) ? st.partnerName
+                             : (rec && rec.name) ? rec.name : name;
+                if (wantName) {
+                    if (typeof settings !== 'undefined' && settings) settings.partnerName = wantName;
+                    if (!st || st.partnerName !== wantName) {
+                        st = st || {};
+                        st.partnerName = wantName;
+                        try { await localforage.setItem(key, st); } catch (e) {}
+                    }
+                    var nEl0 = document.getElementById('partner-name');
+                    if (nEl0) nEl0.textContent = wantName;
+                }
+            } catch (e) {}
+
+            // 头部头像和聊天背景手动对齐一次 —— 这两处不归 renderMessages 管
+            try {
+                var av = window._avatarCache && window._avatarCache.partner;
+                var host = (typeof DOMElements !== 'undefined' && DOMElements.partner) ? DOMElements.partner.avatar : null;
+                if (host) {
+                    host.innerHTML = av
+                        ? '<img src="' + av + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">'
+                        : '<i class="fas fa-user"></i>';
+                }
+                if (typeof window.applyBackground === 'function') {
+                    var bg = null;
+                    try { bg = localStorage.getItem(_prefix() + id + '_chatBackground'); } catch (e) {}
+                    window.applyBackground(bg || '');
+                }
+            } catch (e) {}
+
+            // ④ 通知那些"按会话存数据"的模块换人（电影院/朋友圈/账本…各自有加载守卫）
+            try {
+                window.dispatchEvent(new CustomEvent('session:switched', { detail: { id: id, name: name } }));
+            } catch (e) {}
+            // 群聊模块要按新会话重新同步成员
+            try { if (typeof window._groupSyncNow === 'function') window._groupSyncNow(); } catch (e) {}
+            // 顶部时差胶囊要换成新梦角
+            try { if (window.Timezone && window.Timezone.refresh) window.Timezone.refresh(); } catch (e) {}
+
+            enterChat();
+            if (typeof showNotification === 'function' && name) {
+                showNotification('已切换到 ' + name, 'info', 1200);
+            }
+        } catch (e) {
+            console.warn('[wx-home] 原地切换失败，退回重载', e);
+            try {
+                sessionStorage.setItem(FLAG, '1');
+                sessionStorage.setItem('wxSwitchName', name || '梦角');
+                sessionStorage.setItem('wxFastBoot', '1');
+                window.location.hash = id;
+                window.location.reload();
+                return;
+            } catch (e2) {}
+        }
+        hideSwitchOverlay();
     }
 
     // ─── 「朋友圈」：先选看谁的朋友圈，再进他的家园 ───
@@ -204,6 +287,34 @@
         });
     }
 
+    // 点头部那些原有按钮（它们都在，只是被我从视野里"藏"进了发现页）
+    function _click(id) {
+        var el = document.getElementById(id);
+        if (el) { try { el.click(); return true; } catch (e) {} }
+        if (typeof showNotification === 'function') showNotification('这个功能还没就绪', 'warning');
+        return false;
+    }
+    // 朋友圈入口（多个梦角先问看谁）
+    function _momentsEntry() {
+        var n = 0;
+        try { n = _sessions().length; } catch (e) {}
+        if (n > 1) openMomentsPicker();
+        else openMomentsOf();
+    }
+
+    // 底部标签切换：聊天列表 / 发现
+    function _setTab(tab) {
+        var list = document.getElementById('wx-conv-list');
+        var disc = document.getElementById('wx-discover');
+        var tChat = document.getElementById('wx-tab-chat');
+        var tDisc = document.getElementById('wx-tab-discover');
+        var isChat = tab !== 'discover';
+        if (list) list.style.display = isChat ? '' : 'none';
+        if (disc) disc.style.display = isChat ? 'none' : 'flex';
+        if (tChat) tChat.classList.toggle('wx-tab--on', isChat);
+        if (tDisc) tDisc.classList.toggle('wx-tab--on', !isChat);
+    }
+
     // ─── DOM ───
     function buildHome() {
         if (document.getElementById('wx-home')) return;
@@ -219,8 +330,33 @@
             '<div class="wx-tabbar">' +
                 '<div class="wx-tab wx-tab--on" id="wx-tab-chat"><i class="fas fa-comment-dots"></i><span>聊天</span></div>' +
                 '<div class="wx-tab" id="wx-tab-moments"><i class="fas fa-user-group"></i><span>朋友圈</span></div>' +
-            '</div>';
+                '<div class="wx-tab" id="wx-tab-discover"><i class="fas fa-compass"></i><span>发现</span></div>' +
+            '</div>' +
+            '<div class="wx-discover" id="wx-discover"></div>';
         document.body.appendChild(el);
+
+        // 发现页：把一堆功能收进来，不再挤在聊天头部
+        var disc = el.querySelector('#wx-discover');
+        var tiles = [
+            { ic: 'fa-envelope-open-text', nm: '信箱', sub: '集中收所有人的信', act: function () { _click('envelope-header-btn'); } },
+            { ic: 'fa-home-heart', nm: '家园', sub: '朋友圈形态', act: function () { _momentsEntry(); } },
+            { ic: 'fa-hand-holding-heart', nm: '陪伴', sub: '进他的日常', act: function () { _click('companion-btn'); } },
+            { ic: 'fa-newspaper', nm: '今日公告', sub: '今天的他', act: function () { _click('daily-greeting-btn'); } },
+            { ic: 'fa-user-group', nm: '我的梦角', sub: '管理 / 切换', act: function () { if (typeof window.openContactsPanel === 'function') window.openContactsPanel(); } },
+            { ic: 'fa-cog', nm: '设置', sub: '外观 / 聊天 / 节奏', act: function () { _click('settings-btn'); } }
+        ];
+        disc.innerHTML = tiles.map(function (t, i) {
+            return '<div class="wx-d-tile" data-i="' + i + '">' +
+                '<i class="fas ' + t.ic + '"></i>' +
+                '<div class="wx-d-nm">' + t.nm + '</div>' +
+                '<div class="wx-d-sub">' + t.sub + '</div></div>';
+        }).join('');
+        disc.addEventListener('click', function (e) {
+            var t = e.target.closest('.wx-d-tile');
+            if (!t) return;
+            var i = parseInt(t.getAttribute('data-i'), 10);
+            if (tiles[i]) tiles[i].act();
+        });
 
         el.querySelector('#wx-add-btn').addEventListener('click', function () {
             if (typeof window.openContactsPanel === 'function') window.openContactsPanel();
@@ -229,13 +365,14 @@
             if (typeof window.openCreateGroupPicker === 'function') window.openCreateGroupPicker();
             else if (typeof showNotification === 'function') showNotification('群聊模块未就绪', 'warning');
         });
-        el.querySelector('#wx-tab-chat').addEventListener('click', function () { /* 已经在这一页 */ });
+        el.querySelector('#wx-tab-chat').addEventListener('click', function () {
+            _setTab('chat');
+        });
         el.querySelector('#wx-tab-moments').addEventListener('click', function () {
-            // 多个梦角时先问"看谁的朋友圈"；只有一个就免问，直接进他的家园
-            var n = 0;
-            try { n = _sessions().length; } catch (e) {}
-            if (n > 1) { openMomentsPicker(); return; }
-            openMomentsOf();
+            _momentsEntry();
+        });
+        el.querySelector('#wx-tab-discover').addEventListener('click', function () {
+            _setTab('discover');
         });
         el.querySelector('#wx-conv-list').addEventListener('click', function (e) {
             var row = e.target.closest('.wx-conv');
@@ -275,6 +412,7 @@
         var el = document.getElementById('wx-home');
         if (el) el.style.display = 'flex';
         try { sessionStorage.setItem(FLAG, '0'); } catch (e) {}
+        _setTab('chat');
         renderConvs();
     }
 
@@ -369,6 +507,8 @@
     window.WxHomeEnter = enterChat;
     window.WxSwitchTo = switchToSession;
     window.WxSwitchOverlay = showSwitchOverlay;
+    // 新建/删除梦角之后，让首页会话列表立刻刷新（不用等下次进页面）
+    window.WxRefreshConvs = function () { try { renderConvs(); } catch (e) {} };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else setTimeout(boot, 0);
