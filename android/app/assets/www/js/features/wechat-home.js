@@ -145,6 +145,65 @@
         }, 140);   // 让过场先淡入一帧，别有断层
     }
 
+    // ─── 「朋友圈」：先选看谁的朋友圈，再进他的家园 ───
+    function openMomentsOf(meta) {
+        enterChat();
+        try {
+            if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
+            else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
+        } catch (e) { console.warn('[wx-home] 打开家园失败', e); }
+    }
+
+    function openMomentsPicker() {
+        var old = document.getElementById('wx-mp');
+        if (old) old.remove();
+        var sessions = _sessions();
+        var el = document.createElement('div');
+        el.id = 'wx-mp';
+        el.innerHTML =
+            '<div class="wx-mp-sheet">' +
+                '<div class="wx-mp-title">看谁的朋友圈</div>' +
+                '<div class="wx-mp-list" id="wx-mp-list"><div class="wx-mp-loading">加载中…</div></div>' +
+                '<button class="wx-mp-cancel" id="wx-mp-cancel">取消</button>' +
+            '</div>';
+        document.body.appendChild(el);
+        void el.offsetWidth;
+        el.classList.add('on');
+
+        el.querySelector('#wx-mp-cancel').addEventListener('click', function () {
+            el.classList.remove('on');
+            setTimeout(function () { el.remove(); }, 200);
+        });
+        // 点空白处也能关
+        el.addEventListener('click', function (e) {
+            if (e.target === el) { el.classList.remove('on'); setTimeout(function () { el.remove(); }, 200); }
+        });
+
+        var list = el.querySelector('#wx-mp-list');
+        Promise.all(sessions.map(_convMeta)).then(function (metas) {
+            metas.sort(function (a, b) { return (b.time || 0) - (a.time || 0); });
+            list.innerHTML = metas.map(function (m) {
+                return '<div class="wx-mp-row' + (m.isCurrent ? ' wx-mp-row--cur' : '') + '" data-id="' + _esc(m.id) + '" data-name="' + _esc(m.name) + '">' +
+                    _avatarHtml(m.avatar, 40) +
+                    '<div class="wx-mp-name">' + _esc(m.name) + '</div>' +
+                    (m.isCurrent ? '<span class="wx-mp-tag">当前</span>' : '<i class="fas fa-chevron-right wx-mp-arrow"></i>') +
+                '</div>';
+            }).join('');
+            list.addEventListener('click', function (e) {
+                var row = e.target.closest('.wx-mp-row');
+                if (!row) return;
+                var id = row.getAttribute('data-id');
+                var nm = row.getAttribute('data-name');
+                el.classList.remove('on');
+                setTimeout(function () { el.remove(); }, 200);
+                if (id === _currentId()) { openMomentsOf(); return; }
+                // 换一个梦角看他的朋友圈：切过去，并且到了之后直接进家园
+                try { sessionStorage.setItem('wxOpenMoments', '1'); } catch (e2) {}
+                setTimeout(function () { switchToSession(id, nm); }, 180);
+            });
+        });
+    }
+
     // ─── DOM ───
     function buildHome() {
         if (document.getElementById('wx-home')) return;
@@ -165,12 +224,11 @@
         });
         el.querySelector('#wx-tab-chat').addEventListener('click', function () { /* 已经在这一页 */ });
         el.querySelector('#wx-tab-moments').addEventListener('click', function () {
-            // 家园的层级（1500）比首页（400）高，会盖在首页上面 ——
-            // 所以这里不要把首页收起来：关掉家园后自然又回到这张列表，跟微信切标签一样
-            try {
-                if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
-                else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
-            } catch (e) { console.warn('[wx-home] 打开家园失败', e); }
+            // 多个梦角时先问"看谁的朋友圈"；只有一个就免问，直接进他的家园
+            var n = 0;
+            try { n = _sessions().length; } catch (e) {}
+            if (n > 1) { openMomentsPicker(); return; }
+            openMomentsOf();
         });
         el.querySelector('#wx-conv-list').addEventListener('click', function (e) {
             var row = e.target.closest('.wx-conv');
@@ -254,6 +312,18 @@
             showHome();
         }
         waitSessionsAndRender();
+
+        // 从"朋友圈选人"切过来的：等聊天渲染完，直接把他那一页的家园打开
+        var openM = null;
+        try { openM = sessionStorage.getItem('wxOpenMoments'); } catch (e) {}
+        if (openM === '1') {
+            try { sessionStorage.removeItem('wxOpenMoments'); } catch (e) {}
+            var t0 = Date.now();
+            (function waitThenOpen() {
+                if (_chatReady() || Date.now() - t0 > 2500) { openMomentsOf(); return; }
+                requestAnimationFrame(waitThenOpen);
+            })();
+        }
     }
 
     // 切换后：等聊天真的渲染出来（或最多等 2.5 秒）再把过场淡出
