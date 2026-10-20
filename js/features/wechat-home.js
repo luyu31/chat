@@ -324,6 +324,81 @@
         if (tDisc) tDisc.classList.toggle('wx-tab--on', !isChat);
     }
 
+    // ─── 统一信箱：把**所有梦角**的信汇总到一处（这才是"集中收多个人的信"） ───
+    async function openUnifiedInbox() {
+        var old = document.getElementById('wx-inbox');
+        if (old) old.remove();
+        var el = document.createElement('div');
+        el.id = 'wx-inbox';
+        el.innerHTML =
+            '<div class="ct-d-sheet" style="max-height:86vh;">' +
+                '<div class="wx-mp-title">信箱 · 所有人的信</div>' +
+                '<div class="wx-inbox-list" id="wx-inbox-list"><div class="wx-mp-loading">正在收信…</div></div>' +
+                '<button class="ct-d-cancel" id="wx-inbox-close" style="margin:10px 16px 14px;">关闭</button>' +
+            '</div>';
+        document.body.appendChild(el);
+        void el.offsetWidth;
+        el.classList.add('on');
+        function close() { el.classList.remove('on'); setTimeout(function () { el.remove(); }, 200); }
+        el.querySelector('#wx-inbox-close').addEventListener('click', close);
+        el.addEventListener('click', function (e) { if (e.target === el) close(); });
+
+        var p = _prefix();
+        var sessions = _sessions();
+        var all = [];
+        for (var i = 0; i < sessions.length; i++) {
+            var s = sessions[i];
+            var data = null;
+            try { data = await localforage.getItem(p + s.id + '_envelopeData'); } catch (e) {}
+            if (!data || typeof data !== 'object') continue;
+            var nm = s.name || '梦角';
+            try {
+                var st = await localforage.getItem(p + s.id + '_chatSettings');
+                if (st && st.partnerName && String(st.partnerName).trim()) nm = st.partnerName;
+            } catch (e) {}
+            (data.inbox || []).forEach(function (L) {
+                all.push({ kind: 'in', from: nm, text: L.content || '', ts: L.replyTime || L.sentTime || 0, sid: s.id });
+            });
+            (data.outbox || []).forEach(function (L) {
+                all.push({ kind: 'out', from: nm, text: L.content || '', ts: L.sentTime || 0, sid: s.id, status: L.status });
+            });
+        }
+        all.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+
+        var list = el.querySelector('#wx-inbox-list');
+        if (!all.length) {
+            list.innerHTML = '<div class="wx-mp-loading">还没有任何信。<br>进某个梦角的「发现 → 信箱」写一封试试～</div>';
+            return;
+        }
+        list.innerHTML = all.map(function (L, idx) {
+            var t = L.ts ? _relTime(L.ts) : '';
+            var tag = L.kind === 'in' ? '收到回信' : (L.status === 'pending' ? '等待回信' : '已寄出');
+            return '<div class="wx-inbox-item" data-i="' + idx + '">' +
+                '<div class="wx-inbox-hd"><b>' + _esc(L.from) + '</b>' +
+                    '<span class="wx-inbox-tag' + (L.kind === 'in' ? ' wx-inbox-tag--in' : '') + '">' + tag + '</span>' +
+                    '<span class="wx-inbox-time">' + _esc(t) + '</span></div>' +
+                '<div class="wx-inbox-body">' + _esc((L.text || '').slice(0, 80)) + ((L.text || '').length > 80 ? '…' : '') + '</div>' +
+            '</div>';
+        }).join('');
+        list.addEventListener('click', function (e) {
+            var it = e.target.closest('.wx-inbox-item');
+            if (!it) return;
+            var L = all[parseInt(it.getAttribute('data-i'), 10)];
+            if (!L) return;
+            // 想看全文/回信：切到他本人那页的信箱
+            if (L.sid === _currentId()) {
+                close();
+                _click('envelope-header-btn');
+            } else {
+                close();
+                try { sessionStorage.setItem('wxOpenEnvelope', '1'); } catch (e2) {}
+                switchToSession(L.sid, L.from).then(function () {
+                    setTimeout(function () { _click('envelope-header-btn'); }, 400);
+                });
+            }
+        });
+    }
+
     // ─── DOM ───
     function buildHome() {
         if (document.getElementById('wx-home')) return;
@@ -347,7 +422,7 @@
         // 发现页：把一堆功能收进来，不再挤在聊天头部
         var disc = el.querySelector('#wx-discover');
         var tiles = [
-            { ic: 'fa-envelope-open-text', nm: '信箱', sub: '集中收所有人的信', act: function () { _click('envelope-header-btn'); } },
+            { ic: 'fa-envelope-open-text', nm: '信箱', sub: '集中收所有人的信', act: function () { openUnifiedInbox(); } },
             { ic: 'fa-home-heart', nm: '家园', sub: '朋友圈形态', act: function () { _momentsEntry(); } },
             { ic: 'fa-hand-holding-heart', nm: '陪伴', sub: '进他的日常', act: function () { _click('companion-btn'); } },
             { ic: 'fa-newspaper', nm: '今日公告', sub: '今天的他', act: function () { _click('daily-greeting-btn'); } },
