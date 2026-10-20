@@ -178,6 +178,15 @@
             }
         }
 
+        /* 「减少动画」开关打开时：全站动画/过渡一次性关掉。
+           跟上面 prefers-reduced-motion 用的是同一套写法，只是改成由开关控制。 */
+        html.motion-off *, html.motion-off *::before, html.motion-off *::after {
+            animation-duration: 0.001ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.001ms !important;
+            scroll-behavior: auto !important;
+        }
+
         #splash-declaration {
             position: fixed;
             inset: 0;

@@ -552,7 +552,25 @@ const loadData = async () => {
             savedBackgrounds = [{ id: 'preset-1', type: 'color', value: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }];
         }
 
-        if (savedCustomReplies) customReplies = savedCustomReplies;
+        // 主回复库也一样：原来没有任何预设，新建的梦角/群一进来是空库 → 他根本回不了话
+        // （会弹「回复库为空，请先到自定义回复中添加内容」）。
+        // 所以没存过的时候给一套中性兜底台词，之后你想改随时改（自定义回复 → 回复库）。
+        const DEFAULT_REPLIES = [
+            '在呢～','怎么啦？','我在听','嘿嘿','抱一下','想你了','嗯嗯，然后呢','你怎么这么可爱',
+            '好呀','听你的','别累着自己','吃完饭了没','我刚也在想你','说，怎么了','嗯，我记住了',
+            '你开心我就开心','早点休息呀','有我在呢','不许熬夜哦','嘿嘿，被你发现了','这有什么好谢的',
+            '你今天话有点多哦','那我陪你','好，都听你的'
+        ];
+        if (savedCustomReplies && Array.isArray(savedCustomReplies) && savedCustomReplies.length) {
+            customReplies = savedCustomReplies;
+        } else if (!localStorage.getItem(getStorageKey('repliesSeeded'))) {
+            customReplies = DEFAULT_REPLIES.slice();
+            try { localStorage.setItem(getStorageKey('repliesSeeded'), '1'); } catch (e) {}
+            try { await localforage.setItem(getStorageKey('customReplies'), customReplies); } catch (e) {}
+            console.log('[replies] 已为该梦角导入 ' + customReplies.length + ' 条预设字卡（自定义回复 → 回复库 里可改）');
+        } else if (Array.isArray(savedCustomReplies)) {
+            customReplies = savedCustomReplies;   // 你清空过：尊重你的选择
+        }
         if (savedReplyGroups) window.customReplyGroups = savedReplyGroups;
         if (savedPokeGroups) window.customPokeGroups = savedPokeGroups;
         if (savedStatusGroups) window.customStatusGroups = savedStatusGroups;
@@ -635,7 +653,31 @@ const loadData = async () => {
         })();
         if (savedCustomThemes) customThemes = savedCustomThemes;
         if (savedThemeSchemes) themeSchemes = savedThemeSchemes;
-        try { const ce = await localforage.getItem(getStorageKey('customEmojis')); if (ce && Array.isArray(ce)) customEmojis = ce; } catch(e) {}
+        // 梦角「表情反应」用的 Emoji 库：原来没有任何预设，每个梦角一上来都是空的，
+        // 结果他一被触发表情反应就没得用（还会弹「Emoji 库为空」）。
+        // 这里补一套预设：没存过、或者存的是空库时，自动填一套；用标记位控制只补一次，
+        // 免得你哪天把库清空了、下次打开又被塞回来。
+        const DEFAULT_EMOJIS = [
+            '😊','😍','🥰','😘','😳','🥺','😭','😂','🤣','😆','🙂','🙃','😴','🤔','😅','😉','😌',
+            '😇','🤗','🫣','😏','😢','😡','🥹','💕','💖','❤️','💘','💗','💓','💞','💔','✨','🌸',
+            '🎉','👍','🙏','🤝','🫶','👀','🤭','🤤','😋','🫠','🫡','🙈','🙉','🙊'
+        ];
+        try {
+            const ce = await localforage.getItem(getStorageKey('customEmojis'));
+            const seededKey = getStorageKey('emojisSeeded');
+            let seeded = null;
+            try { seeded = localStorage.getItem(seededKey); } catch (e) {}
+            if (ce && Array.isArray(ce) && ce.length) {
+                customEmojis = ce;
+            } else if (!seeded) {
+                customEmojis = DEFAULT_EMOJIS.slice();
+                try { localStorage.setItem(seededKey, '1'); } catch (e) {}
+                try { await localforage.setItem(getStorageKey('customEmojis'), customEmojis); } catch (e) {}
+                console.log('[emojis] 已为该梦角导入 ' + customEmojis.length + ' 个预设 Emoji（可在 自定义回复 → Emoji 库 里增删）');
+            } else if (Array.isArray(ce)) {
+                customEmojis = ce;   // 你清空过：尊重你的选择，不硬塞回来
+            }
+        } catch(e) {}
         window._customReplies = customReplies;
         window._CONSTANTS = CONSTANTS;
 

@@ -12,18 +12,30 @@
 
     var KEY_ENTRY = 'skipEntryAnim';      // 'true' = 关掉开屏动画
     var KEY_HOME  = 'skipHomeEnterAnim';  // 'true' = 关掉家园进入动画
+    var KEY_MOTION = 'reduceMotionAll';   // 'true' = 全站减少动画（消息入场、气泡、加载动效…全都关）
 
     function isOn(key) { return localStorage.getItem(key) === 'true'; }
 
     // 给 app.js / moments.js 用的查询接口
     window._skipEntryAnim = function () { return isOn(KEY_ENTRY); };
     window._skipHomeEnterAnim = function () { return isOn(KEY_HOME); };
+    window._reduceMotionAll = function () { return isOn(KEY_MOTION); };
+
+    // 全站动画由 <html> 上的一个 class 控制（CSS 见 styles.css 的 html.motion-off）
+    function applyMotionClass() {
+        try {
+            document.documentElement.classList.toggle('motion-off', isOn(KEY_MOTION));
+        } catch (e) {}
+    }
 
     function syncUI() {
         var a = document.getElementById('entry-anim-toggle');
         if (a) a.classList.toggle('active', isOn(KEY_ENTRY));
         var b = document.getElementById('home-anim-toggle');
         if (b) b.classList.toggle('active', isOn(KEY_HOME));
+        var c = document.getElementById('motion-off-toggle');
+        if (c) c.classList.toggle('active', isOn(KEY_MOTION));
+        applyMotionClass();
     }
 
     window._toggleEntryAnim = function () {
@@ -34,6 +46,13 @@
         localStorage.setItem(KEY_HOME, String(!isOn(KEY_HOME)));
         syncUI();
     };
+    window._toggleMotionAll = function () {
+        localStorage.setItem(KEY_MOTION, String(!isOn(KEY_MOTION)));
+        syncUI();
+    };
+
+    // 尽快把 class 挂上，别等 DOMContentLoaded（不然首屏那一下动画已经跑完了）
+    applyMotionClass();
 
     document.addEventListener('DOMContentLoaded', syncUI);
     setTimeout(syncUI, 500);
