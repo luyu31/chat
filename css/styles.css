@@ -4845,6 +4845,23 @@
             font-weight: 600; cursor: pointer; font-family: inherit;
         }
         .wx-head-ops { display: flex; align-items: center; gap: 4px; }
+
+        /* ── 聊天页头部"清爽模式"：像微信一样只看两边头像，功能都收进「发现」 ── */
+        body.header-clean .header-actions { display: none !important; }
+        body.header-clean .header-inner {
+            justify-content: space-between;
+            gap: 8px;
+        }
+        /* 两边各占一半、各自居中 —— 他的状态在左，我的状态在右，左右对称 */
+        body.header-clean .user-info { flex: 1 1 0; min-width: 0; }
+        body.header-clean .user-info .username {
+            font-size: 13px;
+            max-width: 90px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        body.header-clean .user-info .status { font-size: 10.5px; opacity: .85; }
+        /* 返回键固定在最左，别被 flex 均分挤走 */
+        body.header-clean #wx-back-btn { order: -1; flex: 0 0 auto; }
         /* 开了「减少动画」：切换过场整块隐藏 —— 连转圈都不想让你看到 */
         html.motion-off #ct-switch-overlay { display: none !important; }
 
