@@ -106,9 +106,23 @@
                     return { id: id, name: (c && c.name) || ('成员' + (i + 1)), avatar: (c && c.avatar) || null };
                 });
             if (!list.length) return null;
-            var seed = 0, s = String(msgId);
-            for (var i = 0; i < s.length; i++) seed += s.charCodeAt(i) * (i + 1);
-            return list[seed % list.length];
+
+            // 优先看这条消息已经被贴过的发言人 —— 这样同一条消息反复重渲染都是同一个人，
+            // 不会出现"刷新一下发言人变了"
+            var msg = null;
+            try {
+                msg = (typeof messages !== 'undefined' ? messages : []).filter(function (m) {
+                    return String(m.id) === String(msgId);
+                })[0] || null;
+            } catch (e) {}
+            if (msg && msg.groupMemberId) {
+                var hit = list.filter(function (x) { return x.id === msg.groupMemberId; })[0];
+                if (hit) return hit;
+            }
+            // 还没贴过：用"这一批的发言人"（就是刚用他字卡库那位），并把它贴在消息上
+            var spk = _batchSpeaker || list[list.length - 1];
+            if (msg && spk) { try { msg.groupMemberId = spk.id; } catch (e) {} }
+            return spk;
         };
     }
 
@@ -222,11 +236,86 @@
         } catch (e) {}
     }
 
+    // ─── 每个成员用自己的字卡库说话 ───
+    // 主聊天的回复是 simulateReply() 从 customReplies 这个池子里挑的。
+    // 群里要让"轮到谁说话就用谁的字卡"，做法是：轮到某位成员时，把他自己的
+    // customReplies 临时换进那个池子，等他这几条消息产出完再还原。
+    // 这样不用重写回复引擎，延迟、拼接字卡、表情反应这些行为全都原样保留。
+    var _memberLib = {};      // memberId → 他自己的字卡数组
+    var _spkIdx = 0;          // 轮流说话的游标
+    var _batchSpeaker = null; // 这一批消息的发言人
+
+    async function _loadMemberLibs(ids) {
+        var p = _prefix();
+        for (var i = 0; i < ids.length; i++) {
+            var id = ids[i];
+            if (_memberLib[id]) continue;
+            var arr = null;
+            try { arr = await localforage.getItem(p + id + '_customReplies'); } catch (e) {}
+            if (!Array.isArray(arr)) {
+                try { arr = JSON.parse(localStorage.getItem(p + id + '_customReplies') || 'null'); } catch (e) {}
+            }
+            _memberLib[id] = Array.isArray(arr)
+                ? arr.filter(function (x) { return x && String(x).trim(); })
+                : [];
+        }
+    }
+
+    var _routerWrapped = false;
+    function _installReplyRouter() {
+        if (_routerWrapped || typeof window.simulateReply !== 'function') return;
+        var orig = window.simulateReply;
+        window.simulateReply = function () {
+            var rec = _curRecord();
+            var isGroup = !!(rec && rec.type === 'group' && _curMembers.length);
+            if (!isGroup) return orig.apply(this, arguments);      // 一对一：原样
+
+            // 轮到下一位成员，用他自己的字卡
+            _batchSpeaker = _curMembers[(_spkIdx++) % _curMembers.length];
+            var mine = _memberLib[_batchSpeaker.id] || [];
+            if (!mine.length) return orig.apply(this, arguments);  // 他没字卡就退回群的池子
+
+            var target = null;
+            try { target = (typeof customReplies !== 'undefined') ? customReplies : window._customReplies; } catch (e) {}
+            if (!Array.isArray(target)) return orig.apply(this, arguments);
+
+            var saved = target.slice();
+            target.length = 0;
+            mine.forEach(function (t) { target.push(t); });
+
+            try {
+                return orig.apply(this, arguments);
+            } finally {
+                // 原函数是 setTimeout 异步产出消息的，不能立刻还原 —— 等它写完再还。
+                // 还原前先确认池子还是"刚才换进去的那份"，避免把用户新加的卡误删
+                setTimeout(function () {
+                    if (Array.isArray(target) && target.length === mine.length && target[0] === mine[0]) {
+                        target.length = 0;
+                        saved.forEach(function (t) { target.push(t); });
+                    }
+                }, 8000);
+            }
+        };
+        _routerWrapped = true;
+    }
+
     // ─── 启动：同步一次 + 装好解析器 ───
     function boot() {
         _installResolver();
         _syncForCurrentSession();
         _enforceGroupName();
+        _installReplyRouter();
+
+        var rec = _curRecord();
+        if (rec && rec.type === 'group' && Array.isArray(rec.members) && rec.members.length) {
+            _resolveMembers(rec.members).then(function (list) {
+                _curMembers = list;
+                return _loadMemberLibs(rec.members);
+            }).then(function () {
+                console.log('[group-v2] 群成员字卡已就绪：',
+                    _curMembers.map(function (m) { return m.name + '(' + ((_memberLib[m.id] || []).length) + '条)'; }).join(' / '));
+            });
+        }
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else setTimeout(boot, 0);
