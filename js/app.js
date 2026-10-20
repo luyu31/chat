@@ -20,8 +20,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!welcomeScreen) return;
         // 关掉「进入动画」的人 / 正在切梦角：直接消失，不等那 0.45s 渐隐
         if (_skipEntry()) {
+            // 连"你已经看到过"都不用管了：立刻抹掉，别留下任何残影
             welcomeScreen.classList.add('hidden');
             welcomeScreen.style.display = 'none';
+            welcomeScreen.style.visibility = 'hidden';
+            welcomeScreen.style.opacity = '0';
             return;
         }
         welcomeScreen.classList.add('hidden');

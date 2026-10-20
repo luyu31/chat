@@ -4818,6 +4818,9 @@
             font-weight: 600; cursor: pointer; font-family: inherit;
         }
         .wx-head-ops { display: flex; align-items: center; gap: 4px; }
+        /* 开了「减少动画」：切换过场整块隐藏 —— 连转圈都不想让你看到 */
+        html.motion-off #ct-switch-overlay { display: none !important; }
+
         #ct-switch-overlay {
             position: fixed; inset: 0; z-index: 1000000; /* 必须高于开屏层(999999)，切梦角时才能一直盖住它 */
             display: flex; align-items: center; justify-content: center;

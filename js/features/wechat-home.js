@@ -134,6 +134,11 @@
         return inner.children && inner.children.length > 0;
     }
 
+    // 关掉「减少动画」的人：切换时连过场都不给看 —— 不转圈、不淡入，点一下直接到位
+    function _instantSwitch() {
+        try { return !!(window._reduceMotionAll && window._reduceMotionAll()); } catch (e) { return false; }
+    }
+
     // 切换：原地换会话，不重载页面
     // 之前是 hash+reload，所以每点一个梦角都像"重新打开一次软件"。
     // 现在改成：把当前会话存好 → 换 SESSION_ID → 重新加载该会话的数据 → 重画。
@@ -141,8 +146,11 @@
     // 表现就是"新加的角色显示的却是上一个角色的名字"。
     async function switchToSession(id, name) {
         if (!id || id === _currentId()) { enterChat(); return; }
-        showSwitchOverlay(name);
-        await new Promise(r => setTimeout(r, 60));   // 让过场先画出来一帧
+        var instant = _instantSwitch();
+        if (!instant) {
+            showSwitchOverlay(name);
+            await new Promise(r => setTimeout(r, 60));   // 让过场先画出来一帧
+        }
 
         try {
             // ① 掐掉还没触发的延时保存，并把当前会话落盘
@@ -211,7 +219,8 @@
             try { if (window.Timezone && window.Timezone.refresh) window.Timezone.refresh(); } catch (e) {}
 
             enterChat();
-            if (typeof showNotification === 'function' && name) {
+            // 关掉动画的人：连"已切换到 XX"的浮条也不弹，点进去就是干净的聊天界面
+            if (!instant && typeof showNotification === 'function' && name) {
                 showNotification('已切换到 ' + name, 'info', 1200);
             }
         } catch (e) {
@@ -225,7 +234,7 @@
                 return;
             } catch (e2) {}
         }
-        hideSwitchOverlay();
+        if (!instant) hideSwitchOverlay();
     }
 
     // ─── 「朋友圈」：先选看谁的朋友圈，再进他的家园 ───
@@ -442,10 +451,22 @@
         injectBackBtn();
 
         // 是不是"刚从另一个梦角切过来"？是的话把过场接着铺住，
-        // 等这一页的聊天渲染好再淡出 —— 视觉上就是一条连续的过场
+        // 等这一页的聊天渲染好再淡出 —— 视觉上就是一条连续的过场。
+        // 但如果用户关掉了动画：过场一概不铺，直接进聊天（他不想看到任何转圈）
         var switchName = null;
         try { switchName = sessionStorage.getItem('wxSwitchName'); } catch (e) {}
-        if (switchName) { showSwitchOverlay(switchName); resumeAfterSwitch(); }
+        if (switchName) {
+            if (_instantSwitch()) {
+                try {
+                    sessionStorage.removeItem('wxSwitchName');
+                    sessionStorage.removeItem('wxFastBoot');
+                } catch (e) {}
+                hideSwitchOverlay();
+            } else {
+                showSwitchOverlay(switchName);
+                resumeAfterSwitch();
+            }
+        }
 
         var goChat = false;
         try { goChat = sessionStorage.getItem(FLAG) === '1'; } catch (e) {}
