@@ -134,6 +134,55 @@
         return inner.children && inner.children.length > 0;
     }
 
+    // ─── 会话内存缓存：为了"零等待"切换 ───
+    // 每个梦角的聊天记录/设置先预读进内存。切的时候直接从内存赋值、立刻渲染，
+    // 存储的读写全部丢到后台 —— 点下去的那一帧就已经是新梦角的聊天了。
+    var _cache = {};         // id → { messages, settings }
+    var _prefetching = {};
+
+    function _cacheCurrent() {
+        try {
+            var id = _currentId();
+            if (!id) return;
+            _cache[id] = {
+                messages: (typeof messages !== 'undefined' && Array.isArray(messages)) ? messages.slice() : [],
+                settings: (typeof settings !== 'undefined' && settings) ? JSON.parse(JSON.stringify(settings)) : null
+            };
+        } catch (e) {}
+    }
+
+    async function _prefetchSession(id) {
+        if (_cache[id] || _prefetching[id]) return _cache[id] || null;
+        _prefetching[id] = true;
+        try {
+            var p = _prefix();
+            var res = await Promise.all([
+                localforage.getItem(p + id + '_chatMessages'),
+                localforage.getItem(p + id + '_chatSettings')
+            ]);
+            var msgs = Array.isArray(res[0]) ? res[0].map(function (m) {
+                return Object.assign({}, m, { timestamp: new Date(m.timestamp) });
+            }) : [];
+            _cache[id] = { messages: msgs, settings: res[1] || null };
+        } catch (e) {
+            _cache[id] = { messages: [], settings: null };
+        }
+        _prefetching[id] = false;
+        return _cache[id];
+    }
+
+    // 空闲时把所有会话预读一遍（不抢首屏）
+    function prefetchAll() {
+        var list = [];
+        try { list = _sessions(); } catch (e) { return; }
+        var i = 0;
+        (function next() {
+            if (i >= list.length) return;
+            var s = list[i++];
+            _prefetchSession(s.id).then(function () { setTimeout(next, 120); });
+        })();
+    }
+
     // 关掉「减少动画」的人：切换时连过场都不给看 —— 不转圈、不淡入，点一下直接到位
     function _instantSwitch() {
         try { return !!(window._reduceMotionAll && window._reduceMotionAll()); } catch (e) { return false; }
@@ -152,48 +201,63 @@
             await new Promise(r => setTimeout(r, 60));   // 让过场先画出来一帧
         }
 
-        try {
-            // ① 掐掉还没触发的延时保存，并把当前会话落盘
+        // 先把当前进度收进内存缓存（同步，不碰存储 → 不拖慢点击）
+        _cacheCurrent();
+
+        // 目标会话：内存里有就直接用（预读过的），没有就现场读（只有第一次会见效）
+        var tgt = _cache[id] || await _prefetchSession(id);
+
+        // 后台落盘 + 记住当前会话（全部异步，不阻塞切换）
+        (function () {
             try { if (typeof saveTimeout !== 'undefined') clearTimeout(saveTimeout); } catch (e) {}
             try {
-                if (typeof window._flushSaveBeforeSwitch === 'function') await window._flushSaveBeforeSwitch();
-                else if (typeof saveData === 'function') await saveData();
-            } catch (e) { console.warn('[wx-home] 切换前保存失败', e); }
+                var pr = (typeof saveData === 'function') ? saveData() : null;
+                if (pr && pr.catch) pr.catch(function () {});
+            } catch (e) {}
+            try { localforage.setItem(_prefix() + 'lastSessionId', id).catch(function () {}); } catch (e) {}
+        })();
 
-            // ② 换会话
+        try {
+            // ① 换会话号（同步）
             SESSION_ID = id;
-            try { await localforage.setItem(_prefix() + 'lastSessionId', id); } catch (e) {}
             try { history.replaceState(null, '', '#' + id); } catch (e) {}
 
-            // ③ 把这个梦角的数据读回来，重画
-            await loadData();
+            // ② 直接改成内存里的数据 —— 这一步是同步的，所以点下去立刻就是新梦角的聊天
+            if (tgt) {
+                try {
+                    if (Array.isArray(tgt.messages)) messages = tgt.messages.slice();
+                    if (tgt.settings && typeof settings !== 'undefined') {
+                        settings = Object.assign({}, settings, tgt.settings);
+                    }
+                } catch (e) {}
+            }
+
+            // ③ 立刻重画
             if (typeof window.renderMessages === 'function') window.renderMessages();
             if (typeof window.updateUI === 'function') { try { window.updateUI(); } catch (e) {} }
 
-            // ③b 名字以这个会话自己的存档为准。
-            // 万一它的 chatSettings 还没有名字，就用会话列表里的名字补上并写回去 ——
-            // 这样绝不会出现"新角色显示上一个角色的名字"。
+            // ③b 名字以这个会话自己的存档为准，绝不显示上一个角色的名字
             try {
                 var rec = _sessions().filter(function (s) { return s.id === id; })[0];
-                var key = _prefix() + id + '_chatSettings';
-                var st = null;
-                try { st = await localforage.getItem(key); } catch (e) {}
                 var wantName = (rec && rec.name && rec.name.indexOf('会话 ') !== 0) ? rec.name
-                             : (st && st.partnerName && String(st.partnerName).trim()) ? st.partnerName
+                             : (tgt && tgt.settings && tgt.settings.partnerName) ? tgt.settings.partnerName
                              : (rec && rec.name) ? rec.name : name;
                 if (wantName) {
                     if (typeof settings !== 'undefined' && settings) settings.partnerName = wantName;
-                    if (!st || st.partnerName !== wantName) {
-                        st = st || {};
-                        st.partnerName = wantName;
-                        try { await localforage.setItem(key, st); } catch (e) {}
-                    }
                     var nEl0 = document.getElementById('partner-name');
                     if (nEl0) nEl0.textContent = wantName;
+                    // 名字也写回这个会话自己的存档（后台写）
+                    try {
+                        var key = _prefix() + id + '_chatSettings';
+                        localforage.getItem(key).then(function (st) {
+                            st = st || {};
+                            if (st.partnerName !== wantName) { st.partnerName = wantName; return localforage.setItem(key, st); }
+                        }).catch(function () {});
+                    } catch (e) {}
                 }
             } catch (e) {}
 
-            // 头部头像和聊天背景手动对齐一次 —— 这两处不归 renderMessages 管
+            // ④ 头像 + 背景
             try {
                 var av = window._avatarCache && window._avatarCache.partner;
                 var host = (typeof DOMElements !== 'undefined' && DOMElements.partner) ? DOMElements.partner.avatar : null;
@@ -209,19 +273,26 @@
                 }
             } catch (e) {}
 
-            // ④ 通知那些"按会话存数据"的模块换人（电影院/朋友圈/账本…各自有加载守卫）
-            try {
-                window.dispatchEvent(new CustomEvent('session:switched', { detail: { id: id, name: name } }));
-            } catch (e) {}
-            // 群聊模块要按新会话重新同步成员
-            try { if (typeof window._groupSyncNow === 'function') window._groupSyncNow(); } catch (e) {}
-            // 顶部时差胶囊要换成新梦角
-            try { if (window.Timezone && window.Timezone.refresh) window.Timezone.refresh(); } catch (e) {}
-
             enterChat();
-            // 关掉动画的人：连"已切换到 XX"的浮条也不弹，点进去就是干净的聊天界面
+
+            // ⑤ 后台补齐：把那些"按会话存数据"的模块唤醒（晚一点做，不抢渲染）
+            setTimeout(function () {
+                try {
+                    if (typeof loadData === 'function') {
+                        var pr2 = loadData();
+                        if (pr2 && pr2.catch) pr2.catch(function () {});
+                    }
+                } catch (e) {}
+                try { window.dispatchEvent(new CustomEvent('session:switched', { detail: { id: id, name: name } })); } catch (e) {}
+                try { if (typeof window._groupSyncNow === 'function') window._groupSyncNow(); } catch (e) {}
+                try { if (window.Timezone && window.Timezone.refresh) window.Timezone.refresh(); } catch (e) {}
+            }, 30);
+
+            // 再把切过去的这一位也缓存起来（下次切回来零等待）
+            setTimeout(function () { _cache[id] = { messages: messages.slice(), settings: JSON.parse(JSON.stringify(settings)) }; }, 120);
+
             if (!instant && typeof showNotification === 'function' && name) {
-                showNotification('已切换到 ' + name, 'info', 1200);
+                showNotification('已切换到 ' + name, 'info', 1000);
             }
         } catch (e) {
             console.warn('[wx-home] 原地切换失败，退回重载', e);
@@ -553,6 +624,8 @@
             showHome();
         }
         waitSessionsAndRender();
+        // 空闲时把所有梦角预读进内存，之后切换就是"零等待"
+        setTimeout(prefetchAll, 1500);
 
         // 从"朋友圈选人"切过来的：等聊天渲染完，直接把他那一页的家园打开
         var openM = null;
