@@ -331,6 +331,10 @@ const tourSkipBtn = document.getElementById('tour-skip-btn');
 
 let currentTourStep = 0;
 let isTourActive = false;
+// 当前正在跑的步骤列表。默认是原版新手引导；「更新导览」会临时换成它自己那套
+// （见 update-tour.js → window.startUserTour），跑完再换回来。
+let _activeSteps = null;
+let _tourOnEnd = null;      // 某套引导跑完时的回调（用来分开记"看过哪一套"）
 
 // 新手引导：由梦角以第一人称带你看遍每个功能。
 // 文案里的 {ta} 会在运行时替换成梦角昵称、{steps} 替换成总步数（见 showTourStep）。
@@ -470,6 +474,8 @@ const tourSteps = [
 ];
 
 function startTour() {
+    _activeSteps = tourSteps;
+    _tourOnEnd = null;
     isTourActive = true;
     tourOverlay.style.display = 'block';
     setTimeout(() => tourOverlay.classList.add('active'), 10);
@@ -477,8 +483,23 @@ function startTour() {
     showTourStep(currentTourStep);
 }
 
+// 跑一套自定义步骤（「更新导览」用）。onEnd 在结束/跳过后回调一次。
+window.startUserTour = function (steps, onEnd) {
+    if (!Array.isArray(steps) || !steps.length) return;
+    _activeSteps = steps;
+    _tourOnEnd = onEnd || null;
+    isTourActive = true;
+    tourOverlay.style.display = 'block';
+    setTimeout(() => tourOverlay.classList.add('active'), 10);
+    currentTourStep = 0;
+    showTourStep(0);
+};
+
 function endTour() {
     isTourActive = false;
+    var cb = _tourOnEnd;
+    _tourOnEnd = null;
+    _activeSteps = null;          // 跑完把列表复位，避免影响下次原版引导
     tourOverlay.classList.remove('active');
     tourPopover.classList.remove('visible');
     setTimeout(() => {
@@ -487,7 +508,8 @@ function endTour() {
         tourHighlightBox.style.height = '0px';
         tourHighlightBox.style.opacity = '0';
     }, 300);
-    localforage.setItem(APP_PREFIX + 'tour_seen', 'true');
+    if (cb) { try { cb(); } catch (e) {} }
+    else localforage.setItem(APP_PREFIX + 'tour_seen', 'true');
     document.querySelectorAll('.modal').forEach(m => hideModal(m));
     setTimeout(function() {
         if (typeof window.tryShowDailyGreeting === 'function') {
@@ -497,26 +519,27 @@ function endTour() {
 }
 
 function showTourStep(index) {
-    if (index < 0 || index >= tourSteps.length) {
+    const steps = _activeSteps || tourSteps;
+    if (index < 0 || index >= steps.length) {
         endTour();
         return;
     }
-    const step = tourSteps[index];
+    const step = steps[index];
     if (step.onBefore) {
         step.onBefore();
     }
     setTimeout(() => {
         tourTitle.textContent = step.title;
         let contentHtml = String(step.content || '')
-            .replace(/\{steps\}/g, tourSteps.length);
+            .replace(/\{steps\}/g, steps.length);
         // {ta} 换成梦角昵称，让引导像是他亲口带你逛
         const partnerName = (typeof settings !== 'undefined' && settings && settings.partnerName) ? settings.partnerName : '梦角';
         contentHtml = contentHtml.replace(/\{ta\}/g, partnerName);
         tourContent.innerHTML = contentHtml;
-        tourStepCounter.textContent = `${index + 1} / ${tourSteps.length}`;
+        tourStepCounter.textContent = `${index + 1} / ${steps.length}`;
         tourPopover.classList.remove('visible');
         tourPrevBtn.style.visibility = (index === 0) ? 'hidden' : 'visible';
-        if (index === tourSteps.length - 1) {
+        if (index === steps.length - 1) {
             tourNextBtn.innerHTML = '完成 <i class="fas fa-check"></i>';
         } else {
             tourNextBtn.innerHTML = '下一步 <i class="fas fa-arrow-right"></i>';
