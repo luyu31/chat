@@ -432,6 +432,7 @@ autoSendInterval: 5,
 
 
 const loadData = async () => {
+    const _loadSessionId = SESSION_ID;   // 读的是哪个梦角的数据，全程不变
     try {
         settings = getDefaultSettings();
 
@@ -529,8 +530,17 @@ const loadData = async () => {
             // 关键：备份是**全局单份**的（BACKUP_V1_critical）。以前只要当前会话没消息就直接拿它恢复，
             // 于是"新建/切到一个还没聊过的梦角"时，会把**上一个梦角**的消息和名字灌进来 ——
             // 表现出来就是"新加的角色显示的还是上一个角色"。
-            // 现在必须是同一个会话（或备份没记录会话）才允许恢复。
-            const backupForThisSession = backup && (!backup.sessionId || String(backup.sessionId) === String(SESSION_ID));
+            // 现在必须是同一个会话才允许恢复：
+            //  · 备份里记了 sessionId → 必须完全一致；
+            //  · 老版本备份没记 sessionId → 只有当这个会话在备份之前就已经存在时才允许，
+            //    否则说明备份来自别的（更早的）梦角，绝不能拿来填新角色。
+            const _curRec = Array.isArray(sessionList) ? sessionList.find(s => s.id === SESSION_ID) : null;
+            const _curCreatedAt = (_curRec && _curRec.createdAt) ? Number(_curRec.createdAt) : 0;
+            const _backupTs = Number(backup && backup.ts) || 0;
+            const backupForThisSession = backup && (
+                (backup.sessionId && String(backup.sessionId) === String(SESSION_ID)) ||
+                (!backup.sessionId && (!_curCreatedAt || _backupTs >= _curCreatedAt))
+            );
             if (backupForThisSession && Array.isArray(backup.messages) && backup.messages.length > 0) {
                 const timeSince = Math.round((Date.now() - backup.ts) / 60000);
                 console.warn(`[loadData] 主存储无消息，正在从备份恢复（备份时间：${timeSince} 分钟前）`);
@@ -745,7 +755,11 @@ const loadData = async () => {
         msgViewMode = 'latest'; // 切换/加载会话时，重置掉"历史浏览模式"，避免带着上一个会话的浏览状态串过来
         newMsgCountWhileBrowsing = 0;
         if (typeof window._updateBackToLatestBtn === 'function') window._updateBackToLatestBtn();
-        
+
+        // 只有加载期间没被切走，内存里现在才是这个梦角的数据。
+        // 切梦角的代码用它判断"数据是否已经真正换成目标会话"，避免只换了 SESSION_ID 却没换数据。
+        if (SESSION_ID === _loadSessionId) window._loadedSessionId = _loadSessionId;
+
         setTimeout(() => {
             applyAllAvatarFrames();
             manageAutoSendTimer(); 
@@ -762,6 +776,7 @@ const loadData = async () => {
         settings = getDefaultSettings();
         messages = [];
         updateUI();
+        if (SESSION_ID === _loadSessionId) window._loadedSessionId = _loadSessionId;
     }
 };
 
@@ -844,7 +859,7 @@ window.deleteAnniversaryItem = function(id) {
 
 const _BACKUP_PREFIX = 'BACKUP_V1_';
 let _lastCritBackupTs = 0;
-function _backupCriticalData(force) {
+function _backupCriticalData(force, snap) {
     if (window._skipBackup) return;
     // 闪退恢复备份是同步写 localStorage（最多 4.5MB），聊天记录一长就是一次明显的掉帧。
     // 它只需要在崩溃前"最近"有一份就行——非紧急路径（saveData 内部调用）60 秒最多做一次；
@@ -852,20 +867,28 @@ function _backupCriticalData(force) {
     if (!force && Date.now() - _lastCritBackupTs < 60000) return;
     _lastCritBackupTs = Date.now();
     try {
+        // 必须用调用方（saveData 入口）的快照：saveData 是异步的，
+        // 等它写完再读全局，可能已经切到另一个梦角了 —— 那份旧数据会被打上新会话的 id，
+        // 下次进新梦角就会"从备份恢复"出上一个梦角的聊天记录和名字。
+        const snapMessages = (snap && Array.isArray(snap.messages)) ? snap.messages : messages;
+        const snapSettings = (snap && snap.settings) ? snap.settings : settings;
+        const snapSessionId = (snap && snap.sessionId !== undefined) ? snap.sessionId : SESSION_ID;
+        const snapAnniversaries = (snap && Array.isArray(snap.anniversaries)) ? snap.anniversaries : anniversaries;
+
         const backupPayload = {
             ts: Date.now(),
-            messages: messages,
-            settings: settings,
-            sessionId: SESSION_ID,
-            anniversaries: anniversaries
+            messages: snapMessages,
+            settings: snapSettings,
+            sessionId: snapSessionId,
+            anniversaries: snapAnniversaries
         };
 
         let payloadToStore = backupPayload;
-        const msgSizeEstimate = messages.length * 500; 
+        const msgSizeEstimate = snapMessages.length * 500; 
         if (msgSizeEstimate > 3 * 1024 * 1024) {
             payloadToStore = {
                 ...backupPayload,
-                messages: messages.slice(-200),
+                messages: snapMessages.slice(-200),
                 _truncated: true
             };
         }
@@ -875,7 +898,7 @@ function _backupCriticalData(force) {
         if (json.length > 4.5 * 1024 * 1024) {
             const smallerPayload = {
                 ...payloadToStore,
-                messages: messages.slice(-50),
+                messages: snapMessages.slice(-50),
                 _truncated: true
             };
             const smallerJson = JSON.stringify(smallerPayload);
@@ -904,6 +927,13 @@ const saveData = async () => {
         console.warn('[saveData] SESSION_ID 尚未初始化，跳过保存以防数据写入临时 key');
         return;
     }
+
+    // 入口快照：这个函数是异步的，中途可能发生会话切换。
+    // 备份必须记在"发起保存时"的那个梦角名下，不能等写完了再读 SESSION_ID。
+    const _saveSessionId = SESSION_ID;
+    const _saveMessages = messages;
+    const _saveSettings = settings;
+    const _saveAnniversaries = anniversaries;
 
     const promises = [
         { key: 'chatSettings',           val: () => localforage.setItem(getStorageKey('chatSettings'), settings) },
@@ -958,7 +988,12 @@ const saveData = async () => {
     }
 
     _lastSaveFingerprint = _computeSaveFingerprint();
-    _backupCriticalData(false); // 内部调用走 60 秒节流；切后台/关页面前的紧急调用才是强制的
+    _backupCriticalData(false, {
+        sessionId: _saveSessionId,
+        messages: _saveMessages,
+        settings: _saveSettings,
+        anniversaries: _saveAnniversaries
+    }); // 内部调用走 60 秒节流；切后台/关页面前的紧急调用才是强制的
 };
 
 // ── 自动保存的"没变就跳过"：给定时全量保存用的指纹 ──
@@ -3615,6 +3650,9 @@ function showModal(modalElement, focusElement = null) {
                 showNotification('数据迁移失败，部分旧数据可能丢失', 'error');
             }
         }
+
+// 给"原地切梦角"用：新角色必须从默认设置起步，不能继承上一位的状态/签名/主题
+window.getDefaultSettings = getDefaultSettings;
 
 window.initializeSession = async function() {
     await migrateData();

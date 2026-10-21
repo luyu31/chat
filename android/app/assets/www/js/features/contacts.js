@@ -329,6 +329,16 @@
 
             if (act === 'msg') {
                 close();
+                // 把「我的梦角」面板一起收掉：不然它盖在聊天页上面，
+                // 名字已经切了、聊天也换了，肉眼看到的还是原来那一屏列表。
+                try {
+                    var sm = document.getElementById('session-modal');
+                    var cb = document.getElementById('cancel-session');
+                    if (sm && sm.style.display !== 'none') {
+                        if (cb) cb.click();
+                        else sm.style.display = 'none';
+                    }
+                } catch (err) {}
                 if (id === _currentId()) { if (typeof window.WxHomeEnter === 'function') window.WxHomeEnter(); return; }
                 setTimeout(function () { switchTo(id, sheet.name); }, 180);
                 return;

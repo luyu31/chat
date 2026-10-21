@@ -141,39 +141,56 @@
     // ─── 会话内存缓存：为了"零等待"切换 ───
     // 每个梦角的聊天记录/设置先预读进内存。切的时候直接从内存赋值、立刻渲染，
     // 存储的读写全部丢到后台 —— 点下去的那一帧就已经是新梦角的聊天了。
-    var _cache = {};         // id → { messages, settings }
-    var _prefetching = {};
+    var _cache = {};         // id → { messages, settings, avatar, background }
+    var _prefetching = {};   // id → 正在进行的预读 Promise（并发调用必须等同一个，不能拿到 null）
     var _prefetchedOnce = false;
 
     function _cacheCurrent() {
         try {
             var id = _currentId();
             if (!id) return;
+            var bg = null;
+            try { bg = localStorage.getItem(_prefix() + id + '_chatBackground'); } catch (e) {}
             _cache[id] = {
                 messages: (typeof messages !== 'undefined' && Array.isArray(messages)) ? messages.slice() : [],
-                settings: (typeof settings !== 'undefined' && settings) ? JSON.parse(JSON.stringify(settings)) : null
+                settings: (typeof settings !== 'undefined' && settings) ? JSON.parse(JSON.stringify(settings)) : null,
+                avatar: (window._avatarCache && window._avatarCache.partner) || null,
+                background: bg || null
             };
         } catch (e) {}
     }
 
-    async function _prefetchSession(id) {
-        if (_cache[id] || _prefetching[id]) return _cache[id] || null;
-        _prefetching[id] = true;
-        try {
-            var p = _prefix();
-            var res = await Promise.all([
-                localforage.getItem(p + id + '_chatMessages'),
-                localforage.getItem(p + id + '_chatSettings')
-            ]);
+    function _prefetchSession(id) {
+        if (_cache[id]) return Promise.resolve(_cache[id]);
+        // 之前这里在"已经在预读"时直接返回 null，调用方就会拿着上一位梦角的
+        // settings/messages 继续渲染 —— 表现就是"点新角色还是原来那位"。
+        // 现在把同一个 Promise 交出去，等它读完再切。
+        if (_prefetching[id]) return _prefetching[id];
+        var p = _prefix();
+        var job = Promise.all([
+            localforage.getItem(p + id + '_chatMessages'),
+            localforage.getItem(p + id + '_chatSettings'),
+            localforage.getItem(p + id + '_partnerAvatar'),
+            localforage.getItem(p + id + '_chatBackground')
+        ]).then(function (res) {
             var msgs = Array.isArray(res[0]) ? res[0].map(function (m) {
                 return Object.assign({}, m, { timestamp: new Date(m.timestamp) });
             }) : [];
-            _cache[id] = { messages: msgs, settings: res[1] || null };
-        } catch (e) {
-            _cache[id] = { messages: [], settings: null };
-        }
-        _prefetching[id] = false;
-        return _cache[id];
+            _cache[id] = {
+                messages: msgs,
+                settings: res[1] || null,
+                avatar: res[2] || null,
+                background: res[3] || null
+            };
+            delete _prefetching[id];
+            return _cache[id];
+        }).catch(function () {
+            _cache[id] = { messages: [], settings: null, avatar: null, background: null };
+            delete _prefetching[id];
+            return _cache[id];
+        });
+        _prefetching[id] = job;
+        return job;
     }
 
     // 把所有会话预读一遍。并发读（IndexedDB 读很快），不再一个个排队等 120ms ——
@@ -198,7 +215,28 @@
     // 关键点是"存好再换"：否则切换前那个 500ms 延时保存会拿旧数据写进新会话，
     // 表现就是"新加的角色显示的却是上一个角色的名字"。
     async function switchToSession(id, name) {
-        if (!id || id === _currentId()) { enterChat(); return; }
+        if (!id) return;
+
+        if (id === _currentId()) {
+            // 已经"名义上"是这一位了。但如果数据并没有真正换过来（之前预读没完成就会这样），
+            // 这里不能直接进聊天 —— 否则屏幕上留着的还是上一位的聊天记录，再点也永远修不好。
+            if (window._loadedSessionId === id) { enterChat(); return; }
+            var instant0 = _instantSwitch();
+            if (!instant0) showSwitchOverlay(name);
+            try {
+                var fix = (typeof loadData === 'function') ? loadData() : null;
+                Promise.resolve(fix).then(function () {
+                    if (_currentId() !== id) return;
+                    try { if (typeof window.renderMessages === 'function') window.renderMessages(); } catch (e) {}
+                    try { if (typeof window.updateUI === 'function') window.updateUI(); } catch (e) {}
+                    window._loadedSessionId = id;
+                    if (!instant0) hideSwitchOverlay();
+                }).catch(function () { if (!instant0) hideSwitchOverlay(); });
+            } catch (e) { if (!instant0) hideSwitchOverlay(); }
+            enterChat();
+            return;
+        }
+
         var instant = _instantSwitch();
         if (!instant) {
             showSwitchOverlay(name);
@@ -227,12 +265,16 @@
             try { history.replaceState(null, '', '#' + id); } catch (e) {}
 
             // ② 直接改成内存里的数据 —— 这一步是同步的，所以点下去立刻就是新梦角的聊天
+            // 注意：新角色（或任何还没存过设置的会话）必须从默认设置起步，
+            // 不能拿上一位的 settings 去 merge，否则状态/签名/主题都会继承过来。
             if (tgt) {
                 try {
                     if (Array.isArray(tgt.messages)) messages = tgt.messages.slice();
-                    if (tgt.settings && typeof settings !== 'undefined') {
-                        settings = Object.assign({}, settings, tgt.settings);
-                    }
+                    var baseSettings = (typeof window.getDefaultSettings === 'function')
+                        ? window.getDefaultSettings()
+                        : settings;
+                    settings = Object.assign({}, baseSettings, (tgt.settings && typeof tgt.settings === 'object') ? tgt.settings : {});
+                    window._loadedSessionId = id;
                 } catch (e) {}
             }
 
@@ -261,9 +303,11 @@
                 }
             } catch (e) {}
 
-            // ④ 头像 + 背景
+            // ④ 头像 + 背景：必须用目标会话自己的，不能用 _avatarCache 里上一位的
             try {
-                var av = window._avatarCache && window._avatarCache.partner;
+                var av = tgt ? (tgt.avatar || null) : null;
+                if (!window._avatarCache) window._avatarCache = {};
+                window._avatarCache.partner = av;
                 var host = (typeof DOMElements !== 'undefined' && DOMElements.partner) ? DOMElements.partner.avatar : null;
                 if (host) {
                     host.innerHTML = av
@@ -271,8 +315,10 @@
                         : '<i class="fas fa-user"></i>';
                 }
                 if (typeof window.applyBackground === 'function') {
-                    var bg = null;
-                    try { bg = localStorage.getItem(_prefix() + id + '_chatBackground'); } catch (e) {}
+                    var bg = tgt ? (tgt.background || null) : null;
+                    if (!bg) {
+                        try { bg = localStorage.getItem(_prefix() + id + '_chatBackground'); } catch (e) {}
+                    }
                     window.applyBackground(bg || '');
                 }
             } catch (e) {}
@@ -284,7 +330,18 @@
                 try {
                     if (typeof loadData === 'function') {
                         var pr2 = loadData();
-                        if (pr2 && pr2.catch) pr2.catch(function () {});
+                        if (pr2 && pr2.then) {
+                            pr2.then(function () {
+                                // loadData 只更新内存，不会重画消息；上面如果因为预读失败留下了
+                                // 上一位的 DOM，这里必须用新数据再渲染一次。
+                                if (_currentId() !== id) return;
+                                try { if (typeof window.renderMessages === 'function') window.renderMessages(); } catch (e) {}
+                                try { if (typeof window.updateUI === 'function') window.updateUI(); } catch (e) {}
+                                window._loadedSessionId = id;
+                            }).catch(function () {});
+                        } else if (pr2 && pr2.catch) {
+                            pr2.catch(function () {});
+                        }
                     }
                 } catch (e) {}
                 try { window.dispatchEvent(new CustomEvent('session:switched', { detail: { id: id, name: name } })); } catch (e) {}
@@ -293,7 +350,16 @@
             }, 30);
 
             // 再把切过去的这一位也缓存起来（下次切回来零等待）
-            setTimeout(function () { _cache[id] = { messages: messages.slice(), settings: JSON.parse(JSON.stringify(settings)) }; }, 120);
+            setTimeout(function () {
+                var bg2 = null;
+                try { bg2 = localStorage.getItem(_prefix() + id + '_chatBackground'); } catch (e) {}
+                _cache[id] = {
+                    messages: messages.slice(),
+                    settings: JSON.parse(JSON.stringify(settings)),
+                    avatar: (window._avatarCache && window._avatarCache.partner) || null,
+                    background: bg2 || null
+                };
+            }, 120);
 
             if (!instant && typeof showNotification === 'function' && name) {
                 showNotification('已切换到 ' + name, 'info', 1000);
