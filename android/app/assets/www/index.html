@@ -79,7 +79,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
 </style>
 </head>
 <body class="header-clean">
-<div id="splash-declaration">
+<div id="splash-declaration" style="display:none;">
     <div class="splash-bg-stars" id="splash-stars"></div>
     <div class="splash-glow-1"></div>
     <div class="splash-glow-2"></div>
@@ -197,38 +197,6 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
     </div>
 </div>
 
-    <div class="welcome-animation" id="welcome-animation">
-        <div class="welcome-bg-gradient"></div>
-        <div class="stars-container" id="stars-container"></div>
-        <div class="welcome-particles" id="welcome-particles"></div>
-        <div id="welcome-meteors" style="position:absolute;inset:0;pointer-events:none;overflow:hidden;"></div>
-        <div class="welcome-content-wrapper">
-            <div class="logo-tech-container">
-                <div class="logo-circle-outer"></div>
-                <div class="logo-circle-inner"></div>
-                <div class="logo-icon-main">
-                    <i class="fas fa-satellite-dish"></i>
-                </div>
-                <div class="orbit-dot"></div>
-                <div class="orbit-dot-2"></div>
-                <div class="orbit-dot-3"></div>
-            </div>
-
-            <div class="text-tech-container">
-                <div class="welcome-title-glitch" id="welcome-title-glitch" data-text="和你在一起的每一天">
-                    和你在一起的每一天
-                </div>
-                <div class="welcome-subtitle-scramble" id="welcome-subtitle-scramble">
-                    和你在一起的每一天
-                </div>
-            </div>
-
-            <div class="loader-tech">
-                <div class="loader-tech-bar" id="loader-tech-bar"></div>
-            </div>
-            <div id="loader-status-text" style="font-size:10px;opacity:0.5;letter-spacing:1px;color:var(--welcome-text-sub);margin-top:4px;font-family:monospace;"></div>
-        </div>
-    </div>
     <button id="immersive-exit-btn" onclick="toggleImmersiveMode(false)" title="退出沉浸模式">
 <i class="fas fa-expand"></i>
 </button>

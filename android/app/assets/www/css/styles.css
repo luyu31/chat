@@ -4867,12 +4867,13 @@
             min-width: 0;
             display: grid;
             grid-template-columns: 36px minmax(0, 1fr);
-            grid-template-areas: "av nm" "av st";
-            grid-template-rows: 18px 14px;
+            /* 状态单独占一整行，跨过头像列，宽度不再被名字列卡住 */
+            grid-template-areas: "av nm" "st st";
+            grid-template-rows: 20px auto;
             align-items: center;
             justify-items: start;
             column-gap: 8px;
-            row-gap: 1px;
+            row-gap: 2px;
         }
         body.header-clean .user-info .avatar-container {
             grid-area: av;
@@ -4890,22 +4891,35 @@
         }
         body.header-clean .user-info .status {
             grid-area: st;
-            font-size: 10.5px;
-            line-height: 1.2;
-            padding: 0;
-            text-align: left;
-            background: none;
-            opacity: .85;
+            justify-self: stretch;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            font-size: 11px;
+            line-height: 1.35;
+            padding: 2px 8px;
+            border-radius: 9px;
+            background: rgba(var(--accent-color-rgb, 197, 164, 126), 0.1);
+            text-align: center;
+            background-clip: padding-box;
+            opacity: .9;
             max-width: 100%;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            overflow: hidden;
+            text-overflow: clip;
+            white-space: normal;
+            word-break: break-word;
+        }
+        body.header-clean .user-info .status:hover {
+            background-color: rgba(var(--accent-color-rgb, 197, 164, 126), 0.17);
         }
         body.header-clean .user-info:last-of-type {
             grid-template-columns: minmax(0, 1fr) 36px;
-            grid-template-areas: "nm av" "st av";
+            grid-template-areas: "nm av" "st st";
             justify-items: end;
+            margin-left: 6px; /* 中间留出呼吸位，两个状态胶囊不至于贴在一起 */
         }
-        body.header-clean .user-info:last-of-type .username,
-        body.header-clean .user-info:last-of-type .status { text-align: right; }
+        body.header-clean .user-info:last-of-type .username { text-align: right; }
+        body.header-clean .user-info:last-of-type .status { text-align: center; }
         /* 返回键在最左；右侧补一个等宽占位，保证两边头像左右对称 */
         body.header-clean #wx-back-btn {
             order: 0;

@@ -204,9 +204,9 @@
         });
     }
 
-    // 关掉「减少动画」的人：切换时连过场都不给看 —— 不转圈、不淡入，点一下直接到位
+    // 进入任何梦角都不再走过场：不转圈、不淡入，点下去直接就是聊天页
     function _instantSwitch() {
-        try { return !!(window._reduceMotionAll && window._reduceMotionAll()); } catch (e) { return false; }
+        return true;
     }
 
     // 切换：原地换会话，不重载页面

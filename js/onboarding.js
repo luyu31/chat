@@ -149,6 +149,9 @@
             return;
         }
 
+        // 已签署的用户绝不看到声明层（HTML 里默认 display:none，只有第一次使用时才临时显示）
+        splash.style.display = 'flex';
+
         var starsEl = document.getElementById('splash-stars');
         if (starsEl) {
             var html = '';

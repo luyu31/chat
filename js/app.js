@@ -1,30 +1,6 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    const loaderBar = document.getElementById('loader-tech-bar');
-    const welcomeSubtitle = document.querySelector('.welcome-subtitle-scramble');
-    const welcomeScreen = document.getElementById('welcome-animation');
     const disclaimerModal = document.getElementById('disclaimer-modal');
     const acceptDisclaimerBtn = document.getElementById('accept-disclaimer');
-
-    const updateLoader = (text, width) => {
-        if (welcomeSubtitle) welcomeSubtitle.textContent = text;
-        if (loaderBar) loaderBar.style.width = width;
-    };
-
-    // 从别的梦角切过来的这一页：跳过开场动画，别让"切换"看起来像重新启动一次 App
-    const _fastBoot = () => {
-        try { return sessionStorage.getItem('wxFastBoot') === '1'; } catch (e) { return false; }
-    };
-    const _skipEntry = () => _fastBoot() || !!(window._skipEntryAnim && window._skipEntryAnim());
-
-    const hideWelcomeScreen = () => {
-        if (!welcomeScreen) return;
-        // 不再做任何开场缓冲：隐藏就是隐藏，不渐变、不等数据、不留残影。
-        // 用户要的是"点开就是软件本身"，加载中的骨架屏由聊天页自己承担。
-        welcomeScreen.classList.add('hidden');
-        welcomeScreen.style.display = 'none';
-        welcomeScreen.style.visibility = 'hidden';
-        welcomeScreen.style.opacity = '0';
-    };
 
     const safeAwait = async (promise, fallback = null) => {
         try {
@@ -54,17 +30,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.warn('[boot] 紧急备份检查失败:', e);
         }
 
-        // 立刻收掉欢迎层：从点开图标到看见聊天界面之间不再有等待动画
-        hideWelcomeScreen();
-
-        updateLoader('和你在一起的每一天', '10%');
+        // 直接进入：页面不再有开屏/加载层，初始化在后台完成
         await safeAwait(initializeSession());
 
-        updateLoader('和你在一起的每一天', '40%');
         await safeAwait(loadData());
 
-        updateLoader('和你在一起的每一天', '70%');
-        
         await Promise.allSettled([
             safeAwait(initializeRandomUI?.()),
             safeAwait(initMusicPlayer?.())
@@ -97,10 +67,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
         }
-
-        updateLoader('和你在一起的每一天', '100%');
-        // 欢迎层在上面已经立刻收掉了，这里不再按 0.25s / 1.2s 延迟二次淡出
-        hideWelcomeScreen();
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') {
@@ -222,8 +188,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (recoverErr) {
             console.warn('[boot] 初始化失败后的恢复也失败:', recoverErr);
         }
-        updateLoader('加载遇到问题，已强制进入...', '100%');
-        setTimeout(hideWelcomeScreen, 3500);
     }
 });
 const stickerInput = document.getElementById('sticker-file-input');
