@@ -694,6 +694,8 @@
         buildHome();
         var el = document.getElementById('wx-home');
         if (el) el.style.display = 'flex';
+        var back = document.getElementById('wx-back-btn');
+        if (back) back.style.display = 'none';
         try { sessionStorage.setItem(FLAG, '0'); } catch (e) {}
         _setTab('chat');
         renderConvs();
@@ -702,19 +704,20 @@
     function enterChat() {
         var el = document.getElementById('wx-home');
         if (el) el.style.display = 'none';
+        var back = document.getElementById('wx-back-btn');
+        if (back) back.style.display = 'flex';
     }
 
-    // 聊天头部左侧的返回键
+    // 全屏聊天的悬浮返回键（顶部头像/名字整条已经隐藏）
     function injectBackBtn() {
-        var inner = document.querySelector('.header-inner');
-        if (!inner || document.getElementById('wx-back-btn')) return;
+        if (document.getElementById('wx-back-btn')) return;
         var b = document.createElement('button');
         b.id = 'wx-back-btn';
-        b.className = 'action-btn';
+        b.className = 'wx-back-float';
         b.title = '返回';
         b.innerHTML = '<i class="fas fa-chevron-left"></i>';
         b.addEventListener('click', function (e) { e.stopPropagation(); showHome(); });
-        inner.insertBefore(b, inner.firstChild);
+        document.body.appendChild(b);
     }
 
     // ─── 聊天页头部整理：像微信一样清爽 ───
