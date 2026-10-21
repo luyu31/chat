@@ -4707,7 +4707,7 @@
         }
         .wx-empty { text-align: center; color: var(--text-secondary); font-size: 13px; padding: 40px 0; }
         .wx-tabbar {
-            order: 3;
+            order: 2;
             flex-shrink: 0; display: flex;
             background: var(--header-bg, #f7f7f7);
             border-top: 1px solid var(--border-color, #e2e2e2);
@@ -4723,7 +4723,7 @@
 
         /* 发现页：功能网格 */
         .wx-discover {
-            order: 2;
+            order: 1;
             flex: 1; display: none; overflow-y: auto;
             padding: 14px 12px 20px;
             grid-template-columns: repeat(3, 1fr);
@@ -4746,6 +4746,74 @@
         }
         .wx-d-nm { font-size: 13px; font-weight: 600; color: var(--text-primary); }
         .wx-d-sub { font-size: 10px; color: var(--text-secondary); line-height: 1.3; }
+
+        /* 通讯录 */
+        .wx-contacts, .wx-me {
+            order: 1; flex: 1; display: none; overflow-y: auto;
+            background: var(--primary-bg, #f7f7f7);
+        }
+        .wx-ct-section {
+            font-size: 12px; color: var(--text-secondary);
+            padding: 14px 16px 6px; letter-spacing: .5px;
+        }
+        .wx-ct-row {
+            display: flex; align-items: center; gap: 12px;
+            padding: 11px 14px; background: var(--modal-bg, #fff);
+            border-bottom: 1px solid var(--border-color, #f0f0f0);
+            cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+        .wx-ct-row:active { background: var(--secondary-bg, rgba(0,0,0,.05)); }
+        .wx-ct-av { flex-shrink: 0; line-height: 0; }
+        .wx-ct-main { flex: 1; min-width: 0; }
+        .wx-ct-name { font-size: 15px; font-weight: 500; color: var(--text-primary); }
+        .wx-ct-sub {
+            font-size: 12px; color: var(--text-secondary); margin-top: 3px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .wx-ct-edit {
+            flex-shrink: 0; width: 28px; height: 28px; border: none; border-radius: 50%;
+            background: transparent; color: var(--text-secondary); font-size: 14px; cursor: pointer;
+        }
+        .wx-ct-add {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            margin: 14px 14px 20px; padding: 12px; border-radius: 12px;
+            border: 1px dashed var(--border-color, #ddd);
+            color: var(--text-secondary); font-size: 13px; cursor: pointer;
+        }
+
+        /* 我：微信个人页 */
+        .wx-me { padding-bottom: 20px; }
+        .wx-me-card {
+            display: flex; align-items: center; gap: 14px;
+            margin: 12px; padding: 18px 16px; border-radius: 16px;
+            background: var(--modal-bg, #fff);
+            border: 1px solid var(--border-color, #eee);
+            cursor: pointer;
+        }
+        .wx-me-av { flex-shrink: 0; line-height: 0; }
+        .wx-me-info { flex: 1; min-width: 0; }
+        .wx-me-name { font-size: 19px; font-weight: 700; color: var(--text-primary); }
+        .wx-me-sig {
+            font-size: 12px; color: var(--text-secondary); margin-top: 5px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .wx-me-arrow { color: var(--text-secondary); opacity: .5; font-size: 13px; }
+        .wx-me-group {
+            margin: 0 12px 14px; border-radius: 14px; overflow: hidden;
+            background: var(--modal-bg, #fff);
+            border: 1px solid var(--border-color, #eee);
+        }
+        .wx-me-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 14px 15px; font-size: 14px; color: var(--text-primary);
+            border-bottom: 1px solid var(--border-color, #f2f2f2);
+            cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+        .wx-me-item:last-child { border-bottom: none; }
+        .wx-me-item:active { background: var(--secondary-bg, rgba(0,0,0,.04)); }
+        .wx-me-item > i:first-child { width: 20px; text-align: center; color: var(--accent-color); }
+        .wx-me-item > span { flex: 1; }
+        .wx-me-item > i:last-child { color: var(--text-secondary); opacity: .45; font-size: 11px; }
 
         /* 统一信箱：所有梦角的信汇总 */
         #wx-inbox {
@@ -4853,29 +4921,7 @@
         }
         .wx-head-ops { display: flex; align-items: center; gap: 4px; }
 
-        /* ── 聊天页头部"清爽模式"：像微信一样只看两边头像，功能都收进「发现」 ── */
-        body.header-clean .header { display: none !important; }
-        /* 头部整条去掉后，把状态栏安全区交给聊天区，消息不会被顶到刘海下面 */
-        body.header-clean .main-chat-area { padding-top: env(safe-area-inset-top, 0px); }
-        /* 全屏聊天：顶部头像/名字/状态整条都不占位置，只留一个悬浮返回键 */
-        #wx-back-btn.wx-back-float {
-            position: fixed;
-            top: calc(env(safe-area-inset-top, 0px) + 10px);
-            left: 10px;
-            z-index: 1200;
-            width: 34px; height: 34px;
-            border-radius: 50%;
-            border: 1px solid var(--border-color, rgba(0,0,0,.08));
-            background: rgba(var(--secondary-bg-rgb, 255,255,255), .72);
-            -webkit-backdrop-filter: blur(10px);
-            backdrop-filter: blur(10px);
-            color: var(--text-primary);
-            box-shadow: 0 2px 10px rgba(0,0,0,.08);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 15px; cursor: pointer;
-            margin: 0;
-        }
-        #wx-back-btn.wx-back-float:active { transform: scale(.94); }
+        /* ── 聊天页头部"清爽模式"：保留头像/名字/状态，功能都收进「发现」 ── */
         body.header-clean .header-actions { display: none !important; }
         body.header-clean .header-inner {
             justify-content: space-between;
@@ -12391,9 +12437,9 @@ body #user-sticker-picker .empty-sticker-tip {
     background: linear-gradient(135deg, #dfd3c3 0%, #c8b8a3 45%, #b7a48c 100%);
     flex-shrink: 0;
 }
-/* 全屏朋友圈：首页不再占一整块封面，进入直接看动态 */
+/* 全屏朋友圈：首页不再占一整块封面，进入直接看动态；
+   头像/天数/签名/时间这一条在动态、相册、心情、纪念日等所有栏目里保持一致，不再只在第一栏隐藏 */
 #couple-space-page.cs-home-all #cs-panel-feed.cs-panel-active #cs-outer-header .cs-moments-cover { display: none; }
-#couple-space-page.cs-home-all #cs-panel-feed.cs-panel-active #cs-outer-header .cs-couple-section { display: none; }
 .cs-cover-bg {
     position: absolute; inset: 0;
     background-size: cover; background-position: center;

@@ -2037,6 +2037,31 @@
         });
     };
 
+    // 发现页直接打开电影院（不用再进家园点电影 tab）
+    window.Cinema = {
+        open: function () {
+            try {
+                var page = document.getElementById('couple-space-page');
+                var wasOpen = !!(page && page.classList.contains('cs-open'));
+                if (!wasOpen && typeof openCoupleSpace === 'function') openCoupleSpace();
+                var tries = 0;
+                (function go() {
+                    var p = document.getElementById('couple-space-page');
+                    if (p && p.classList.contains('cs-open')) {
+                        if (typeof csSwitchTab === 'function') csSwitchTab('cinema');
+                        // 进家园的收尾动画可能晚一点又切回 feed，确认面板真的切过去
+                        setTimeout(function () {
+                            var panel = document.getElementById('cs-panel-cinema');
+                            if (panel && panel.style.display === 'none' && tries++ < 6) go();
+                        }, 120);
+                    } else if (tries++ < 40) {
+                        setTimeout(go, 80);
+                    }
+                })();
+            } catch (e) {}
+        }
+    };
+
     // ── 接管 csSwitchTab：切到别的功能 tab 时，如果影日志档案页还开着
     //     （全屏 overlay，z-index:50），必须先关掉，否则会一直挡住其它面板，
     //     导致"点了别的 tab 但页面没有跳转"——跟 anniversary.js 用的是同一套

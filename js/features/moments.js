@@ -875,6 +875,7 @@ window.csSpaceBack = function () {
 };
 window.closeCoupleSpace=window.closeMomentsModal=function(){
     const page=document.getElementById('couple-space-page');if(!page)return;
+    try { window.dispatchEvent(new CustomEvent('cs:closed')); } catch(e) {}
     page.classList.remove('cs-open');window.closeAllCsSheets();_csExpandFeedHeader();
     [document.getElementById('cs-notif-popup'),document.getElementById('cs-sticker-picker')].forEach(el=>{if(el)el.style.display='none';});
     // 关掉动画的人：退出也是瞬间，不留那 380ms 的空等

@@ -2,8 +2,10 @@
 <resources>
     <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/milk_bg</item>
-        <item name="android:statusBarColor">@color/milk_accent</item>
+        <!-- 全屏：去掉顶部状态栏那条粉色，应用内容从最上面开始 -->
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@color/milk_bg</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>
