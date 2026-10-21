@@ -17,7 +17,7 @@
     var _other = {};        // sid → posts[]（其他梦角的动态）
     var _meta = {};         // sid → { name, avatar, myAvatar }
     var _loaded = false;
-    var _aggMode = 'owner';   // 'all' | 'mine' | 'owner'（家园默认只看当前梦角自己的朋友圈）
+    var _aggMode = 'all';   // 'all' | 'mine' | 'owner'（家园首页看所有人，点头像才进某个人的朋友圈）
     var _busy = false;
     var _bootTries = 0;
 
@@ -249,10 +249,30 @@
                     swapped = true;
                 }
             } catch (e) {}
+            window._aggRenderLock = true;
             try {
                 return orig.apply(this, arguments);
             } finally {
+                window._aggRenderLock = false;
                 if (swapped) { try { momentsData.posts = bak; } catch (e) {} }
+                // 合并列表里都是浅拷贝，markPostRead 改不到原对象。
+                // 渲染完、恢复原始数组后，再把"屏幕上真的出现过"的那些动态标为已读并落盘。
+                try {
+                    var shown = {};
+                    merged.forEach(function (p) { shown[String(p.id)] = 1; });
+                    (Array.isArray(bak) ? bak : []).forEach(function (p) {
+                        if (!p || !shown[String(p.id)]) return;
+                        p.isNewForUser = false;
+                        (p.comments || []).forEach(function (c) { c.isNew = false; });
+                    });
+                    if (typeof momentsData !== 'undefined' && momentsData) {
+                        (momentsData.notifications || []).forEach(function (n) {
+                            if (shown[String(n.postId)]) n.read = true;
+                        });
+                    }
+                    if (typeof saveMomentsData === 'function') saveMomentsData();
+                    if (typeof window._updateMomentsBadge === 'function') window._updateMomentsBadge();
+                } catch (e) {}
                 decorate(merged);
             }
         };
@@ -273,12 +293,32 @@
         } catch (e) {}
     }
     // 看别人空间时把"发动态"入口收起来（这是只读浏览，不是你自己那页）
+    // 首页/我的：显示微信式封面；他的个人页：显示"我和他"并列的原界面
     function _syncModeUI() {
         try {
             var page = document.getElementById('couple-space-page');
-            if (page) page.classList.toggle('cs-viewing-owner', _aggMode === 'owner');
+            if (page) {
+                page.classList.toggle('cs-viewing-owner', _aggMode === 'owner');
+                page.classList.toggle('cs-home-all', _aggMode !== 'owner');
+            }
         } catch (e) {}
     }
+
+    // 朋友圈首页（所有人）：微信式封面 + 所有人的动态
+    window._mShowMomentsHome = function () {
+        _aggMode = 'all';
+        _syncTitle();
+        _syncModeUI();
+        try {
+            if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
+            else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
+        } catch (e) {}
+        setTimeout(function () {
+            try { if (typeof window._csRenderFeed === 'function') window._csRenderFeed(); } catch (e) {}
+            try { if (typeof window._updateCover === 'function') window._updateCover(); } catch (e) {}
+        }, 320);
+    };
+    window._mIsHomeMode = function () { return _aggMode === 'all'; };
 
     // 只显示我发的（点自己头像）
     window._mShowOnlyMine = function () {

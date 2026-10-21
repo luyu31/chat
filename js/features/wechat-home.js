@@ -378,12 +378,10 @@
         if (!instant) hideSwitchOverlay();
     }
 
-    // ─── 「朋友圈」：家园永远属于当前这位梦角，下面只放他发的动态 ───
-    // 想看另一个梦角的朋友圈：在首页点开他（切换会话）再进家园即可。
-    // 之前默认把所有人的动态混在一起，多梦角时会串成"公共大杂烩"，不再这么做。
+    // ─── 「朋友圈」：先看所有人的动态（微信式封面），点某个人的头像才进他个人的朋友圈 ───
     function openAllMoments() {
         try {
-            if (typeof window._mShowOwner === 'function') { window._mShowOwner(); return; }
+            if (typeof window._mShowMomentsHome === 'function') { window._mShowMomentsHome(); return; }
             if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
             else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
         } catch (e) { console.warn('[wx-home] 打开家园失败', e); }

@@ -1701,6 +1701,7 @@ autoSendSlider.addEventListener('change', () => {
             if (surveyEntry) {
                 surveyEntry.addEventListener('click', () => {
                     hideModal(DOMElements.advancedModal.modal);
+                    window._surveyReturnToAdvanced = true;
                     if (typeof window._surveyOpenListModal === 'function') window._surveyOpenListModal();
                 });
             }

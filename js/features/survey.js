@@ -1579,6 +1579,18 @@
         if (typeof window.hideModal === 'function') window.hideModal(document.getElementById('survey-modal'));
         else document.getElementById('survey-modal').style.display = 'none';
     }
+    // 返回键：从"高级功能"里进来才回高级功能；从聊天 + 菜单进来就直接回到聊天
+    window._surveyReturnToAdvanced = false;
+    window._surveyBack = function () {
+        _closeListModal();
+        if (window._surveyReturnToAdvanced) {
+            window._surveyReturnToAdvanced = false;
+            try {
+                var adv = document.getElementById('advanced-modal');
+                if (adv && typeof window.showModal === 'function') window.showModal(adv);
+            } catch (e) {}
+        }
+    };
 
     function _renderListBody() {
         var body = document.getElementById('survey-list-body');

@@ -169,6 +169,7 @@
         // 问卷就挨着快问快答：都是"点选式问答"，放在一起不用再翻设置
         { id: 'survey', iconClass: 'fas fa-clipboard-list', label: '问卷', ready: true,
             action: function () {
+                window._surveyReturnToAdvanced = false;
                 if (typeof window._surveyOpenListModal === 'function') window._surveyOpenListModal();
                 else if (typeof showNotification === 'function')
                     showNotification('问卷加载中，稍后再试～', 'info', 2000);

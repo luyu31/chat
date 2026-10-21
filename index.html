@@ -256,7 +256,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                 </button>
                 <button id="companion-btn" class="action-btn" title="陪伴"><i class="fas fa-hand-holding-heart"></i></button>
                 <button id="daily-greeting-btn" class="action-btn" title="今日公告" onclick="reopenDailyGreeting()"><i class="fas fa-newspaper" style="font-size:16px;"></i></button>
-                <button id="moments-header-btn" class="action-btn" title="情侣空间" onclick="openMomentsWithTransition()" style="position:relative;">
+                <button id="moments-header-btn" class="action-btn" title="情侣空间" onclick="window._mShowMomentsHome?window._mShowMomentsHome():openMomentsWithTransition()" style="position:relative;">
                     <i class="ti ti-home-heart" style="font-size:19px;"></i>
                     <span id="moments-header-badge" style="display:none;position:absolute;top:3px;right:3px;width:7px;height:7px;background:var(--accent-color);border-radius:50%;border:1.5px solid var(--primary-bg);pointer-events:none;"></span>
                 </button>
@@ -563,13 +563,22 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
 
     <!-- 顶部操作栏 -->
     <div class="cs-topbar" id="cs-topbar" style="position:relative;">
-        <button class="cs-icon-btn" onclick="closeCoupleSpace()"><i class="fas fa-chevron-left"></i></button>
+        <button class="cs-icon-btn" onclick="window.csSpaceBack?window.csSpaceBack():closeCoupleSpace()"><i class="fas fa-chevron-left"></i></button>
         <span class="cs-topbar-feed-title" id="cs-topbar-feed-title"></span>
         <button class="cs-icon-btn" style="margin-left:auto;" onclick="window.openCsSettings&&window.openCsSettings()"><i class="fas fa-cog"></i></button>
     </div>
 
     <!-- 头像 + tab pills 可移动容器（feed tab 时搬入滚动区，其他 tab 时固定在此） -->
     <div id="cs-outer-header">
+        <!-- 朋友圈首页（所有人）：微信式封面 + 我的头像；点某个人的头像才进他的个人朋友圈 -->
+        <div class="cs-moments-cover" id="cs-moments-cover">
+            <div class="cs-cover-bg" id="cs-cover-bg"></div>
+            <div class="cs-cover-shade"></div>
+            <div class="cs-cover-user">
+                <div class="cs-cover-name" id="cs-cover-name">我</div>
+                <div class="cs-cover-av" id="cs-cover-av"><i class="fas fa-user"></i></div>
+            </div>
+        </div>
         <div class="cs-couple-section">
             <div class="cs-couple-row">
                 <div class="cs-big-av" id="cs-bav-partner"><i class="fas fa-user" style="font-size:36px;color:var(--text-secondary,#aaa);"></i></div>
@@ -2567,7 +2576,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
             </div>
 
             <div class="modal-buttons" style="position:sticky;bottom:0;background:var(--secondary-bg);border-top:1px solid var(--border-color);padding:12px 0 0;z-index:10;margin-top:8px;margin-left:-24px;margin-right:-24px;padding-left:24px;padding-right:24px;padding-bottom:max(14px, env(safe-area-inset-bottom, 0px));">
-                <button class="modal-btn modal-btn-secondary" id="back-advanced" onclick="(function(){hideModal(document.getElementById('advanced-modal'));showModal(document.getElementById('settings-modal'))})()">
+                <button class="modal-btn modal-btn-secondary" id="back-advanced" onclick="hideModal(document.getElementById('advanced-modal'))">
                     <i class="fas fa-arrow-left"></i> 返回
                 </button>
                 <button class="modal-btn modal-btn-secondary" id="close-advanced" onclick="hideModal(document.getElementById('advanced-modal'))">关闭</button>
@@ -2691,7 +2700,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
             </div>
             <div id="survey-list-body"></div>
             <div class="modal-buttons" style="position:sticky;bottom:0;background:var(--secondary-bg);border-top:1px solid var(--border-color);padding:12px 0 0;z-index:10;margin-top:8px;margin-left:-24px;margin-right:-24px;padding-left:max(24px, env(safe-area-inset-left, 24px));padding-right:max(24px, env(safe-area-inset-right, 24px));padding-bottom:max(14px, env(safe-area-inset-bottom, 0px));">
-                <button class="modal-btn modal-btn-secondary" id="survey-list-back-btn" onclick="(function(){hideModal(document.getElementById('survey-modal'));showModal(document.getElementById('advanced-modal'))})()">
+                <button class="modal-btn modal-btn-secondary" id="survey-list-back-btn" onclick="window._surveyBack?window._surveyBack():hideModal(document.getElementById('survey-modal'))">
                     <i class="fas fa-arrow-left"></i> 返回
                 </button>
                 <button class="modal-btn modal-btn-secondary" id="survey-list-close">关闭</button>

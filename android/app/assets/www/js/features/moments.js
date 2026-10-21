@@ -115,6 +115,9 @@ async function loadMomentsData() {
     try { const s=await localforage.getItem(getStorageKey(_M_STORAGE_KEY)); if(s){momentsData=s;if(!momentsData.notifications)momentsData.notifications=[];} _momentsDataLoaded=true; } catch(e){console.warn('[Moments] load 失败',e);}
 }
 async function saveMomentsData() {
+    // 家园"所有人"模式渲染时，会把合并后的临时列表塞进 momentsData.posts；
+    // 这时任何保存都会把别人的动态写进当前会话。渲染期间一律跳过，渲染完再存。
+    if (window._aggRenderLock) return;
     if (!_momentsDataLoaded) { console.warn('[Moments] 本次会话还没有确认加载成功过动态数据，为了避免覆盖历史记录，跳过这次保存'); return; }
     try{await localforage.setItem(getStorageKey(_M_STORAGE_KEY),momentsData);}catch(e){console.warn('[Moments] save 失败',e);}
 }
@@ -229,7 +232,14 @@ async function _checkAction(){
 }
 
 function getMomentsUnreadCount(){let n=0;for(const p of momentsData.posts){if(p.isNewForUser)n++;for(const c of p.comments)if(c.authorType==='partner'&&c.isNew)n++;}return n;}
-function markPostRead(postId){const p=momentsData.posts.find(p=>p.id===postId);if(!p)return;p.isNewForUser=false;p.comments.forEach(c=>{c.isNew=false;});saveMomentsData();_updateBadge();}
+function markPostRead(postId){
+    const p=momentsData.posts.find(p=>p.id===postId);if(!p)return;
+    p.isNewForUser=false;p.comments.forEach(c=>{c.isNew=false;});
+    // 这条动态已经出现在屏幕上了，跟它相关的"新动态/新评论"提醒也一起清掉，
+    // 否则回复完他之后，家园入口的小红点还一直挂着。
+    (momentsData.notifications||[]).forEach(n=>{if(String(n.postId)===String(postId))n.read=true;});
+    saveMomentsData();_updateBadge();
+}
 function _updateBadge(){
     const b=document.getElementById('moments-header-badge');if(b)b.style.display=getMomentsUnreadCount()>0?'inline-block':'none';
     const bell=document.getElementById('cs-bell-dot');if(bell)bell.style.display=(momentsData.notifications||[]).some(n=>!n.read)?'block':'none';
@@ -520,7 +530,7 @@ function _renderCard(post){
     return`<div class="cs-post" data-pid="${post.id}">
         <div class="cs-post-top">
             <div class="cs-post-av">${_avEl(isPartner,36)}</div>
-            <div class="cs-post-name">${name}${hasNew?'<span style="width:7px;height:7px;background:var(--accent-color);border-radius:50%;display:inline-block;margin-left:6px;vertical-align:middle;"></span>':''}</div>
+            <div class="cs-post-name">${name}${hasNew?'<span class="cs-post-newdot" style="width:7px;height:7px;background:var(--accent-color);border-radius:50%;display:inline-block;margin-left:6px;vertical-align:middle;"></span>':''}</div>
             ${canDel?`<button class="cs-post-del" onclick="event.stopPropagation();window._mDeletePost('${post.id}')"><i class="fas fa-trash-alt"></i></button>`:'<div style="width:24px;"></div>'}
         </div>
         <div class="cs-post-body">${post.text}</div>
@@ -561,7 +571,15 @@ window._mSendComment=function(postId){
     const post=momentsData.posts.find(p=>p.id===postId);if(!post)return;
     const ri=_replyInfoMap[postId];
     post.comments.push({id:_mUid('c'),authorType:'user',text:text||'',image:img||null,timestamp:Date.now(),isNew:false,replyTo:ri?{commentId:ri.commentId,authorName:ri.authorName}:null});
+    // 已经在这条动态下面回复过了：它带来的红点应该在回复动作完成时就消失
+    (momentsData.notifications||[]).forEach(n=>{if(String(n.postId)===String(postId))n.read=true;});
     saveMomentsData(); inp.value=''; delete _replyInfoMap[postId]; delete _commentImgMap[postId];
+    _updateBadge();
+    try{
+        const card=document.querySelector('.cs-post[data-pid="'+postId+'"]');
+        const nd=card&&card.querySelector('.cs-post-newdot');
+        if(nd)nd.remove();
+    }catch(e){}
     onUserCommented(postId);
     _rerenderCmtSection(postId);
     const cc=document.getElementById('cs-cc-'+postId);if(cc)cc.textContent=' '+post.comments.length;
@@ -634,6 +652,36 @@ function _updateBigAvatars(){
     const ptEl=document.getElementById('cs-bav-partner'),meEl=document.getElementById('cs-bav-me');
     if(ptEl){const s=_getAvSrc(true);ptEl.innerHTML=s?`<img src="${s}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`:dflt;}
     if(meEl){const s=_getAvSrc(false);meEl.innerHTML=s?`<img src="${s}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`:dflt;}
+}
+
+// ─── 朋友圈首页封面：我的头像 + 背景图（微信式） ─────────────────────
+// 背景优先用这个会话的聊天背景；没设置过就用暖色渐变，不再空着。
+function _updateCover(){
+    var avEl=document.getElementById('cs-cover-av');
+    if(avEl){
+        var s=_getAvSrc(false);
+        avEl.innerHTML=s?`<img src="${s}" alt="">`:'<i class="fas fa-user" style="font-size:26px;color:var(--text-secondary,#aaa);"></i>';
+    }
+    var nameEl=document.getElementById('cs-cover-name');
+    if(nameEl) nameEl.textContent=(typeof settings!=='undefined'&&settings&&settings.myName)||'我';
+
+    var bgEl=document.getElementById('cs-cover-bg');
+    if(!bgEl) return;
+    var applyBg=function(src){
+        if(src){bgEl.style.backgroundImage='url("'+src+'")';}
+        else{bgEl.style.backgroundImage='';}
+    };
+    var local=null;
+    try{ local=localStorage.getItem(getStorageKey('chatBackground')); }catch(e){}
+    if(local){ applyBg(local); return; }
+    try{
+        localforage.getItem(getStorageKey('chatBackground')).then(function(bg){
+            if(!bg) return;
+            if(typeof bg==='string'&&bg.indexOf('oss://')===0&&window.CloudMedia&&window.CloudMedia.fetchUrl){
+                window.CloudMedia.fetchUrl(bg).then(function(url){ if(url) applyBg(url); }).catch(function(){});
+            }else if(typeof bg==='string'){ applyBg(bg); }
+        }).catch(function(){});
+    }catch(e){}
 }
 
 // ─── 梦角个性签名 ────────────────────────────────────────────────────────
@@ -801,8 +849,7 @@ window.openCoupleSpace=window.openMomentsModal=function(scrollToPostId){
             feedPanel.insertBefore(outerHeader,feedPanel.firstChild);
         }
         page.classList.add('cs-open');
-        if (typeof window._mResetHomeMode === 'function') window._mResetHomeMode();
-        _csSetTab('feed');_csRenderFeed();_updateBigAvatars();_renderPartnerMotto();_csTimezoneTick();
+        _csSetTab('feed');_csRenderFeed();_updateBigAvatars();_updateCover();_renderPartnerMotto();_csTimezoneTick();
         if(typeof window._annLoadPinned==='function'){
             window._annLoadPinned().then(function(){_updateDaysCounter();});
         }else{_updateDaysCounter();}
@@ -810,6 +857,21 @@ window.openCoupleSpace=window.openMomentsModal=function(scrollToPostId){
         if(scrollToPostId)setTimeout(()=>_csScrollTo(scrollToPostId),350);
     };
     if(skipAnim)_csEnter();else requestAnimationFrame(()=>requestAnimationFrame(_csEnter));
+};
+// 家园内容是横向滑动的面板（影评存档 translateX(100%)），浏览器在聚焦输入框时
+// 可能把 .cs-content 整个横向滚出去。这里锁死横向滚动，任何滚动都立刻归零。
+(function(){
+    var c=document.querySelector('.cs-content');
+    if(!c) return;
+    c.addEventListener('scroll',function(){ if(c.scrollLeft!==0) c.scrollLeft=0; });
+})();
+
+window.csSpaceBack = function () {
+    // 在他的个人朋友圈/我的朋友圈里：返回上一层"所有人的朋友圈"，而不是直接关掉
+    if (typeof window._mIsHomeMode === 'function' && !window._mIsHomeMode()) {
+        if (typeof window._mShowAllPeople === 'function') { window._mShowAllPeople(); return; }
+    }
+    if (typeof window.closeCoupleSpace === 'function') window.closeCoupleSpace();
 };
 window.closeCoupleSpace=window.closeMomentsModal=function(){
     const page=document.getElementById('couple-space-page');if(!page)return;
@@ -876,8 +938,10 @@ function _csSetTab(tab){
 function _csRenderFeed(){
     const list=document.getElementById('cs-feed-list');if(!list)return;
     if(!momentsData.posts.length){list.innerHTML=`<div class="cs-empty"><i class="fas fa-wind"></i><div class="cs-empty-label">还没有动态<br>来发第一条吧~</div></div>`;return;}
-    list.innerHTML=momentsData.posts.map(p=>_renderCard(p)).join('');_bindLazy(list);
+    // 先把"已读"落下来再渲染：不然新动态的小红点会被画进 DOM，
+    // 数据标记了已读、屏幕上却还挂着，看起来就是"回复了也不消"。
     momentsData.posts.forEach(p=>markPostRead(p.id));
+    list.innerHTML=momentsData.posts.map(p=>_renderCard(p)).join('');_bindLazy(list);
 }
 function _csScrollTo(postId){const idx=momentsData.posts.findIndex(p=>p.id===postId);const panel=document.getElementById('cs-panel-feed');if(!panel||idx<0)return;const cards=panel.querySelectorAll('.cs-post');if(cards[idx])cards[idx].scrollIntoView({behavior:'smooth',block:'start'});}
 
