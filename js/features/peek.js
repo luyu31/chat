@@ -45,7 +45,7 @@
         '在楼下遛弯'
     ];
 
-    // ── 被抓包时他的反应兜底池：优先字卡库的「偷看抓包」字卡组 ──────────────────────
+    // ── 兜底反应（自定义回复为空时才用） ──────────────────────
     var CAUGHT_LINES = [
         '感觉有人在看我？',
         '看什么呢，我脸上有字？',
@@ -53,9 +53,18 @@
         '再看再看就要收费了哦'
     ];
 
+    // ── 被抓包时他的反应：直接用「自定义回复」里的主字卡，不再单独维护一组 ──────────────────
+    // 你平时给他加的字卡，就是他生活里会说的话；抓包反应也从这里挑，才不像刻意写好的台词。
     function _getCaughtPool() {
         var pool = [];
-        if (typeof window._getPeekCaughtPool === 'function') {
+        try {
+            if (typeof customReplies !== 'undefined' && Array.isArray(customReplies)) {
+                pool = customReplies.map(function (r) {
+                    return typeof r === 'string' ? r : (r && (r.text || r.content)) || '';
+                }).filter(function (s) { return s && String(s).trim(); });
+            }
+        } catch (e) {}
+        if (!pool.length && typeof window._getPeekCaughtPool === 'function') {
             try { pool = window._getPeekCaughtPool(); } catch (e) {}
         }
         if (!Array.isArray(pool) || !pool.length) pool = CAUGHT_LINES.slice();

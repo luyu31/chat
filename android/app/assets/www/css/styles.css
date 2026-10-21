@@ -4859,16 +4859,16 @@
             justify-content: space-between;
             align-items: center;
             gap: 6px;
-            padding: 6px 12px;
+            padding: 4px 10px;
         }
         /* 左：他的头像贴左边，名字/状态在里侧；右：我的头像贴右边，镜像对称 */
         body.header-clean .user-info {
             flex: 1 1 0;
             min-width: 0;
             display: grid;
-            grid-template-columns: 40px minmax(0, 1fr);
-            grid-template-areas: "av nm" "av st" "av tz";
-            grid-template-rows: 18px 14px 16px;
+            grid-template-columns: 36px minmax(0, 1fr);
+            grid-template-areas: "av nm" "av st";
+            grid-template-rows: 18px 14px;
             align-items: center;
             justify-items: start;
             column-gap: 8px;
@@ -4876,8 +4876,8 @@
         }
         body.header-clean .user-info .avatar-container {
             grid-area: av;
-            width: 40px !important;
-            height: 40px !important;
+            width: 36px !important;
+            height: 36px !important;
             margin: 0;
         }
         body.header-clean .user-info .username {
@@ -4900,8 +4900,8 @@
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         body.header-clean .user-info:last-of-type {
-            grid-template-columns: minmax(0, 1fr) 40px;
-            grid-template-areas: "nm av" "st av" "tz av";
+            grid-template-columns: minmax(0, 1fr) 36px;
+            grid-template-areas: "nm av" "st av";
             justify-items: end;
         }
         body.header-clean .user-info:last-of-type .username,
@@ -4914,8 +4914,6 @@
             margin: 0;
         }
         body.header-clean .header-inner::after { content: ''; flex: 0 0 32px; width: 32px; }
-        /* 时差胶囊：跟在他的状态下面，不把网格挤乱 */
-        body.header-clean #tz-badge { grid-column: 2; grid-row: 3; justify-self: start; margin: 1px 0 0 !important; }
         /* 开了「减少动画」：切换过场整块隐藏 —— 连转圈都不想让你看到 */
         html.motion-off #ct-switch-overlay { display: none !important; }
 

@@ -801,6 +801,7 @@ window.openCoupleSpace=window.openMomentsModal=function(scrollToPostId){
             feedPanel.insertBefore(outerHeader,feedPanel.firstChild);
         }
         page.classList.add('cs-open');
+        if (typeof window._mResetHomeMode === 'function') window._mResetHomeMode();
         _csSetTab('feed');_csRenderFeed();_updateBigAvatars();_renderPartnerMotto();_csTimezoneTick();
         if(typeof window._annLoadPinned==='function'){
             window._annLoadPinned().then(function(){_updateDaysCounter();});

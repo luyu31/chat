@@ -128,13 +128,15 @@
         return pick(pool);
     }
 
-    // ─── 台词：打卡专用字卡（氛围感→打卡）优先，没有再用内置默认 ───
+    // ─── 台词：从「自定义回复」主字卡里挑，不再单独维护打卡字卡组 ───
     // 字卡支持 {item} 占位符，会替换成任务名（如"吃饭"）
     function checkinSay(item, fallbacks, suffix) {
         let pool = [];
         try {
-            if (typeof customCheckinLines !== 'undefined' && Array.isArray(customCheckinLines)) {
-                pool = customCheckinLines.filter(function (s) { return s && s.trim(); });
+            if (typeof customReplies !== 'undefined' && Array.isArray(customReplies)) {
+                pool = customReplies.map(function (r) {
+                    return typeof r === 'string' ? r : (r && (r.text || r.content)) || '';
+                }).filter(function (s) { return s && String(s).trim(); });
             }
         } catch (e) {}
         let line;
@@ -251,7 +253,6 @@
             <div id="checkin-list" style="display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow-y:auto;padding:2px;"></div>
             <div style="display:flex;gap:8px;margin-top:12px;">
                 <button type="button" id="checkin-add" style="flex:1;padding:8px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;"><i class="fas fa-plus"></i> 添加任务</button>
-                <button type="button" id="checkin-lines" style="flex:1;padding:8px;border:1px dashed var(--border-color,#ddd);border-radius:10px;font-size:12px;background:transparent;color:var(--text-secondary,#888);cursor:pointer;"><i class="fas fa-comment-dots"></i> 他的打卡台词</button>
                 <button type="button" id="checkin-close" class="modal-btn modal-btn-secondary" style="flex:0 0 auto;">关闭</button>
             </div>
             <div style="font-size:11px;color:var(--text-secondary,#999);margin-top:10px;line-height:1.7;">
@@ -265,15 +266,6 @@
             if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none';
         });
         m.addEventListener('click', e => { if (e.target === m) { if (typeof hideModal === 'function') hideModal(m); else m.style.display = 'none'; } });
-        m.querySelector('#checkin-lines').addEventListener('click', () => {
-            // 直达氛围感配置的「打卡」字卡 tab（跟 period.js 跳经期 tab 同一套路）
-            try {
-                if (typeof currentMajorTab !== 'undefined') { currentMajorTab = 'atmosphere'; currentSubTab = 'checkinBank'; }
-                if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
-                const libModal = document.getElementById('custom-replies-modal');
-                if (libModal && typeof showModal === 'function') showModal(libModal);
-            } catch (e) { console.warn('[checkin] 打开打卡字卡失败:', e); }
-        });
         m.querySelector('#checkin-add').addEventListener('click', () => {
             const name = prompt('新任务名称（比如：吃水果、敷面膜、背单词）');
             if (!name || !name.trim()) return;

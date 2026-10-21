@@ -17,7 +17,7 @@
     var _other = {};        // sid → posts[]（其他梦角的动态）
     var _meta = {};         // sid → { name, avatar, myAvatar }
     var _loaded = false;
-    var _aggMode = 'all';   // 'all' | 'mine' | 'owner'
+    var _aggMode = 'owner';   // 'all' | 'mine' | 'owner'（家园默认只看当前梦角自己的朋友圈）
     var _busy = false;
     var _bootTries = 0;
 
@@ -293,6 +293,13 @@
             try { if (typeof window._csRenderFeed === 'function') window._csRenderFeed(); } catch (e) {}
         }, 300);
     };
+    // 进入家园时重置为"只看当前梦角"：上一次可能停在"我的朋友圈"或别人的空间
+    window._mResetHomeMode = function () {
+        _aggMode = 'owner';
+        _syncTitle();
+        _syncModeUI();
+    };
+
     // 只显示当前这位梦角的空间（点聊天页/动态里的他的头像）
     window._mShowOwner = function () {
         _aggMode = 'owner';

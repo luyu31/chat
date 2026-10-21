@@ -378,11 +378,12 @@
         if (!instant) hideSwitchOverlay();
     }
 
-    // ─── 「朋友圈」：默认是所有人的动态混在一起；点某个人的头像才进他本人的空间 ───
+    // ─── 「朋友圈」：家园永远属于当前这位梦角，下面只放他发的动态 ───
+    // 想看另一个梦角的朋友圈：在首页点开他（切换会话）再进家园即可。
+    // 之前默认把所有人的动态混在一起，多梦角时会串成"公共大杂烩"，不再这么做。
     function openAllMoments() {
-        // 从首页/发现进来：首页留在下面别关，这样退出朋友圈还是回到原来的那一页
         try {
-            if (typeof window._mShowAllPeople === 'function') window._mShowAllPeople();
+            if (typeof window._mShowOwner === 'function') { window._mShowOwner(); return; }
             if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
             else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
         } catch (e) { console.warn('[wx-home] 打开家园失败', e); }
@@ -625,7 +626,6 @@
         var tiles = [
             { ic: 'fa-envelope-open-text', nm: '信箱', sub: '集中收所有人的信', act: function () { openUnifiedInbox(); } },
             { ic: 'fa-house', nm: '家园', sub: '朋友圈形态', act: function () { _momentsEntry(); } },
-            { ic: 'fa-hand-holding-heart', nm: '陪伴', sub: '进他的日常', act: function () { _click('companion-btn'); } },
             { ic: 'fa-newspaper', nm: '今日公告', sub: '按人查看', act: function () { openDailyGreetingPicker(); } },
             { ic: 'fa-user-group', nm: '我的梦角', sub: '管理 / 切换', act: function () { if (typeof window.openContactsPanel === 'function') window.openContactsPanel(); } },
             { ic: 'fa-cog', nm: '设置', sub: '外观 / 聊天 / 节奏', act: function () { _click('settings-btn'); } }

@@ -114,34 +114,13 @@
         return o > 0 ? '梦角比你快 ' + part : '梦角比你慢 ' + part;
     }
 
-    // ── 胶囊注入（幂等：已存在就不重复注入） ──────────────────────
-    // 目标容器：聊天页顶部对方在线状态 #partner-status（.user-info 内的稳定节点）。
-    // 找不到了就退到 .chat-header / .header / body 顶部，全程 try/catch 兜底，失败不报错。
+    // ── 胶囊注入：已停用 ──────────────────────
+    // 聊天头部不再显示他的时间/时差（太挤了），时间统一放到"家园"的头像区下面；
+    // 这里保留函数只为兼容旧调用，顺手把历史上可能残留的胶囊清掉。
     function _ensureBadge() {
         var exist = document.getElementById('tz-badge');
-        if (exist) return exist;
-        try {
-            var badge = document.createElement('span');
-            badge.id = 'tz-badge';
-            badge.style.cssText = 'display:none;align-items:center;gap:3px;font-size:10px;'
-                + 'color:var(--text-secondary,#999);padding:1px 6px;border-radius:8px;'
-                + 'background:var(--message-received-bg,transparent);cursor:pointer;'
-                + 'margin-top:2px;white-space:nowrap;';
-            badge.title = '点击设置时差';
-            badge.addEventListener('click', function () { open(); });
-
-            var anchor = document.getElementById('partner-status');
-            if (anchor && anchor.parentNode) {
-                // 插到 #partner-status 之后（同属 .user-info 列，不会被状态刷新覆盖）
-                anchor.parentNode.insertBefore(badge, anchor.nextSibling);
-            } else {
-                var host = document.querySelector('.chat-header') || document.querySelector('.header') || document.body;
-                host.appendChild(badge);
-            }
-            return badge;
-        } catch (e) {
-            return null;
-        }
+        if (exist && exist.parentNode) exist.parentNode.removeChild(exist);
+        return null;
     }
 
     function _updateBadge() {
