@@ -801,6 +801,7 @@ window.openCoupleSpace=window.openMomentsModal=function(scrollToPostId){
             feedPanel.insertBefore(outerHeader,feedPanel.firstChild);
         }
         page.classList.add('cs-open');
+        if (typeof window._mResetHomeMode === 'function') window._mResetHomeMode();
         _csSetTab('feed');_csRenderFeed();_updateBigAvatars();_renderPartnerMotto();_csTimezoneTick();
         if(typeof window._annLoadPinned==='function'){
             window._annLoadPinned().then(function(){_updateDaysCounter();});
@@ -1173,7 +1174,7 @@ function _csSetupFeedScroll() {
     const title  = document.getElementById('cs-topbar-feed-title');
     const fab    = document.getElementById('cs-feed-fab');
     const topbar = document.getElementById('cs-topbar');
-    if (title) title.textContent = '动态';
+    if (title) title.textContent = '朋友圈';
 
     // ① IntersectionObserver：outer-header 滚出视窗 → 显示 topbar 标题
     const outerHeader = document.getElementById('cs-outer-header');

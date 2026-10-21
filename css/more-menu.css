@@ -42,8 +42,8 @@
 .more-menu-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 22px 8px;
-    padding: 20px 18px calc(16px + env(safe-area-inset-bottom, 0px));
+    gap: 14px 8px;
+    padding: 14px 16px calc(12px + env(safe-area-inset-bottom, 0px));
     animation: moreMenuFadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 @keyframes moreMenuFadeIn {
@@ -65,9 +65,9 @@
 }
 
 .more-menu-icon {
-    width: 54px;
-    height: 54px;
-    border-radius: 14px;
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
     background: var(--primary-bg);
     border: 1px solid var(--border-color);
     color: var(--text-secondary);

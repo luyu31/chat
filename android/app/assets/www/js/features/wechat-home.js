@@ -141,39 +141,56 @@
     // ─── 会话内存缓存：为了"零等待"切换 ───
     // 每个梦角的聊天记录/设置先预读进内存。切的时候直接从内存赋值、立刻渲染，
     // 存储的读写全部丢到后台 —— 点下去的那一帧就已经是新梦角的聊天了。
-    var _cache = {};         // id → { messages, settings }
-    var _prefetching = {};
+    var _cache = {};         // id → { messages, settings, avatar, background }
+    var _prefetching = {};   // id → 正在进行的预读 Promise（并发调用必须等同一个，不能拿到 null）
     var _prefetchedOnce = false;
 
     function _cacheCurrent() {
         try {
             var id = _currentId();
             if (!id) return;
+            var bg = null;
+            try { bg = localStorage.getItem(_prefix() + id + '_chatBackground'); } catch (e) {}
             _cache[id] = {
                 messages: (typeof messages !== 'undefined' && Array.isArray(messages)) ? messages.slice() : [],
-                settings: (typeof settings !== 'undefined' && settings) ? JSON.parse(JSON.stringify(settings)) : null
+                settings: (typeof settings !== 'undefined' && settings) ? JSON.parse(JSON.stringify(settings)) : null,
+                avatar: (window._avatarCache && window._avatarCache.partner) || null,
+                background: bg || null
             };
         } catch (e) {}
     }
 
-    async function _prefetchSession(id) {
-        if (_cache[id] || _prefetching[id]) return _cache[id] || null;
-        _prefetching[id] = true;
-        try {
-            var p = _prefix();
-            var res = await Promise.all([
-                localforage.getItem(p + id + '_chatMessages'),
-                localforage.getItem(p + id + '_chatSettings')
-            ]);
+    function _prefetchSession(id) {
+        if (_cache[id]) return Promise.resolve(_cache[id]);
+        // 之前这里在"已经在预读"时直接返回 null，调用方就会拿着上一位梦角的
+        // settings/messages 继续渲染 —— 表现就是"点新角色还是原来那位"。
+        // 现在把同一个 Promise 交出去，等它读完再切。
+        if (_prefetching[id]) return _prefetching[id];
+        var p = _prefix();
+        var job = Promise.all([
+            localforage.getItem(p + id + '_chatMessages'),
+            localforage.getItem(p + id + '_chatSettings'),
+            localforage.getItem(p + id + '_partnerAvatar'),
+            localforage.getItem(p + id + '_chatBackground')
+        ]).then(function (res) {
             var msgs = Array.isArray(res[0]) ? res[0].map(function (m) {
                 return Object.assign({}, m, { timestamp: new Date(m.timestamp) });
             }) : [];
-            _cache[id] = { messages: msgs, settings: res[1] || null };
-        } catch (e) {
-            _cache[id] = { messages: [], settings: null };
-        }
-        _prefetching[id] = false;
-        return _cache[id];
+            _cache[id] = {
+                messages: msgs,
+                settings: res[1] || null,
+                avatar: res[2] || null,
+                background: res[3] || null
+            };
+            delete _prefetching[id];
+            return _cache[id];
+        }).catch(function () {
+            _cache[id] = { messages: [], settings: null, avatar: null, background: null };
+            delete _prefetching[id];
+            return _cache[id];
+        });
+        _prefetching[id] = job;
+        return job;
     }
 
     // 把所有会话预读一遍。并发读（IndexedDB 读很快），不再一个个排队等 120ms ——
@@ -198,7 +215,28 @@
     // 关键点是"存好再换"：否则切换前那个 500ms 延时保存会拿旧数据写进新会话，
     // 表现就是"新加的角色显示的却是上一个角色的名字"。
     async function switchToSession(id, name) {
-        if (!id || id === _currentId()) { enterChat(); return; }
+        if (!id) return;
+
+        if (id === _currentId()) {
+            // 已经"名义上"是这一位了。但如果数据并没有真正换过来（之前预读没完成就会这样），
+            // 这里不能直接进聊天 —— 否则屏幕上留着的还是上一位的聊天记录，再点也永远修不好。
+            if (window._loadedSessionId === id) { enterChat(); return; }
+            var instant0 = _instantSwitch();
+            if (!instant0) showSwitchOverlay(name);
+            try {
+                var fix = (typeof loadData === 'function') ? loadData() : null;
+                Promise.resolve(fix).then(function () {
+                    if (_currentId() !== id) return;
+                    try { if (typeof window.renderMessages === 'function') window.renderMessages(); } catch (e) {}
+                    try { if (typeof window.updateUI === 'function') window.updateUI(); } catch (e) {}
+                    window._loadedSessionId = id;
+                    if (!instant0) hideSwitchOverlay();
+                }).catch(function () { if (!instant0) hideSwitchOverlay(); });
+            } catch (e) { if (!instant0) hideSwitchOverlay(); }
+            enterChat();
+            return;
+        }
+
         var instant = _instantSwitch();
         if (!instant) {
             showSwitchOverlay(name);
@@ -227,12 +265,16 @@
             try { history.replaceState(null, '', '#' + id); } catch (e) {}
 
             // ② 直接改成内存里的数据 —— 这一步是同步的，所以点下去立刻就是新梦角的聊天
+            // 注意：新角色（或任何还没存过设置的会话）必须从默认设置起步，
+            // 不能拿上一位的 settings 去 merge，否则状态/签名/主题都会继承过来。
             if (tgt) {
                 try {
                     if (Array.isArray(tgt.messages)) messages = tgt.messages.slice();
-                    if (tgt.settings && typeof settings !== 'undefined') {
-                        settings = Object.assign({}, settings, tgt.settings);
-                    }
+                    var baseSettings = (typeof window.getDefaultSettings === 'function')
+                        ? window.getDefaultSettings()
+                        : settings;
+                    settings = Object.assign({}, baseSettings, (tgt.settings && typeof tgt.settings === 'object') ? tgt.settings : {});
+                    window._loadedSessionId = id;
                 } catch (e) {}
             }
 
@@ -261,9 +303,11 @@
                 }
             } catch (e) {}
 
-            // ④ 头像 + 背景
+            // ④ 头像 + 背景：必须用目标会话自己的，不能用 _avatarCache 里上一位的
             try {
-                var av = window._avatarCache && window._avatarCache.partner;
+                var av = tgt ? (tgt.avatar || null) : null;
+                if (!window._avatarCache) window._avatarCache = {};
+                window._avatarCache.partner = av;
                 var host = (typeof DOMElements !== 'undefined' && DOMElements.partner) ? DOMElements.partner.avatar : null;
                 if (host) {
                     host.innerHTML = av
@@ -271,8 +315,10 @@
                         : '<i class="fas fa-user"></i>';
                 }
                 if (typeof window.applyBackground === 'function') {
-                    var bg = null;
-                    try { bg = localStorage.getItem(_prefix() + id + '_chatBackground'); } catch (e) {}
+                    var bg = tgt ? (tgt.background || null) : null;
+                    if (!bg) {
+                        try { bg = localStorage.getItem(_prefix() + id + '_chatBackground'); } catch (e) {}
+                    }
                     window.applyBackground(bg || '');
                 }
             } catch (e) {}
@@ -284,7 +330,18 @@
                 try {
                     if (typeof loadData === 'function') {
                         var pr2 = loadData();
-                        if (pr2 && pr2.catch) pr2.catch(function () {});
+                        if (pr2 && pr2.then) {
+                            pr2.then(function () {
+                                // loadData 只更新内存，不会重画消息；上面如果因为预读失败留下了
+                                // 上一位的 DOM，这里必须用新数据再渲染一次。
+                                if (_currentId() !== id) return;
+                                try { if (typeof window.renderMessages === 'function') window.renderMessages(); } catch (e) {}
+                                try { if (typeof window.updateUI === 'function') window.updateUI(); } catch (e) {}
+                                window._loadedSessionId = id;
+                            }).catch(function () {});
+                        } else if (pr2 && pr2.catch) {
+                            pr2.catch(function () {});
+                        }
                     }
                 } catch (e) {}
                 try { window.dispatchEvent(new CustomEvent('session:switched', { detail: { id: id, name: name } })); } catch (e) {}
@@ -293,7 +350,16 @@
             }, 30);
 
             // 再把切过去的这一位也缓存起来（下次切回来零等待）
-            setTimeout(function () { _cache[id] = { messages: messages.slice(), settings: JSON.parse(JSON.stringify(settings)) }; }, 120);
+            setTimeout(function () {
+                var bg2 = null;
+                try { bg2 = localStorage.getItem(_prefix() + id + '_chatBackground'); } catch (e) {}
+                _cache[id] = {
+                    messages: messages.slice(),
+                    settings: JSON.parse(JSON.stringify(settings)),
+                    avatar: (window._avatarCache && window._avatarCache.partner) || null,
+                    background: bg2 || null
+                };
+            }, 120);
 
             if (!instant && typeof showNotification === 'function' && name) {
                 showNotification('已切换到 ' + name, 'info', 1000);
@@ -312,10 +378,20 @@
         if (!instant) hideSwitchOverlay();
     }
 
-    // ─── 「朋友圈」：先选看谁的朋友圈，再进他的家园 ───
-    function openMomentsOf(meta) {
+    // ─── 「朋友圈」：家园永远属于当前这位梦角，下面只放他发的动态 ───
+    // 想看另一个梦角的朋友圈：在首页点开他（切换会话）再进家园即可。
+    // 之前默认把所有人的动态混在一起，多梦角时会串成"公共大杂烩"，不再这么做。
+    function openAllMoments() {
+        try {
+            if (typeof window._mShowOwner === 'function') { window._mShowOwner(); return; }
+            if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
+            else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
+        } catch (e) { console.warn('[wx-home] 打开家园失败', e); }
+    }
+    function openOwnerMoments() {
         enterChat();
         try {
+            if (typeof window._mShowOwner === 'function') { window._mShowOwner(); return; }
             if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
             else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
         } catch (e) { console.warn('[wx-home] 打开家园失败', e); }
@@ -363,7 +439,7 @@
                 var nm = row.getAttribute('data-name');
                 el.classList.remove('on');
                 setTimeout(function () { el.remove(); }, 200);
-                if (id === _currentId()) { openMomentsOf(); return; }
+                if (id === _currentId()) { openOwnerMoments(); return; }
                 // 换一个梦角看他的朋友圈：切过去，并且到了之后直接进家园
                 try { sessionStorage.setItem('wxOpenMoments', '1'); } catch (e2) {}
                 setTimeout(function () { switchToSession(id, nm); }, 180);
@@ -378,12 +454,62 @@
         if (typeof showNotification === 'function') showNotification('这个功能还没就绪', 'warning');
         return false;
     }
-    // 朋友圈入口（多个梦角先问看谁）
+    // 朋友圈入口：直接进"所有人混在一起"的那条流（不再先问看谁）
     function _momentsEntry() {
-        var n = 0;
-        try { n = _sessions().length; } catch (e) {}
-        if (n > 1) openMomentsPicker();
-        else openMomentsOf();
+        openAllMoments();
+    }
+
+    // 今日公告是"按人"的：多个梦角时先选看谁，再打开他今天的公告
+    function openDailyGreetingPicker() {
+        var list = _sessions();
+        if (list.length <= 1) { _click('daily-greeting-btn'); return; }
+        openPersonPicker('看谁的今日公告', function () {
+            setTimeout(function () { _click('daily-greeting-btn'); }, 120);
+        });
+    }
+
+    // 通用「选个人」面板：给"今日公告"这种需要区分是谁的功能用
+    async function openPersonPicker(title, onPick) {
+        var old = document.getElementById('wx-pp');
+        if (old) old.remove();
+        var sessions = _sessions();
+        var metas = await Promise.all(sessions.map(_convMeta));
+        var el = document.createElement('div');
+        el.id = 'wx-pp';
+        el.innerHTML =
+            '<div class="wx-mp-sheet">' +
+                '<div class="wx-mp-title">' + _esc(title || '选一个人') + '</div>' +
+                '<div class="wx-mp-list" id="wx-pp-list">' + metas.map(function (m) {
+                    return '<div class="wx-mp-row' + (m.isCurrent ? ' wx-mp-row--cur' : '') + '" data-id="' + _esc(m.id) + '" data-name="' + _esc(m.name) + '">' +
+                        _avatarHtml(m.avatar, 40) +
+                        '<div class="wx-mp-name">' + _esc(m.name) + '</div>' +
+                        (m.isCurrent ? '<span class="wx-mp-tag">当前</span>' : '<i class="fas fa-chevron-right wx-mp-arrow"></i>') +
+                    '</div>';
+                }).join('') + '</div>' +
+                '<button class="wx-mp-cancel" id="wx-pp-cancel">取消</button>' +
+            '</div>';
+        document.body.appendChild(el);
+        void el.offsetWidth;
+        el.classList.add('on');
+        function close() { el.classList.remove('on'); setTimeout(function () { el.remove(); }, 200); }
+        el.querySelector('#wx-pp-cancel').addEventListener('click', close);
+        el.addEventListener('click', function (e) { if (e.target === el) close(); });
+        el.querySelector('#wx-pp-list').addEventListener('click', function (e) {
+            var row = e.target.closest('.wx-mp-row');
+            if (!row) return;
+            var id = row.getAttribute('data-id');
+            var nm = row.getAttribute('data-name');
+            close();
+            if (id !== _currentId()) {
+                try {
+                    var pr = switchToSession(id, nm);
+                    var run = function () { setTimeout(function () { try { onPick && onPick(id, nm); } catch (err) {} }, 80); };
+                    if (pr && typeof pr.then === 'function') pr.then(run); else run();
+                } catch (err) {}
+            } else {
+                try { onPick && onPick(id, nm); } catch (err) {}
+            }
+        });
     }
 
     // 底部标签切换：聊天列表 / 发现
@@ -394,7 +520,8 @@
         var tDisc = document.getElementById('wx-tab-discover');
         var isChat = tab !== 'discover';
         if (list) list.style.display = isChat ? '' : 'none';
-        if (disc) disc.style.display = isChat ? 'none' : 'flex';
+        // 注意：必须用 grid，之前写成 flex 会把网格布局打散，图标被压成"细长条"
+        if (disc) disc.style.display = isChat ? 'none' : 'grid';
         if (tChat) tChat.classList.toggle('wx-tab--on', isChat);
         if (tDisc) tDisc.classList.toggle('wx-tab--on', !isChat);
     }
@@ -498,9 +625,8 @@
         var disc = el.querySelector('#wx-discover');
         var tiles = [
             { ic: 'fa-envelope-open-text', nm: '信箱', sub: '集中收所有人的信', act: function () { openUnifiedInbox(); } },
-            { ic: 'fa-home-heart', nm: '家园', sub: '朋友圈形态', act: function () { _momentsEntry(); } },
-            { ic: 'fa-hand-holding-heart', nm: '陪伴', sub: '进他的日常', act: function () { _click('companion-btn'); } },
-            { ic: 'fa-newspaper', nm: '今日公告', sub: '今天的他', act: function () { _click('daily-greeting-btn'); } },
+            { ic: 'fa-house', nm: '家园', sub: '朋友圈形态', act: function () { _momentsEntry(); } },
+            { ic: 'fa-newspaper', nm: '今日公告', sub: '按人查看', act: function () { openDailyGreetingPicker(); } },
             { ic: 'fa-user-group', nm: '我的梦角', sub: '管理 / 切换', act: function () { if (typeof window.openContactsPanel === 'function') window.openContactsPanel(); } },
             { ic: 'fa-cog', nm: '设置', sub: '外观 / 聊天 / 节奏', act: function () { _click('settings-btn'); } }
         ];
@@ -593,12 +719,43 @@
         inner.insertBefore(b, inner.firstChild);
     }
 
+    // ─── 聊天页头部整理：像微信一样清爽 ───
+    //  · 中间那排功能按钮全部收掉（都搬到「发现」里了），只留返回 + 两边头像
+    //  · 他的头像在左、我的头像在右，各自带自己的状态，左右对称
+    //  · 点他的头像 → 进他的朋友圈空间；点我的头像 → 只看我发的
+    function tidyChatHeader() {
+        try { document.body.classList.add('header-clean'); } catch (e) {}
+
+        var openHis = function (e) {
+            if (e) { e.stopPropagation(); e.preventDefault(); }
+            openOwnerMoments();
+        };
+        var openMine = function (e) {
+            if (e) { e.stopPropagation(); e.preventDefault(); }
+            try {
+                if (typeof window._mShowOnlyMine === 'function') window._mShowOnlyMine();
+                else if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
+            } catch (err) {}
+        };
+        var bind = function (id, fn) {
+            var el = document.getElementById(id);
+            if (!el || el._wxBound) return;
+            el._wxBound = true;
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', fn);
+        };
+        // 绑整个头像容器：点到头像/边框/空白都算，手指更好点
+        bind('partner-avatar-container', openHis);
+        bind('my-avatar-container', openMine);
+    }
+
     var _booted = false;
     function boot() {
         if (_booted) return;
         _booted = true;
         buildHome();
         injectBackBtn();
+        tidyChatHeader();
 
         // 是不是"刚从另一个梦角切过来"？是的话把过场接着铺住，
         // 等这一页的聊天渲染好再淡出 —— 视觉上就是一条连续的过场。
@@ -638,7 +795,7 @@
             try { sessionStorage.removeItem('wxOpenMoments'); } catch (e) {}
             var t0 = Date.now();
             (function waitThenOpen() {
-                if (_chatReady() || Date.now() - t0 > 2500) { openMomentsOf(); return; }
+                if (_chatReady() || Date.now() - t0 > 2500) { openOwnerMoments(); return; }
                 requestAnimationFrame(waitThenOpen);
             })();
         }

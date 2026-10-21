@@ -18,19 +18,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const hideWelcomeScreen = () => {
         if (!welcomeScreen) return;
-        // 关掉「进入动画」的人 / 正在切梦角：直接消失，不等那 0.45s 渐隐
-        if (_skipEntry()) {
-            // 连"你已经看到过"都不用管了：立刻抹掉，别留下任何残影
-            welcomeScreen.classList.add('hidden');
-            welcomeScreen.style.display = 'none';
-            welcomeScreen.style.visibility = 'hidden';
-            welcomeScreen.style.opacity = '0';
-            return;
-        }
+        // 不再做任何开场缓冲：隐藏就是隐藏，不渐变、不等数据、不留残影。
+        // 用户要的是"点开就是软件本身"，加载中的骨架屏由聊天页自己承担。
         welcomeScreen.classList.add('hidden');
-        setTimeout(() => {
-            welcomeScreen.style.display = 'none';
-        }, 450); // 跟 styles.css 里 .welcome-animation 的 0.45s 过渡同步
+        welcomeScreen.style.display = 'none';
+        welcomeScreen.style.visibility = 'hidden';
+        welcomeScreen.style.opacity = '0';
     };
 
     const safeAwait = async (promise, fallback = null) => {
@@ -60,6 +53,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.warn('[boot] 紧急备份检查失败:', e);
         }
+
+        // 立刻收掉欢迎层：从点开图标到看见聊天界面之间不再有等待动画
+        hideWelcomeScreen();
 
         updateLoader('和你在一起的每一天', '10%');
         await safeAwait(initializeSession());
@@ -103,10 +99,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         updateLoader('和你在一起的每一天', '100%');
-        // 老用户快速进入（0.25s + 渐隐），首次安装也只留短开场（1.2s + 渐隐）
-        // 关掉「进入动画」的人 / 正在切梦角：不等，立刻消失
-        const entryDelay = _skipEntry() ? 0 : (tourSeen ? 250 : 1200);
-        setTimeout(hideWelcomeScreen, entryDelay);
+        // 欢迎层在上面已经立刻收掉了，这里不再按 0.25s / 1.2s 延迟二次淡出
+        hideWelcomeScreen();
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') {

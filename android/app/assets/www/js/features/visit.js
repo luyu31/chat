@@ -33,12 +33,24 @@
     ];
 
     // ── 你在线把他撞个正着时，他发来的话 ──────────────────────
+    // 优先从「自定义回复」主字卡里挑 —— 被撞见时的反应也该是你平时给他的那些话
     var CAUGHT_LINES = [
         '（被你撞见了）……我就路过看看你。',
         '呀，你在啊。我什么都没干，真的。',
         '本来想偷偷看你一眼就走的，被发现了。',
         '看你这么认真，没舍得打扰你。'
     ];
+    function _caughtPool() {
+        try {
+            if (typeof customReplies !== 'undefined' && Array.isArray(customReplies)) {
+                var pool = customReplies.map(function (r) {
+                    return typeof r === 'string' ? r : (r && (r.text || r.content)) || '';
+                }).filter(function (s) { return s && String(s).trim(); });
+                if (pool.length) return pool;
+            }
+        } catch (e) {}
+        return CAUGHT_LINES;
+    }
 
     // ── 存取 ──────────────────────
     function load() {
@@ -106,7 +118,7 @@
                     addMessage({
                         id: Date.now() + Math.floor(Math.random() * 1000),
                         sender: _partnerName(),
-                        text: pick(CAUGHT_LINES),
+                        text: pick(_caughtPool()),
                         timestamp: new Date(),
                         status: 'received',
                         favorited: false,

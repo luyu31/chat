@@ -100,6 +100,20 @@
             }
         },
         {
+            // 陪伴是"和这一个梦角"一起做的事，必须跟着聊天走 —— 从聊天页打开，
+            // 用的就是当前会话的梦角，不需要再去发现页里挑人
+            id: 'companion',
+            iconClass: 'fas fa-hand-holding-heart',
+            label: '陪伴',
+            ready: true,
+            action: function () {
+                var btn = document.getElementById('companion-btn');
+                if (btn) btn.click();
+                else if (typeof showNotification === 'function')
+                    showNotification('陪伴功能加载中，稍后再试～', 'info', 2000);
+            }
+        },
+        {
             id: 'ledger',
             iconClass: 'fas fa-wallet',
             label: '记账',
@@ -151,6 +165,22 @@
                 if (window.QuickQA) window.QuickQA.open();
                 else if (typeof showNotification === 'function')
                     showNotification('快问快答加载中，稍后再试～', 'info', 2000);
+            } },
+        // 问卷就挨着快问快答：都是"点选式问答"，放在一起不用再翻设置
+        { id: 'survey', iconClass: 'fas fa-clipboard-list', label: '问卷', ready: true,
+            action: function () {
+                if (typeof window._surveyOpenListModal === 'function') window._surveyOpenListModal();
+                else if (typeof showNotification === 'function')
+                    showNotification('问卷加载中，稍后再试～', 'info', 2000);
+            } },
+        // 高级功能入口从"设置"挪到这里：和快问快答相邻，少一层弹窗、也不挤设置页
+        { id: 'advanced', iconClass: 'fas fa-tools', label: '高级功能', ready: true,
+            action: function () {
+                try {
+                    var m = (typeof DOMElements !== 'undefined' && DOMElements.advancedModal) ? DOMElements.advancedModal.modal : document.getElementById('advanced-modal');
+                    if (m && typeof showModal === 'function') showModal(m);
+                    else if (typeof showNotification === 'function') showNotification('高级功能加载中，稍后再试～', 'info', 2000);
+                } catch (e) {}
             } }
         // { id: 'xiaohongshu', iconClass: 'fas fa-book', label: '小红书', ready: false },
         // { id: 'douyin', iconClass: 'fab fa-tiktok', label: '抖音', ready: false }
