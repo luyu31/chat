@@ -1556,6 +1556,17 @@ function selectCompanionMode(mode) {
                     window.MilkChat.refreshInsets();
                 }
                 window.dispatchEvent(new Event('resize'));
+                // 强制重建合成层：把所有 fixed 层重新提交一遍 GPU 纹理，
+                // 原生端刚做完表面重建，这里跟上把 Web 层的残影一起冲掉
+                var html = document.documentElement;
+                html.style.transform = 'translateZ(0)';
+                html.style.willChange = 'transform';
+                requestAnimationFrame(function () {
+                    requestAnimationFrame(function () {
+                        html.style.transform = '';
+                        html.style.willChange = '';
+                    });
+                });
             } catch (e) {}
         }, 120);
     }

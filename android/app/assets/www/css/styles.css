@@ -608,19 +608,13 @@
             padding-top: var(--sat);
             border-bottom: 1px solid var(--border-color);
             background-color: var(--header-bg);
-            opacity: 0.92;
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
             box-shadow: 0 1px 0 rgba(0,0,0,0.06);
             z-index: 10;
             flex-shrink: 0;
             position: relative;
             display: flex;
             flex-direction: column;
-            transition: background-color 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease, opacity 0.3s ease;
-        }
-        .header:hover {
-            opacity: 1;
+            transition: background-color 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease;
         }
 
         body.immersive-mode .header {
@@ -10405,15 +10399,12 @@
     to { opacity:1; transform: translateY(0) scale(1); }
         }
 
-        .header {
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-        }
+        /* 头部不再用半透明+毛玻璃：那是 WebView 上最容易碎的 GPU 层 */
         html[data-theme="light"] .header {
-            background-color: rgba(255,255,255,0.92);
+            background-color: #ffffff;
         }
         html[data-theme="dark"] .header {
-            background-color: rgba(30,30,30,0.92);
+            background-color: #1e1e1e;
         }
         .avatar-container {
             position: relative;
@@ -12537,17 +12528,23 @@ body #user-sticker-picker .empty-sticker-tip {
 /* 閳光偓閳光偓 妞ゅ爼鍎撮幙宥勭稊閺嶏拷 閳光偓閳光偓 */
 .cs-topbar {
     display: flex; align-items: center;
-    padding: 10px 16px 6px;
-    padding-top: calc(var(--sat) + 10px);
+    padding: 12px 16px 8px;
+    padding-top: calc(var(--sat, 0px) + 32px);
     flex-shrink: 0;
 }
 .cs-icon-btn {
-    width: 36px; height: 36px; border-radius: 50%;
+    width: 44px; height: 44px; border-radius: 50%;
     border: none; background: none;
-    color: var(--text-secondary); font-size: 16px;
+    color: var(--text-secondary); font-size: 19px;
     cursor: pointer; display: flex;
     align-items: center; justify-content: center;
     transition: var(--transition); flex-shrink: 0;
+    position: relative;
+    margin-top: 6px;
+}
+/* 手指实际可点范围再往外扩 8px，贴着通知栏下拉区也能点到 */
+.cs-icon-btn::after {
+    content: ''; position: absolute; inset: -8px; border-radius: 50%;
 }
 .cs-icon-btn:active { background: rgba(var(--accent-color-rgb),.1); color: var(--accent-color); }
 
