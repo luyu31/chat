@@ -679,7 +679,8 @@
             if (left <= 0) { if (_countdownTimer) clearInterval(_countdownTimer); _countdownTimer = null; }
         }
         tick();
-        _countdownTimer = setInterval(tick, 250);
+        // 倒计时显示的是整数秒，250ms 毫无意义；改成 500ms 足够平滑，也省一半主线程唤醒
+        _countdownTimer = setInterval(tick, 500);
 
         // 作答事件
         var optBtns = box.querySelectorAll('.qa-opt-btn');

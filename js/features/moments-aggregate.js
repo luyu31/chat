@@ -51,7 +51,13 @@
         var list = _sessions();
         // sessionList 是异步读回来的，太早跑会读到空数组 —— 过一会儿再试
         if (!list.length) {
-            if (_bootTries++ < 20) setTimeout(loadAll, 500);
+            if (_bootTries++ < 6) setTimeout(loadAll, 300);
+            return;
+        }
+        // 单梦角产品：聚合视图退化成"当前这一个"，没必要遍历 sessionList 再做一遍
+        // （用户历史上可能留着多个旧 session，但家园只展示当前这一个的动态就够了）
+        if (list.length <= 1) {
+            _loaded = true;
             return;
         }
         _busy = true;

@@ -1874,9 +1874,8 @@ if (_cancelEnvEl) _cancelEnvEl.addEventListener('click', () => {
             renderSessionList(); showModal(DOMElements.sessionModal.modal);
         });
         DOMElements.sessionModal.createBtn.addEventListener('click', async () => {
-            await createNewSession(false);
-            renderSessionList();
-            showNotification('新会话已创建', 'success');
+            // 单梦角产品：不再允许创建新会话，入口已全部移除
+            return;
         });
 
         DOMElements.sessionModal.list.addEventListener('click', (e) => {

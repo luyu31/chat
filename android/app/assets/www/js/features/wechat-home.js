@@ -554,7 +554,7 @@
         if (!box) return;
         var sessions = _sessions();
         if (!sessions.length) {
-            box.innerHTML = '<div class="wx-empty">还没有梦角<br>点右上角 + 添加一个</div>';
+            box.innerHTML = '<div class="wx-empty">还没有梦角</div>';
             return;
         }
         var metas = await Promise.all(sessions.map(_convMeta));
@@ -571,10 +571,7 @@
                     '</div>' +
                     '<button class="wx-ct-edit" data-id="' + _esc(m.id) + '" title="编辑"><i class="fas fa-ellipsis"></i></button>' +
                 '</div>';
-            }).join('') +
-            '<div class="wx-ct-add" id="wx-ct-add"><i class="fas fa-plus"></i><span>添加梦角</span></div>';
-        var add = box.querySelector('#wx-ct-add');
-        if (add) add.addEventListener('click', function () { if (typeof window.openContactsPanel === 'function') window.openContactsPanel(); });
+            }).join('');
     }
 
     // ─── 我：仿微信个人页 ───
@@ -693,7 +690,6 @@
             '<div class="wx-head"><span class="wx-head-title" id="wx-head-title">微信</span>' +
                 '<div class="wx-head-ops">' +
                     '<button class="wx-head-add" id="wx-add-group" title="拉个群"><i class="fas fa-user-group"></i></button>' +
-                    '<button class="wx-head-add" id="wx-add-btn" title="添加梦角"><i class="fas fa-plus"></i></button>' +
                 '</div></div>' +
             '<div class="wx-conv-list" id="wx-conv-list"></div>' +
             '<div class="wx-contacts" id="wx-contacts" style="display:none;"></div>' +
@@ -733,9 +729,6 @@
             if (tiles[i]) tiles[i].act();
         });
 
-        el.querySelector('#wx-add-btn').addEventListener('click', function () {
-            if (typeof window.openContactsPanel === 'function') window.openContactsPanel();
-        });
         el.querySelector('#wx-add-group').addEventListener('click', function () {
             if (typeof window.openCreateGroupPicker === 'function') window.openCreateGroupPicker();
             else if (typeof showNotification === 'function') showNotification('群聊模块未就绪', 'warning');

@@ -158,12 +158,7 @@
                 '</div>' +
                 '<button class="ct-edit" data-id="' + _esc(m.id) + '" title="管理"><i class="fas fa-ellipsis"></i></button>' +
             '</div>';
-        }).join('') +
-        '<div class="ct-row ct-row--new" id="ct-new">' +
-            '<div class="ct-av"><span class="ct-new-ic"><i class="fas fa-plus"></i></span></div>' +
-            '<div class="ct-info"><div class="ct-name">添加梦角</div>' +
-            '<div class="ct-status">新建一个独立的梦角，聊天记录、字卡、纪念日都各自独立</div></div>' +
-        '</div>';
+        }).join('');
     }
 
     // ─── 切换（hash + reload，带一个"正在进入"的过场） ───
@@ -561,7 +556,6 @@
         list.addEventListener('click', function (e) {
             var editBtn = e.target.closest('.ct-edit');
             if (editBtn) { e.stopPropagation(); manageContact(editBtn.getAttribute('data-id')); return; }
-            if (e.target.closest('#ct-new')) { e.stopPropagation(); createContact(); return; }
             var row = e.target.closest('.ct-row');
             if (!row || !row.getAttribute('data-id')) return;
             e.stopPropagation();
@@ -571,15 +565,6 @@
 
     function install() {
         bind();
-        // 老的「新建会话」按钮是 listeners.js 直接绑的（拿不到引用没法 unbind），
-        // 用一个克隆节点把它换掉：克隆不带任何监听器，绑定关系干净转移到我这边
-        var oldBtn = document.getElementById('create-new-session');
-        if (oldBtn && !oldBtn._ctSwapped) {
-            var nb = oldBtn.cloneNode(true);
-            nb._ctSwapped = true;
-            nb.addEventListener('click', function (e) { e.stopPropagation(); createContact(); });
-            oldBtn.parentNode.replaceChild(nb, oldBtn);
-        }
         // 老渲染器（games.js 的 renderSessionList）换成我们的；
         // 它俩是同一个全局绑定，所以覆盖后 listeners.js 里那句裸调用也会走到这里
         window.renderSessionList = renderContacts;
@@ -599,5 +584,4 @@
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install);
     else setTimeout(install, 0);
-    setTimeout(install, 800);
 })();

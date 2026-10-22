@@ -70,11 +70,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             safeAwait(initMusicPlayer?.())
         ]);
 
-        setInterval(checkStatusChange, 60000);
+        setInterval(() => {
+            // 后台被切走时不做轮询，让手机省电也省主线程
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            try { if (typeof checkStatusChange === 'function') checkStatusChange(); } catch(e) {}
+        }, 60000);
 
         // 动态/回信 后台定时检查——不管停在哪个页面，每隔30秒自动看一眼有没有该送达的内容了，
         // 不需要刷新页面或者重新进入情侣空间/信箱才能触发
         setInterval(() => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
             try { if (typeof checkEnvelopeStatus === 'function') checkEnvelopeStatus(); } catch(e) { console.warn('[后台轮询] 回信检查失败', e); }
             try { if (typeof checkMomentsStatus === 'function') checkMomentsStatus(); } catch(e) { console.warn('[后台轮询] 动态检查失败', e); }
         }, 30000);
