@@ -1234,10 +1234,11 @@ function manageAutoSendTimer() {
             DOMElements.html.setAttribute('data-theme', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
             DOMElements.partner.name.textContent = settings.partnerName;
             DOMElements.me.name.textContent = settings.myName;
-            DOMElements.partner.status.textContent = settings.partnerStatus || '在线';
-            // 我的这一侧：有签名就显示签名，没有才显示在线状态（微信那种个性签名）
+            // 两侧都改成"个性签名"风格：签名优先，没有才落在在线状态上
             var _mySig = '';
             try { _mySig = localStorage.getItem('milk_my_signature') || ''; } catch (e) {}
+            DOMElements.partner.status.textContent =
+                (settings.partnerSignature && String(settings.partnerSignature).trim()) || settings.partnerStatus || '在线';
             DOMElements.me.statusText.textContent = _mySig || settings.mySignature || settings.myStatus || '在线';
             if (typeof window.updateDynamicNames === 'function') window.updateDynamicNames();
             document.documentElement.style.setProperty('--font-size', `${settings.fontSize}px`);

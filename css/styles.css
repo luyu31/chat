@@ -5046,26 +5046,26 @@
         }
         .wx-head-ops { display: flex; align-items: center; gap: 4px; }
 
-        /* ── 聊天页头部"清爽模式"：保留头像/名字/状态，功能都收进「发现」 ── */
+        /* ── 聊天页头部"清爽模式"：保留头像/名字/签名，功能都收进「发现」 ── */
         body.header-clean .header-actions { display: none !important; }
         body.header-clean .header-inner {
             justify-content: space-between;
             align-items: center;
-            gap: 8px;
-            padding: 12px 12px 16px;
+            gap: 10px;
+            padding: 14px 14px 18px;
         }
-        /* 左：他的头像贴左边，名字/状态在里侧；右：我的头像贴右边，镜像对称 */
+        /* 左：他的头像贴左边，名字/签名在里侧；右：我的头像贴右边，镜像对称 */
         body.header-clean .user-info {
             flex: 1 1 0;
             min-width: 0;
             display: grid;
             grid-template-columns: 48px minmax(0, 1fr);
             grid-template-areas: "av nm" "av st";
-            grid-template-rows: 22px 18px;
+            grid-template-rows: 24px auto;
             align-items: center;
             justify-items: start;
-            column-gap: 10px;
-            row-gap: 1px;
+            column-gap: 11px;
+            row-gap: 3px;
         }
         body.header-clean .user-info .avatar-container {
             grid-area: av;
@@ -5075,22 +5075,28 @@
         }
         body.header-clean .user-info .username {
             grid-area: nm;
-            font-size: 14.5px;
+            font-size: 15px;
+            font-weight: 600;
             max-width: 100%;
             text-align: left;
-            line-height: 1.2;
+            line-height: 1.25;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
+        /* 签名完整露出来，最多两行，不再一截了之 */
         body.header-clean .user-info .status {
             grid-area: st;
-            font-size: 11px;
-            line-height: 1.2;
+            font-size: 11.5px;
+            line-height: 1.45;
             padding: 0;
             text-align: left;
             background: none;
-            opacity: .85;
+            opacity: .78;
             max-width: 100%;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            white-space: normal !important;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
         }
         body.header-clean .user-info:last-of-type {
             grid-template-columns: minmax(0, 1fr) 48px;
@@ -5099,14 +5105,15 @@
         }
         body.header-clean .user-info:last-of-type .username,
         body.header-clean .user-info:last-of-type .status { text-align: right; }
-        /* 返回键在最左；往下挪到拇指顺手的位置，可点范围再外扩一圈 */
+        /* 返回键：贴着头部下沿，拇指顺手，点区外扩 */
         body.header-clean #wx-back-btn {
             order: 0;
             flex: 0 0 48px;
             width: 48px; height: 48px;
             margin: 0;
             position: relative;
-            transform: translateY(10px);
+            align-self: flex-end;
+            transform: translateY(14px);
             font-size: 19px;
         }
         body.header-clean #wx-back-btn::after {
