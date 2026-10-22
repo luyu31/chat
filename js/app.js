@@ -1353,16 +1353,45 @@ function selectCompanionMode(mode) {
     /* ── ① 软键盘 ───────────────────────────────────────────────────────── */
     var vv = window.visualViewport;
     var kbRaf = 0;
+    // 记住"没有键盘时"的可视高度：窗口被 adjustResize 压缩时 innerHeight 会跟着变小，
+    // 直接用 innerHeight - vv.height 算不出键盘高度（华为等机型就是这样，输入框全被挡住）
+    var vvFull = 0;
+    function _rememberFullHeight() {
+        var h = vv ? vv.height : window.innerHeight;
+        // 只有在"没有键盘迹象"时才更新基准（键盘收起后 innerHeight/vv.height 恢复变大）
+        if (!vvFull || h > vvFull) vvFull = h;
+        else if (vvFull - h < 80) vvFull = h;   // 微小变化（地址栏）也允许更新
+    }
+    _rememberFullHeight();
+
+    // 原生端把真实键盘高度（ime inset）推过来 —— 这是唯一 100% 准的来源，
+    // visualViewport 那套只是浏览器环境下的兜底
+    window._onNativeKb = function (kbNative) {
+        kbNative = Math.round(kbNative || 0);
+        if (kbNative > 0 && kbNative < window.innerHeight * 0.75) {
+            document.documentElement.style.setProperty('--kb', kbNative + 'px');
+            document.body.style.setProperty('--kb', kbNative + 'px');
+            document.body.classList.add('kb-open');
+            var wrap = document.querySelector('.input-area-wrapper');
+            if (wrap) wrap.style.bottom = kbNative + 'px';
+        } else {
+            applyKeyboardOffset();   // 键盘收起：走常规清算
+        }
+    };
 
     function applyKeyboardOffset() {
+        _rememberFullHeight();
         var kb = 0;
-        if (vv) {
-            // 沉浸式模式（setDecorFitsSystemWindows(false)）下窗口不会 resize，
-            // 键盘只体现在 visualViewport 变矮，所以用它反推键盘高度
-            kb = Math.round(window.innerHeight - vv.height);
+        // 原生给的键盘高度最优先
+        if (window._nativeKb > 0) kb = window._nativeKb;
+        if (!kb) {
+            var visH = vv ? vv.height : window.innerHeight;
+            if (vvFull > 0) kb = Math.round(vvFull - visH);
+            // 兜底：老算法（仅当基准还没建立时）
+            if (!kb && vv) kb = Math.round(window.innerHeight - vv.height);
         }
         if (!isFinite(kb) || kb < 80) kb = 0;                 // 地址栏/工具栏的小抖动不算键盘
-        if (kb > window.innerHeight * 0.65) kb = 0;          // 异常值保护，避免整页被顶飞
+        if (kb > window.innerHeight * 0.75) kb = 0;          // 异常值保护，避免整页被顶飞
 
         document.documentElement.style.setProperty('--kb', kb + 'px');
         document.body.style.setProperty('--kb', kb + 'px');

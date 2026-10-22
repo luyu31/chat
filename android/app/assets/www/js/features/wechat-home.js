@@ -617,9 +617,9 @@
     // ─── 统一信箱：把**所有梦角**的信汇总到一处（这才是"集中收多个人的信"） ───
     async function openUnifiedInbox() {
         var sessions = _sessions();
-        // 只有一个梦角：直接开他本人的信箱（汇总面板反而不顺手）
+        // 只有一个梦角：直接开他本人的信箱弹层（信箱是 z-index:2000 的弹窗，
+        // 直接盖在当前页面上——从「发现」进来的，关掉弹层就还在「发现」，不弹去聊天页）
         if (sessions.length <= 1) {
-            if (typeof enterChat === 'function') enterChat();
             if (!_click('envelope-header-btn')) {
                 if (typeof showNotification === 'function') showNotification('信箱还没就绪，稍后再试', 'warning');
             }

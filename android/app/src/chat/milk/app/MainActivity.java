@@ -248,17 +248,21 @@ public class MainActivity extends Activity {
         }
 
         // ── 把系统栏 insets 传给 JS：让 JS 端能用 safe-area padding 避开状态栏/导航栏 ──
+        // 键盘高度也一并下发（--kb）：华为等机型 WebView 窗口被 adjustResize 压缩后，
+        // JS 端用 visualViewport 反推不出键盘高度，原生 ime() inset 是唯一可靠来源
         getWindow().getDecorView().setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override
             public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
-                int top = 0, bottom = 0, left = 0, right = 0;
+                int top = 0, bottom = 0, left = 0, right = 0, ime = 0;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     android.graphics.Insets statusBars = insets.getInsets(WindowInsets.Type.statusBars());
                     android.graphics.Insets navBars   = insets.getInsets(WindowInsets.Type.navigationBars());
+                    android.graphics.Insets imeIns    = insets.getInsets(WindowInsets.Type.ime());
                     top    = statusBars.top;
                     left   = Math.max(statusBars.left, navBars.left);
                     right  = Math.max(statusBars.right, navBars.right);
                     bottom = navBars.bottom;
+                    ime    = imeIns.bottom;
                 } else {
                     @SuppressWarnings("deprecation")
                     android.graphics.Rect r = new android.graphics.Rect();
@@ -268,8 +272,9 @@ public class MainActivity extends Activity {
                     left   = r.left;
                     right  = Math.max(0, w - r.right);
                     bottom = Math.max(0, h - r.bottom);
+                    ime    = bottom;   // 老系统：可视区缩掉的就是键盘
                 }
-                final int t = top, l = left, r = right, b = bottom;
+                final int t = top, l = left, r = right, b = bottom, kb = ime;
                 webView.post(new Runnable() {
                     @Override
                     public void run() {
@@ -280,8 +285,10 @@ public class MainActivity extends Activity {
                             "d.style.setProperty('--sal','" + l + "px');" +
                             "d.style.setProperty('--sar','" + r + "px');" +
                             "d.style.setProperty('--sab','" + b + "px');" +
-                            "try{window._nativeSafeInsets={top:" + t + ",left:" + l + ",right:" + r + ",bottom:" + b + "};}catch(e){}" +
+                            "try{window._nativeSafeInsets={top:" + t + ",left:" + l + ",right:" + r + ",bottom:" + b + "};" +
+                            "window._nativeKb=" + kb + ";}catch(e){}" +
                             "try{var fn=window._onNativeSafeInsets;if(typeof fn==='function')fn(window._nativeSafeInsets);}catch(e){}" +
+                            "try{var kf=window._onNativeKb;if(typeof kf==='function')kf(" + kb + ");}catch(e){}" +
                         "})()";
                         evaluateJsSafe(js);
                     }
