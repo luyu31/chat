@@ -875,6 +875,7 @@ window.csSpaceBack = function () {
 };
 window.closeCoupleSpace=window.closeMomentsModal=function(){
     const page=document.getElementById('couple-space-page');if(!page)return;
+    try { window.dispatchEvent(new CustomEvent('cs:closed')); } catch(e) {}
     page.classList.remove('cs-open');window.closeAllCsSheets();_csExpandFeedHeader();
     [document.getElementById('cs-notif-popup'),document.getElementById('cs-sticker-picker')].forEach(el=>{if(el)el.style.display='none';});
     // 关掉动画的人：退出也是瞬间，不留那 380ms 的空等
@@ -897,6 +898,10 @@ window.csSwitchTab=function(tab){
     // 切换面板可见性（与上面 DOM 移动合并进同一次渲染批次）
     _csSetTab(tab);
     _csExpandFeedHeader();
+    try {
+        var csp = document.getElementById('couple-space-page');
+        if (csp) csp.classList.toggle('cs-cinema-only', tab === 'cinema');
+    } catch (e) {}
 
     if(tab!=='feed'){
         // feed 已经 display:none，再搬 header 出来（不可见）

@@ -232,6 +232,7 @@ function loadMoreFuture() {
                 partnerName: "梦角",
                 myName: "我",
                 myStatus: "在线",
+                mySignature: "",
                 partnerStatus: "在线",
                 isDarkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
                 colorTheme: "gold",
@@ -1220,7 +1221,10 @@ function manageAutoSendTimer() {
             DOMElements.partner.name.textContent = settings.partnerName;
             DOMElements.me.name.textContent = settings.myName;
             DOMElements.partner.status.textContent = settings.partnerStatus || '在线';
-            DOMElements.me.statusText.textContent = settings.myStatus;
+            // 我的这一侧：有签名就显示签名，没有才显示在线状态（微信那种个性签名）
+            var _mySig = '';
+            try { _mySig = localStorage.getItem('milk_my_signature') || ''; } catch (e) {}
+            DOMElements.me.statusText.textContent = _mySig || settings.mySignature || settings.myStatus || '在线';
             if (typeof window.updateDynamicNames === 'function') window.updateDynamicNames();
             document.documentElement.style.setProperty('--font-size', `${settings.fontSize}px`);
             

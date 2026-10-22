@@ -67,11 +67,12 @@
         // 否则再看这个会话自己的 chatSettings。这样即使旧数据被污染过，列表也不会全都同名。
         var userNamed = recName && recName.indexOf('会话 ') !== 0;
         var name = userNamed ? recName : '未命名';
-        var avatar = null, preview = '', time = 0;
+        var avatar = null, preview = '', time = 0, signature = '';
         try {
             var st = await localforage.getItem(p + s.id + '_chatSettings');
             if (!userNamed && st && st.partnerName && String(st.partnerName).trim()) name = st.partnerName;
             if (userNamed && (!st || !st.partnerName)) name = recName;
+            if (st && st.partnerSignature) signature = String(st.partnerSignature);
         } catch (e) {}
         try { avatar = await localforage.getItem(p + s.id + '_partnerAvatar'); } catch (e) {}
         try {
@@ -89,7 +90,7 @@
                 }
             }
         } catch (e) {}
-        return { id: s.id, name: name, avatar: avatar, preview: preview, time: time, isCurrent: s.id === _currentId(), isGroup: s.type === 'group' };
+        return { id: s.id, name: name, avatar: avatar, preview: preview, time: time, signature: signature, isCurrent: s.id === _currentId(), isGroup: s.type === 'group' };
     }
 
     // ─── 切换过场：跨越"整页重载"保持连续，别让人看到白屏和开场动画 ───
@@ -510,18 +511,91 @@
         });
     }
 
-    // 底部标签切换：聊天列表 / 发现
+    // 底部标签切换：消息 / 通讯录 / 家园 / 发现 / 我
     function _setTab(tab) {
-        var list = document.getElementById('wx-conv-list');
-        var disc = document.getElementById('wx-discover');
-        var tChat = document.getElementById('wx-tab-chat');
-        var tDisc = document.getElementById('wx-tab-discover');
-        var isChat = tab !== 'discover';
-        if (list) list.style.display = isChat ? '' : 'none';
-        // 注意：必须用 grid，之前写成 flex 会把网格布局打散，图标被压成"细长条"
-        if (disc) disc.style.display = isChat ? 'none' : 'grid';
-        if (tChat) tChat.classList.toggle('wx-tab--on', isChat);
-        if (tDisc) tDisc.classList.toggle('wx-tab--on', !isChat);
+        var panels = {
+            chat: document.getElementById('wx-conv-list'),
+            contacts: document.getElementById('wx-contacts'),
+            discover: document.getElementById('wx-discover'),
+            me: document.getElementById('wx-me')
+        };
+        var showKey = (tab === 'moments') ? 'chat' : tab;
+        Object.keys(panels).forEach(function (k) {
+            var p = panels[k];
+            if (!p) return;
+            p.style.display = (k === showKey) ? (k === 'discover' ? 'grid' : 'block') : 'none';
+        });
+        var tabIds = { chat: 'wx-tab-chat', contacts: 'wx-tab-contacts', moments: 'wx-tab-moments', discover: 'wx-tab-discover', me: 'wx-tab-me' };
+        Object.keys(tabIds).forEach(function (k) {
+            var el = document.getElementById(tabIds[k]);
+            if (el) el.classList.toggle('wx-tab--on', k === (tab === 'moments' ? 'moments' : tab));
+        });
+        var titles = { chat: '微信', contacts: '通讯录', moments: '微信', discover: '发现', me: '我' };
+        var title = document.getElementById('wx-head-title');
+        if (title) title.textContent = titles[tab] || '微信';
+        if (tab === 'contacts') renderContactsTab();
+        if (tab === 'me') renderMeTab();
+    }
+
+    // ─── 通讯录：所有梦角，点一下直接进他的聊天 ───
+    async function renderContactsTab() {
+        var box = document.getElementById('wx-contacts');
+        if (!box) return;
+        var sessions = _sessions();
+        if (!sessions.length) {
+            box.innerHTML = '<div class="wx-empty">还没有梦角<br>点右上角 + 添加一个</div>';
+            return;
+        }
+        var metas = await Promise.all(sessions.map(_convMeta));
+        metas.sort(function (a, b) { return (a.name || '').localeCompare(b.name || '', 'zh-CN'); });
+        box.innerHTML =
+            '<div class="wx-ct-section">梦角</div>' +
+            metas.map(function (m) {
+                var sub = m.signature || (m.preview ? ('最近：' + m.preview) : '还没有聊过');
+                return '<div class="wx-ct-row" data-id="' + _esc(m.id) + '">' +
+                    '<div class="wx-ct-av">' + _avatarHtml(m.avatar, 44) + '</div>' +
+                    '<div class="wx-ct-main">' +
+                        '<div class="wx-ct-name">' + _esc(m.name) + '</div>' +
+                        '<div class="wx-ct-sub">' + _esc(sub) + '</div>' +
+                    '</div>' +
+                    '<button class="wx-ct-edit" data-id="' + _esc(m.id) + '" title="编辑"><i class="fas fa-ellipsis"></i></button>' +
+                '</div>';
+            }).join('') +
+            '<div class="wx-ct-add" id="wx-ct-add"><i class="fas fa-plus"></i><span>添加梦角</span></div>';
+        var add = box.querySelector('#wx-ct-add');
+        if (add) add.addEventListener('click', function () { if (typeof window.openContactsPanel === 'function') window.openContactsPanel(); });
+    }
+
+    // ─── 我：仿微信个人页 ───
+    function renderMeTab() {
+        var box = document.getElementById('wx-me');
+        if (!box) return;
+        var meName = (typeof settings !== 'undefined' && settings.myName) || '我';
+        var sig = '';
+        try { sig = localStorage.getItem('milk_my_signature') || ''; } catch (e) {}
+        if (!sig && typeof settings !== 'undefined' && settings) sig = settings.mySignature || '';
+        var av = (window._avatarCache && window._avatarCache.me) || null;
+        if (!av) {
+            var img = document.querySelector('#my-avatar img');
+            if (img && img.src) av = img.src;
+        }
+        box.innerHTML =
+            '<div class="wx-me-card" data-me-act="signature">' +
+                '<div class="wx-me-av">' + _avatarHtml(av, 64) + '</div>' +
+                '<div class="wx-me-info">' +
+                    '<div class="wx-me-name">' + _esc(meName) + '</div>' +
+                    '<div class="wx-me-sig">' + _esc(sig || '点击设置个性签名') + '</div>' +
+                '</div>' +
+                '<i class="fas fa-chevron-right wx-me-arrow"></i>' +
+            '</div>' +
+            '<div class="wx-me-group">' +
+                '<div class="wx-me-item" data-me-act="contacts"><i class="fas fa-user-group"></i><span>我的梦角</span><i class="fas fa-chevron-right"></i></div>' +
+                '<div class="wx-me-item" data-me-act="appearance"><i class="fas fa-palette"></i><span>外观设置</span><i class="fas fa-chevron-right"></i></div>' +
+                '<div class="wx-me-item" data-me-act="chat"><i class="fas fa-comments"></i><span>聊天设置</span><i class="fas fa-chevron-right"></i></div>' +
+                '<div class="wx-me-item" data-me-act="advanced"><i class="fas fa-tools"></i><span>高级功能</span><i class="fas fa-chevron-right"></i></div>' +
+                '<div class="wx-me-item" data-me-act="data"><i class="fas fa-database"></i><span>数据管理</span><i class="fas fa-chevron-right"></i></div>' +
+                '<div class="wx-me-item" data-me-act="settings"><i class="fas fa-gear"></i><span>设置</span><i class="fas fa-chevron-right"></i></div>' +
+            '</div>';
     }
 
     // ─── 统一信箱：把**所有梦角**的信汇总到一处（这才是"集中收多个人的信"） ───
@@ -605,28 +679,34 @@
         var el = document.createElement('div');
         el.id = 'wx-home';
         el.innerHTML =
-            '<div class="wx-head"><span class="wx-head-title">微信</span>' +
+            '<div class="wx-head"><span class="wx-head-title" id="wx-head-title">微信</span>' +
                 '<div class="wx-head-ops">' +
                     '<button class="wx-head-add" id="wx-add-group" title="拉个群"><i class="fas fa-user-group"></i></button>' +
                     '<button class="wx-head-add" id="wx-add-btn" title="添加梦角"><i class="fas fa-plus"></i></button>' +
                 '</div></div>' +
             '<div class="wx-conv-list" id="wx-conv-list"></div>' +
+            '<div class="wx-contacts" id="wx-contacts" style="display:none;"></div>' +
+            '<div class="wx-discover" id="wx-discover" style="display:none;"></div>' +
+            '<div class="wx-me" id="wx-me" style="display:none;"></div>' +
             '<div class="wx-tabbar">' +
-                '<div class="wx-tab wx-tab--on" id="wx-tab-chat"><i class="fas fa-comment-dots"></i><span>聊天</span></div>' +
-                '<div class="wx-tab" id="wx-tab-moments"><i class="fas fa-user-group"></i><span>朋友圈</span></div>' +
+                '<div class="wx-tab wx-tab--on" id="wx-tab-chat"><i class="fas fa-comment-dots"></i><span>消息</span></div>' +
+                '<div class="wx-tab" id="wx-tab-contacts"><i class="fas fa-address-book"></i><span>通讯录</span></div>' +
+                '<div class="wx-tab" id="wx-tab-moments"><i class="fas fa-house"></i><span>家园</span></div>' +
                 '<div class="wx-tab" id="wx-tab-discover"><i class="fas fa-compass"></i><span>发现</span></div>' +
-            '</div>' +
-            '<div class="wx-discover" id="wx-discover"></div>';
+                '<div class="wx-tab" id="wx-tab-me"><i class="fas fa-user"></i><span>我</span></div>' +
+            '</div>';
         document.body.appendChild(el);
 
-        // 发现页：把一堆功能收进来，不再挤在聊天头部
+        // 发现页：一起看书/看电影等共同活动统一放这里
         var disc = el.querySelector('#wx-discover');
         var tiles = [
+            { ic: 'fa-book-open', nm: '一起看书', sub: '书架 / 共读', act: function () { if (window.Reading) window.Reading.open(); } },
+            { ic: 'fa-film', nm: '一起看电影', sub: '影院 / 观影', act: function () { if (window.Cinema) window.Cinema.open(); else if (typeof csSwitchTab === 'function') { if (typeof openCoupleSpace === 'function') openCoupleSpace(); setTimeout(function () { csSwitchTab('cinema'); }, 420); } } },
             { ic: 'fa-envelope-open-text', nm: '信箱', sub: '集中收所有人的信', act: function () { openUnifiedInbox(); } },
-            { ic: 'fa-house', nm: '家园', sub: '朋友圈形态', act: function () { _momentsEntry(); } },
             { ic: 'fa-newspaper', nm: '今日公告', sub: '按人查看', act: function () { openDailyGreetingPicker(); } },
             { ic: 'fa-user-group', nm: '我的梦角', sub: '管理 / 切换', act: function () { if (typeof window.openContactsPanel === 'function') window.openContactsPanel(); } },
-            { ic: 'fa-cog', nm: '设置', sub: '外观 / 聊天 / 节奏', act: function () { _click('settings-btn'); } }
+            { ic: 'fa-wallet', nm: '记账', sub: '聊天自动记账', act: function () { if (window.Ledger) window.Ledger.open(); } },
+            { ic: 'fa-utensils', nm: '食光记', sub: '今天吃了什么', act: function () { if (window.Food) window.Food.open(); } }
         ];
         disc.innerHTML = tiles.map(function (t, i) {
             return '<div class="wx-d-tile" data-i="' + i + '">' +
@@ -648,15 +728,14 @@
             if (typeof window.openCreateGroupPicker === 'function') window.openCreateGroupPicker();
             else if (typeof showNotification === 'function') showNotification('群聊模块未就绪', 'warning');
         });
-        el.querySelector('#wx-tab-chat').addEventListener('click', function () {
-            _setTab('chat');
-        });
+        el.querySelector('#wx-tab-chat').addEventListener('click', function () { _setTab('chat'); });
+        el.querySelector('#wx-tab-contacts').addEventListener('click', function () { _setTab('contacts'); });
         el.querySelector('#wx-tab-moments').addEventListener('click', function () {
+            _setTab('moments');
             _momentsEntry();
         });
-        el.querySelector('#wx-tab-discover').addEventListener('click', function () {
-            _setTab('discover');
-        });
+        el.querySelector('#wx-tab-discover').addEventListener('click', function () { _setTab('discover'); });
+        el.querySelector('#wx-tab-me').addEventListener('click', function () { _setTab('me'); });
         el.querySelector('#wx-conv-list').addEventListener('click', function (e) {
             var row = e.target.closest('.wx-conv');
             if (!row) return;
@@ -665,6 +744,58 @@
             if (!id) return;
             if (id === _currentId()) { enterChat(); return; }
             switchToSession(id, nm);
+        });
+        el.querySelector('#wx-contacts').addEventListener('click', function (e) {
+            var edit = e.target.closest('.wx-ct-edit');
+            if (edit) {
+                e.stopPropagation();
+                if (typeof window.openContactDetail === 'function') window.openContactDetail(edit.getAttribute('data-id'));
+                else if (typeof window.openContactsPanel === 'function') window.openContactsPanel();
+                return;
+            }
+            var row = e.target.closest('.wx-ct-row');
+            if (!row) return;
+            var id = row.getAttribute('data-id');
+            var nm = (row.querySelector('.wx-ct-name') || {}).textContent || '梦角';
+            if (id && id !== _currentId()) switchToSession(id, nm);
+            else enterChat();
+        });
+        el.querySelector('#wx-me').addEventListener('click', function (e) {
+            var item = e.target.closest('[data-me-act]');
+            if (!item) return;
+            var act = item.getAttribute('data-me-act');
+            if (act === 'signature') {
+                var cur = '';
+                try { cur = localStorage.getItem('milk_my_signature') || ''; } catch (err0) {}
+                if (!cur && typeof settings !== 'undefined' && settings) cur = settings.mySignature || '';
+                var v = prompt('我的个性签名（会显示在聊天顶部）：', cur);
+                if (v === null) return;
+                try {
+                    v = String(v).trim();
+                    localStorage.setItem('milk_my_signature', v);
+                    if (typeof settings !== 'undefined' && settings) {
+                        settings.mySignature = v;
+                        if (typeof saveData === 'function') saveData();
+                        if (typeof updateUI === 'function') updateUI();
+                    }
+                } catch (err) {}
+                renderMeTab();
+            } else if (act === 'contacts') {
+                if (typeof window.openContactsPanel === 'function') window.openContactsPanel();
+            } else if (act === 'appearance' || act === 'chat' || act === 'data') {
+                var map = { appearance: 'appearance-settings', chat: 'chat-settings', data: 'data-settings' };
+                var modal = document.getElementById('settings-modal');
+                if (modal && typeof showModal === 'function') showModal(modal);
+                setTimeout(function () {
+                    var card = document.getElementById(map[act]);
+                    if (card) card.click();
+                }, 60);
+            } else if (act === 'advanced') {
+                var adv = document.getElementById('advanced-modal');
+                if (adv && typeof showModal === 'function') showModal(adv);
+            } else if (act === 'settings') {
+                _click('settings-btn');
+            }
         });
     }
 
@@ -708,16 +839,17 @@
         if (back) back.style.display = 'flex';
     }
 
-    // 全屏聊天的悬浮返回键（顶部头像/名字整条已经隐藏）
+    // 聊天头部左侧的返回键
     function injectBackBtn() {
-        if (document.getElementById('wx-back-btn')) return;
+        var inner = document.querySelector('.header-inner');
+        if (!inner || document.getElementById('wx-back-btn')) return;
         var b = document.createElement('button');
         b.id = 'wx-back-btn';
-        b.className = 'wx-back-float';
+        b.className = 'action-btn';
         b.title = '返回';
         b.innerHTML = '<i class="fas fa-chevron-left"></i>';
         b.addEventListener('click', function (e) { e.stopPropagation(); showHome(); });
-        document.body.appendChild(b);
+        inner.insertBefore(b, inner.firstChild);
     }
 
     // ─── 聊天页头部整理：像微信一样清爽 ───
@@ -757,6 +889,13 @@
         buildHome();
         injectBackBtn();
         tidyChatHeader();
+        if (!window._wxCsClosedBound) {
+            window._wxCsClosedBound = true;
+            window.addEventListener('cs:closed', function () {
+                var home = document.getElementById('wx-home');
+                if (home && home.style.display !== 'none') _setTab('chat');
+            });
+        }
 
         // 是不是"刚从另一个梦角切过来"？是的话把过场接着铺住，
         // 等这一页的聊天渲染好再淡出 —— 视觉上就是一条连续的过场。
@@ -844,6 +983,7 @@
     window.WxSwitchOverlay = showSwitchOverlay;
     // 新建/删除梦角之后，让首页会话列表立刻刷新（不用等下次进页面）
     window.WxRefreshConvs = function () { try { renderConvs(); } catch (e) {} };
+    window.WxRefreshContacts = function () { try { renderContactsTab(); } catch (e) {} };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else setTimeout(boot, 0);

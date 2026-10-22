@@ -163,6 +163,7 @@
         } catch (e) {}
         renderContacts();
         if (typeof window.WxRefreshConvs === 'function') window.WxRefreshConvs();
+        if (typeof window.WxRefreshContacts === 'function') window.WxRefreshContacts();
         if (typeof showNotification === 'function') showNotification('已添加梦角：' + name, 'success');
     }
 
@@ -220,6 +221,8 @@
             if (typeof showNotification === 'function') showNotification('已删除', 'success');
         }
         renderContacts();
+        if (typeof window.WxRefreshConvs === 'function') window.WxRefreshConvs();
+        if (typeof window.WxRefreshContacts === 'function') window.WxRefreshContacts();
     }
 
     // ─── 联系人详情页（只有你选的 4 项：发消息 / 编辑主页 / 在线状态 / 聊天背景） ───
@@ -439,6 +442,8 @@
 
     // 给微信首页复用同一套切换逻辑（点会话列表里不是当前那条时走这里）
     window.ContactsSwitchTo = function (id, name) { switchTo(id, name); };
+    // 通讯录 tab 的"编辑"按钮直接打开他本人的资料卡
+    window.openContactDetail = function (id) { return openContactDetail(id); };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install);
     else setTimeout(install, 0);

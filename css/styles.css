@@ -12440,6 +12440,8 @@ body #user-sticker-picker .empty-sticker-tip {
 /* 全屏朋友圈：首页不再占一整块封面，进入直接看动态；
    头像/天数/签名/时间这一条在动态、相册、心情、纪念日等所有栏目里保持一致，不再只在第一栏隐藏 */
 #couple-space-page.cs-home-all #cs-panel-feed.cs-panel-active #cs-outer-header .cs-moments-cover { display: none; }
+/* 电影院/一起读书是从"发现"直接进来的独立页，不该再被家园头像区占掉半屏 */
+#couple-space-page.cs-cinema-only #cs-outer-header { display: none !important; }
 .cs-cover-bg {
     position: absolute; inset: 0;
     background-size: cover; background-position: center;

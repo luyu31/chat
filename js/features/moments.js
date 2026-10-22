@@ -898,6 +898,10 @@ window.csSwitchTab=function(tab){
     // 切换面板可见性（与上面 DOM 移动合并进同一次渲染批次）
     _csSetTab(tab);
     _csExpandFeedHeader();
+    try {
+        var csp = document.getElementById('couple-space-page');
+        if (csp) csp.classList.toggle('cs-cinema-only', tab === 'cinema');
+    } catch (e) {}
 
     if(tab!=='feed'){
         // feed 已经 display:none，再搬 header 出来（不可见）

@@ -538,10 +538,19 @@
         // 入口在情侣空间 → 电影院 tab → 「一起读书」子页
         if (typeof openCoupleSpace !== 'function') return;
         openCoupleSpace();
-        // openCoupleSpace 内部有 rAF 动画并会先落回 feed，等动画结束再切
-        setTimeout(function () {
-            if (typeof csSwitchTab === 'function') csSwitchTab('cinema');
-            if (typeof window._cinemaSwitchView === 'function') window._cinemaSwitchView('reading');
-        }, 420);
+        var tries = 0;
+        (function go() {
+            var page = document.getElementById('couple-space-page');
+            if (page && page.classList.contains('cs-open')) {
+                if (typeof csSwitchTab === 'function') csSwitchTab('cinema');
+                if (typeof window._cinemaSwitchView === 'function') window._cinemaSwitchView('reading');
+                setTimeout(function () {
+                    var panel = document.getElementById('cs-panel-cinema');
+                    if (panel && panel.style.display === 'none' && tries++ < 6) go();
+                }, 120);
+            } else if (tries++ < 40) {
+                setTimeout(go, 80);
+            }
+        })();
     } };
 })();
