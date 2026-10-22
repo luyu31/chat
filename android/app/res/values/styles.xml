@@ -2,10 +2,13 @@
 <resources>
     <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/milk_bg</item>
-        <!-- 全屏：去掉顶部状态栏那条粉色，应用内容从最上面开始 -->
-        <item name="android:windowFullscreen">true</item>
+        <!-- 透明状态栏：让 WebView 内容从顶部开始延伸，粉色背景自然填满状态栏区域 -->
+        <item name="android:windowTranslucentStatus">true</item>
+        <item name="android:windowTranslucentNavigation">true</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@color/milk_bg</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 </resources>

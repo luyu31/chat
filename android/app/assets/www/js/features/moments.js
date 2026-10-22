@@ -745,7 +745,7 @@ function _mTodayMotto() {
 }
 
 // 在空间页头像区下方渲染签名（大字 + 引号样式 + 换一条按钮）
-function _renderPartnerMotto() {
+async function _renderPartnerMotto() {
     var section = document.querySelector('#cs-outer-header .cs-couple-section');
     if (!section) return;
     var host = document.getElementById('cs-partner-motto');
@@ -754,15 +754,32 @@ function _renderPartnerMotto() {
         host.id = 'cs-partner-motto';
         section.appendChild(host);
     }
+
+    // 优先显示用户在资料卡里自己设的 partnerSignature（个性签名），
+    // 没有才 fallback 到每日随机的字卡签名
+    var userSig = '';
+    try {
+        var st = await localforage.getItem(getStorageKey('chatSettings'));
+        if (st && st.partnerSignature && String(st.partnerSignature).trim()) {
+            userSig = String(st.partnerSignature).trim();
+        }
+    } catch (e) {}
+
+    var isUser = !!userSig;
+    var displayText = userSig || _mTodayMotto();
+
     host.innerHTML =
-        '<div style="text-align:center;margin-top:8px;">' +
-            '<div style="font-size:18px;font-weight:600;color:var(--text-primary,#333);line-height:1.5;font-style:italic;">' +
-                '<span style="opacity:.45;">“</span><span id="cs-partner-motto-text"></span><span style="opacity:.45;">”</span>' +
+        '<div style="text-align:center;margin-top:14px;">' +
+            '<div id="cs-partner-motto-wrap" style="display:inline-block;max-width:88%;padding:8px 18px;border-radius:20px;background:rgba(var(--accent-color-rgb,244,166,179),.1);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);font-size:15.5px;font-weight:500;color:var(--text-primary,#333);line-height:1.55;letter-spacing:.3px;">' +
+                '<span style="opacity:.35;font-size:18px;margin-right:2px;">❝</span><span id="cs-partner-motto-text" style="font-style:italic;"></span><span style="opacity:.35;font-size:18px;margin-left:2px;">❞</span>' +
             '</div>' +
-            '<button onclick="window._mChangePartnerMotto()" style="margin-top:5px;padding:3px 12px;border-radius:12px;border:1px solid var(--border-color,#e5e5e5);background:transparent;color:var(--text-secondary,#999);font-size:11px;cursor:pointer;font-family:var(--font-family);">让他换个签名</button>' +
+            (isUser
+                ? '<div style="margin-top:6px;font-size:10px;color:var(--text-secondary,#aaa);opacity:.7;">他的个性签名 · 在资料卡可修改</div>'
+                : '<button onclick="window._mChangePartnerMotto()" style="margin-top:6px;padding:3px 12px;border-radius:12px;border:1px solid var(--border-color,#e5e5e5);background:transparent;color:var(--text-secondary,#999);font-size:11px;cursor:pointer;font-family:var(--font-family);">让他换个签名</button>') +
         '</div>';
+    // 把文字塞进 cs-partner-motto-text（中间的 span）里
     var textEl = document.getElementById('cs-partner-motto-text');
-    if (textEl) textEl.textContent = _mTodayMotto();
+    if (textEl) textEl.textContent = displayText;
 }
 
 // ─── 我们俩的时间（时差展示，挂在空间页签名下面） ────────────────────────

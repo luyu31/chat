@@ -316,7 +316,11 @@
         setTimeout(function () {
             try { if (typeof window._csRenderFeed === 'function') window._csRenderFeed(); } catch (e) {}
             try { if (typeof window._updateCover === 'function') window._updateCover(); } catch (e) {}
-        }, 320);
+            // 保证家园头部的双头像 + 签名 + 天数每次都刷新
+            try { if (typeof window._updateBigAvatars === 'function') window._updateBigAvatars(); } catch (e) {}
+            try { if (typeof window._renderPartnerMotto === 'function') window._renderPartnerMotto(); } catch (e) {}
+            try { if (typeof window._updateDaysCounter === 'function') window._updateDaysCounter(); } catch (e) {}
+        }, 50);
     };
     window._mIsHomeMode = function () { return _aggMode === 'all'; };
 

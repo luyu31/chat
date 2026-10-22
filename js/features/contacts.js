@@ -39,6 +39,63 @@
         });
     }
 
+    // ─── 漂亮的自定义弹窗（替代原生 alert / confirm / prompt） ──────────────
+    function _mkModal(id, html) {
+        var el = document.createElement('div');
+        el.id = id;
+        el.className = 'ct-modal-mask';
+        el.innerHTML = html;
+        document.body.appendChild(el);
+        void el.offsetWidth;
+        el.classList.add('on');
+        return el;
+    }
+    window.ctConfirm = function (title, msg, okText, cancelText, danger) {
+        return new Promise(function (resolve) {
+            var el = _mkModal('ct-confirm-' + Date.now(),
+                '<div class="ct-modal-card">' +
+                    '<div class="ct-modal-title">' + _esc(title || '提示') + '</div>' +
+                    (msg ? '<div class="ct-modal-msg">' + _esc(msg) + '</div>' : '') +
+                    '<div class="ct-modal-btns">' +
+                        '<button class="ct-modal-btn ct-modal-btn--cancel" data-k="no">' + _esc(cancelText || '取消') + '</button>' +
+                        '<button class="ct-modal-btn ct-modal-btn--ok' + (danger ? ' ct-modal-btn--danger' : '') + '" data-k="yes">' + _esc(okText || '确定') + '</button>' +
+                    '</div>' +
+                '</div>');
+            function cleanup() { el.classList.remove('on'); setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 200); }
+            el.addEventListener('click', function (e) {
+                var btn = e.target.closest('.ct-modal-btn');
+                if (!btn) return;
+                cleanup();
+                resolve(btn.getAttribute('data-k') === 'yes');
+            });
+            el.addEventListener('click', function (e) { if (e.target === el) { cleanup(); resolve(false); } });
+        });
+    };
+    window.ctPrompt = function (title, placeholder, defaultValue, okText, cancelText) {
+        return new Promise(function (resolve) {
+            var el = _mkModal('ct-prompt-' + Date.now(),
+                '<div class="ct-modal-card">' +
+                    '<div class="ct-modal-title">' + _esc(title || '输入') + '</div>' +
+                    '<textarea class="ct-modal-input" rows="3" placeholder="' + _esc(placeholder || '') + '">' + _esc(defaultValue || '') + '</textarea>' +
+                    '<div class="ct-modal-btns">' +
+                        '<button class="ct-modal-btn ct-modal-btn--cancel" data-k="no">' + _esc(cancelText || '取消') + '</button>' +
+                        '<button class="ct-modal-btn ct-modal-btn--ok" data-k="yes">' + _esc(okText || '确定') + '</button>' +
+                    '</div>' +
+                '</div>');
+            var ta = el.querySelector('.ct-modal-input');
+            setTimeout(function () { try { ta.focus(); ta.select(); } catch (e) {} }, 60);
+            function cleanup() { el.classList.remove('on'); setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 200); }
+            el.addEventListener('click', function (e) {
+                var btn = e.target.closest('.ct-modal-btn');
+                if (!btn) return;
+                var v = ta ? String(ta.value == null ? '' : ta.value).trim() : '';
+                cleanup();
+                resolve(btn.getAttribute('data-k') === 'yes' ? v : null);
+            });
+            el.addEventListener('click', function (e) { if (e.target === el) { cleanup(); resolve(null); } });
+        });
+    };
+
     // 读某个梦角的名字和头像（都按 session 键存在 localforage 里）
     async function _meta(s) {
         var p = _prefix();
@@ -137,7 +194,9 @@
 
     // ─── 新建 ───
     async function createContact() {
-        var name = prompt('新梦角叫什么名字？（之后也能在聊天设置里改）', '');
+        var name = await (window.ctPrompt
+            ? window.ctPrompt('新梦角', '他叫什么名字？（之后也能在聊天设置里改）', '', '创建', '取消')
+            : Promise.resolve(prompt('新梦角叫什么名字？（之后也能在聊天设置里改）', '')));
         if (name === null) return;
         name = String(name).trim();
         if (!name) name = '新梦角';
@@ -179,42 +238,75 @@
         if (typeof showNotification === 'function') showNotification('已添加梦角：' + name, 'success');
     }
 
-    // ─── 管理（重命名 / 删除 / 在线状态） ───
+    // ─── 管理（ellipsis 菜单：重命名 / 删除 / 在线状态） ───
     async function manageContact(id) {
         var arr = _sessions();
         var rec = arr.find(function (s) { return s.id === id; });
         if (!rec) return;
         var meta = await _meta(rec);
-        var choice = prompt(
-            '管理「' + meta.name + '」\n\n' +
-            '1 = 重命名\n' +
-            '2 = 切换在线状态（现在：' + (meta.online ? '在线' : '离线') + '）\n' +
-            '3 = 删除这个梦角\n\n' +
-            '输入序号：', '1');
-        if (choice === null) return;
-        choice = String(choice).trim();
 
-        if (choice === '1') {
-            var nn = prompt('新的名字：', meta.name);
+        var choice;
+        if (window.ctConfirm) {
+            // 漂亮的选项弹窗
+            choice = await new Promise(function (resolve) {
+                var el = _mkModal('ct-mgr-' + Date.now(),
+                    '<div class="ct-modal-card">' +
+                        '<div class="ct-modal-title">管理「' + _esc(meta.name) + '」</div>' +
+                        '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">' +
+                            '<button class="ct-modal-btn" data-k="rename" style="background:var(--primary-bg);color:var(--text-primary);border:1px solid var(--border-color);padding:12px 0;font-weight:500;">重命名</button>' +
+                            '<button class="ct-modal-btn" data-k="online" style="background:var(--primary-bg);color:var(--text-primary);border:1px solid var(--border-color);padding:12px 0;font-weight:500;">切换在线状态（当前：' + (meta.online ? '在线' : '离线') + '）</button>' +
+                            '<button class="ct-modal-btn" data-k="delete" style="background:linear-gradient(135deg,#f87171,#e5534b);color:#fff;padding:12px 0;font-weight:500;box-shadow:0 4px 14px rgba(229,83,75,.3);">删除这个梦角</button>' +
+                        '</div>' +
+                        '<button class="ct-modal-btn ct-modal-btn--cancel" data-k="cancel">取消</button>' +
+                    '</div>');
+                function cleanup() { el.classList.remove('on'); setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 200); }
+                el.addEventListener('click', function (e) {
+                    var btn = e.target.closest('.ct-modal-btn');
+                    if (!btn) return;
+                    cleanup();
+                    resolve(btn.getAttribute('data-k'));
+                });
+                el.addEventListener('click', function (e) { if (e.target === el) { cleanup(); resolve('cancel'); } });
+            });
+        } else {
+            choice = prompt(
+                '管理「' + meta.name + '」\n\n' +
+                '1 = 重命名\n' +
+                '2 = 切换在线状态\n' +
+                '3 = 删除\n\n输入序号：', '1');
+            if (choice === null) return;
+            choice = ({ '1': 'rename', '2': 'online', '3': 'delete' })[String(choice).trim()] || 'cancel';
+        }
+
+        if (choice === 'cancel') return;
+        if (choice === 'rename') {
+            var nn = await (window.ctPrompt
+                ? window.ctPrompt('改名字', '新的名字', meta.name, '确定', '取消')
+                : Promise.resolve(prompt('新的名字：', meta.name)));
             if (nn === null) return;
             nn = String(nn).trim();
             if (!nn) return;
             rec.name = nn;
             try { await localforage.setItem(_prefix() + 'sessionList', arr); } catch (e) {}
             if (typeof showNotification === 'function') showNotification('已重命名为 ' + nn, 'success');
-        } else if (choice === '2') {
+            renderContacts();
+        } else if (choice === 'online') {
             rec.online = !(rec.online !== false);
             try { await localforage.setItem(_prefix() + 'sessionList', arr); } catch (e) {}
-        } else if (choice === '3') {
+            renderContacts();
+        } else if (choice === 'delete') {
             if (arr.length <= 1) {
-                if (typeof showNotification === 'function') showNotification('至少得留一个梦角', 'warning');
+                if (typeof showNotification === 'function') showNotification('至少得留一个梦角呀', 'warning');
                 return;
             }
-            if (!confirm('删除「' + meta.name + '」及其全部聊天记录？不可恢复')) return;
+            var sure = await (window.ctConfirm
+                ? window.ctConfirm('删除梦角', '确定要删除「' + meta.name + '」吗？他的聊天记录、动态、字卡都会一起删掉，不可恢复。', '删除', '再想想', true)
+                : Promise.resolve(confirm('删除「' + meta.name + '」及其全部聊天记录？不可恢复')));
+            if (!sure) return;
+
             var p = _prefix();
             arr = arr.filter(function (s) { return s.id !== id; });
             try { await localforage.setItem(p + 'sessionList', arr); } catch (e) {}
-            // 清掉这个会话的所有键（localforage + localStorage）
             try {
                 var keys = await localforage.keys();
                 for (var i = 0; i < keys.length; i++) {
@@ -224,17 +316,17 @@
             Object.keys(localStorage).forEach(function (k) {
                 if (k.indexOf(p + id + '_') === 0) { try { localStorage.removeItem(k); } catch (e) {} }
             });
-            if (id === _currentId()) {   // 删的是当前梦角 → 跳到剩下的第一个
+            renderContacts();
+            if (typeof window.WxRefreshConvs === 'function') window.WxRefreshConvs();
+            if (typeof window.WxRefreshContacts === 'function') window.WxRefreshContacts();
+            if (id === _currentId()) {
                 var next = arr[0];
                 if (next) { _switchOverlay(next.name || '梦角'); setTimeout(function () {
                     try { window.location.hash = next.id; window.location.reload(); } catch (e) {}
                 }, 160); return; }
             }
-            if (typeof showNotification === 'function') showNotification('已删除', 'success');
+            if (typeof showNotification === 'function') showNotification('已删除「' + meta.name + '」', 'success');
         }
-        renderContacts();
-        if (typeof window.WxRefreshConvs === 'function') window.WxRefreshConvs();
-        if (typeof window.WxRefreshContacts === 'function') window.WxRefreshContacts();
     }
 
     // ─── 联系人详情页（只有你选的 4 项：发消息 / 编辑主页 / 在线状态 / 聊天背景） ───
@@ -298,6 +390,9 @@
                     '<div class="ct-d-row" data-act="online"><i class="fas fa-circle"></i><span>在线状态</span><span class="ct-d-val">' + (m.online ? '在线' : '离线') + '</span></div>' +
                     '<div class="ct-d-row" data-act="bg"><i class="fas fa-image"></i><span>聊天背景</span><i class="fas fa-chevron-right"></i></div>' +
                 '</div>' +
+                '<div class="ct-d-danger-row" data-act="delete">' +
+                    '<i class="fas fa-trash-can"></i><span>删除' + (m.isCurrent ? '当前' : '') + '梦角</span>' +
+                '</div>' +
                 (m.isCurrent ? '' : '<div class="ct-d-tip">改动会直接写进他本人的存档，他下次进来就生效；当前这一位改完立刻生效</div>') +
                 '<button class="ct-d-cancel" id="ct-d-cancel">关闭</button>' +
                 '<input type="file" id="ct-d-avatar-input" accept="image/*" style="display:none;">' +
@@ -337,15 +432,15 @@
             if (typeof showNotification === 'function') showNotification('聊天背景已更新', 'success');
         });
 
-        el.querySelector('.ct-d-rows').addEventListener('click', async function (e) {
+        // 资料卡内所有点按行为（普通行 + 删除按钮 + 头像/背景文件选择器）
+        el.addEventListener('click', async function (e) {
             var row = e.target.closest('.ct-d-row');
+            if (!row) row = e.target.closest('.ct-d-danger-row');
             if (!row) return;
             var act = row.getAttribute('data-act');
 
             if (act === 'msg') {
                 close();
-                // 把「我的梦角」面板一起收掉：不然它盖在聊天页上面，
-                // 名字已经切了、聊天也换了，肉眼看到的还是原来那一屏列表。
                 try {
                     var sm = document.getElementById('session-modal');
                     var cb = document.getElementById('cancel-session');
@@ -359,7 +454,8 @@
                 return;
             }
             if (act === 'edit') {
-                var nn = prompt('昵称：', sheet.name);
+                var nn = await (window.ctPrompt ? window.ctPrompt('改昵称', '输入新的名字', sheet.name, '确定', '取消')
+                                                 : Promise.resolve(prompt('昵称：', sheet.name)));
                 if (nn !== null && String(nn).trim()) {
                     try {
                         var st = (await localforage.getItem(_sessKey(id, 'chatSettings'))) || {};
@@ -368,7 +464,8 @@
                     } catch (err) {}
                     _applyToLiveProfile(m, { name: String(nn).trim() });
                 }
-                var sg = prompt('个性签名（留空则不显示）：', sheet.signature || '');
+                var sg = await (window.ctPrompt ? window.ctPrompt('个性签名（留空则不显示）', '', sheet.signature || '', '确定', '取消')
+                                                 : Promise.resolve(prompt('个性签名（留空则不显示）：', sheet.signature || '')));
                 if (sg !== null) {
                     try {
                         var st2 = (await localforage.getItem(_sessKey(id, 'chatSettings'))) || {};
@@ -377,10 +474,10 @@
                     } catch (err) {}
                     _applyToLiveProfile(m, { signature: String(sg).trim() });
                 }
-                if (confirm('要不要顺便换头像？')) {
-                    document.getElementById('ct-d-avatar-input').click();
-                    return;
-                }
+                var wantChangeAv = await (window.ctConfirm
+                    ? window.ctConfirm('换头像？', '要不要顺便换一下头像？', '好，换', '下次吧')
+                    : Promise.resolve(confirm('要不要顺便换头像？')));
+                if (wantChangeAv) { document.getElementById('ct-d-avatar-input').click(); return; }
                 close(); openContactDetail(id);
                 renderContacts();
                 if (typeof showNotification === 'function') showNotification('主页已更新', 'success');
@@ -398,6 +495,49 @@
                 return;
             }
             if (act === 'bg') { document.getElementById('ct-d-bg-input').click(); return; }
+            if (act === 'delete') {
+                var sessions = _sessions();
+                if (sessions.length <= 1) {
+                    if (typeof showNotification === 'function') showNotification('至少得留一个梦角呀', 'warning');
+                    return;
+                }
+                var sure = await (window.ctConfirm
+                    ? window.ctConfirm('删除梦角', '确定要删除「' + sheet.name + '」吗？他的聊天记录、动态、字卡都会一起删掉，不可恢复。', '删除', '再想想', true)
+                    : Promise.resolve(confirm('删除「' + sheet.name + '」及其全部聊天记录？不可恢复')));
+                if (!sure) return;
+
+                var p = _prefix();
+                sessions = sessions.filter(function (s) { return s.id !== id; });
+                try { await localforage.setItem(p + 'sessionList', sessions); } catch (e) {}
+                // 清掉这个会话的所有键（localforage + localStorage）
+                try {
+                    var keys = await localforage.keys();
+                    for (var i = 0; i < keys.length; i++) {
+                        if (keys[i].indexOf(p + id + '_') === 0) localforage.removeItem(keys[i]).catch(function () {});
+                    }
+                } catch (e) {}
+                Object.keys(localStorage).forEach(function (k) {
+                    if (k.indexOf(p + id + '_') === 0) { try { localStorage.removeItem(k); } catch (e) {} }
+                });
+
+                close();
+                renderContacts();
+                if (typeof window.WxRefreshConvs === 'function') window.WxRefreshConvs();
+                if (typeof window.WxRefreshContacts === 'function') window.WxRefreshContacts();
+
+                if (id === _currentId()) {
+                    var next = sessions[0];
+                    if (next) {
+                        var nm = next.name || '梦角';
+                        if (typeof window.WxSwitchTo === 'function') { window.WxSwitchTo(next.id, nm); return; }
+                        window.location.hash = next.id;
+                        window.location.reload();
+                    }
+                } else {
+                    if (typeof showNotification === 'function') showNotification('已删除「' + sheet.name + '」', 'success');
+                }
+                return;
+            }
         });
     }
 

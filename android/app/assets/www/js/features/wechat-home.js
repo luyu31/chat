@@ -717,7 +717,8 @@
             { ic: 'fa-newspaper', nm: '今日公告', sub: '按人查看', act: function () { openDailyGreetingPicker(); } },
             { ic: 'fa-user-group', nm: '我的梦角', sub: '管理 / 切换', act: function () { if (typeof window.openContactsPanel === 'function') window.openContactsPanel(); } },
             { ic: 'fa-wallet', nm: '记账', sub: '聊天自动记账', act: function () { if (window.Ledger) window.Ledger.open(); } },
-            { ic: 'fa-utensils', nm: '食光记', sub: '今天吃了什么', act: function () { if (window.Food) window.Food.open(); } }
+            { ic: 'fa-utensils', nm: '食光记', sub: '今天吃了什么', act: function () { if (window.Food) window.Food.open(); } },
+            { ic: 'fa-book-open-reader', nm: '交换日记', sub: '你一篇他一篇', act: function () { if (window.ExchangeDiary) window.ExchangeDiary.open(); } }
         ];
         disc.innerHTML = tiles.map(function (t, i) {
             return '<div class="wx-d-tile" data-i="' + i + '">' +

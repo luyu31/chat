@@ -10,6 +10,9 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.app.DownloadManager;
 import android.content.Context;
+import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowManager;
 import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
@@ -115,6 +118,17 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         instanceRef = new java.lang.ref.WeakReference<>(this);
+
+        // ── 全屏沉浸式：让 WebView 铺满整个屏幕（包含状态栏和导航栏区域） ──
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            getWindow().setDecorFitsSystemWindows(false);
+        } else {
+            @SuppressWarnings("deprecation")
+            int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                      | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                      | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
+            getWindow().getDecorView().setSystemUiVisibility(flags);
+        }
 
         NotificationHelper.init(this);
         MilkChat.activityRef = new java.lang.ref.WeakReference<>(this);
@@ -232,6 +246,50 @@ public class MainActivity extends Activity {
         } else {
             webView.loadUrl("file:///android_asset/www/index.html");
         }
+
+        // ── 把系统栏 insets 传给 JS：让 JS 端能用 safe-area padding 避开状态栏/导航栏 ──
+        getWindow().getDecorView().setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            @Override
+            public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+                int top = 0, bottom = 0, left = 0, right = 0;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    android.graphics.Insets statusBars = insets.getInsets(WindowInsets.Type.statusBars());
+                    android.graphics.Insets navBars   = insets.getInsets(WindowInsets.Type.navigationBars());
+                    top    = statusBars.top;
+                    left   = Math.max(statusBars.left, navBars.left);
+                    right  = Math.max(statusBars.right, navBars.right);
+                    bottom = navBars.bottom;
+                } else {
+                    @SuppressWarnings("deprecation")
+                    android.graphics.Rect r = new android.graphics.Rect();
+                    getWindow().getDecorView().getWindowVisibleDisplayFrame(r);
+                    int w = v.getWidth(), h = v.getHeight();
+                    top    = r.top;
+                    left   = r.left;
+                    right  = Math.max(0, w - r.right);
+                    bottom = Math.max(0, h - r.bottom);
+                }
+                final int t = top, l = left, r = right, b = bottom;
+                webView.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (webView == null) return;
+                        String js = "(function(){" +
+                            "var d=document.documentElement;" +
+                            "d.style.setProperty('--sat','" + t + "px');" +
+                            "d.style.setProperty('--sal','" + l + "px');" +
+                            "d.style.setProperty('--sar','" + r + "px');" +
+                            "d.style.setProperty('--sab','" + b + "px');" +
+                            "try{window._nativeSafeInsets={top:" + t + ",left:" + l + ",right:" + r + ",bottom:" + b + "};}catch(e){}" +
+                            "try{var fn=window._onNativeSafeInsets;if(typeof fn==='function')fn(window._nativeSafeInsets);}catch(e){}" +
+                        "})()";
+                        evaluateJsSafe(js);
+                    }
+                });
+                return insets;
+            }
+        });
+
         setContentView(webView);
 
         NotificationHelper.startKeepAlive(this);
