@@ -290,6 +290,9 @@ public class MainActivity extends Activity {
             }
         });
 
+        // 窗口底色 = 应用主背景色：切后台回来重建渲染层时 WebView 会闪一下，
+        // 底色对了看起来就像普通的一帧过场，而不是黑屏
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0xFFF6F1EA));
         setContentView(webView);
 
         NotificationHelper.startKeepAlive(this);
@@ -338,17 +341,22 @@ public class MainActivity extends Activity {
         AutoMsgScheduler.scheduleNext(this);
         requestNotificationPermissionIfNeeded();
 
-        // 从别的 App 切回来：让 WebView 重绘一次，并通知 JS 重新量一遍布局。
-        // 部分机型把后台 WebView 的渲染表面回收后，直接显示会出现半屏/错位的残影。
+        // 从别的 App 切回来：彻底重建 WebView 渲染表面。
+        // 后台时系统会回收 WebView 的 GPU 合成层纹理，直接显示就是残影/错位/分层崩坏；
+        // 先把 WebView 短暂隐藏再显示，逼系统丢掉旧纹理重新合成一整帧。
         if (webView != null) {
+            webView.onResume();
+            webView.setVisibility(View.INVISIBLE);
             webView.postDelayed(new Runnable() {
                 @Override
                 public void run() {
                     if (webView == null) return;
+                    webView.setVisibility(View.VISIBLE);
+                    webView.requestLayout();
                     webView.invalidate();
                     evaluateJsSafe("window._onNativeResume && window._onNativeResume()");
                 }
-            }, 120);
+            }, 60);
         }
     }
 
@@ -356,6 +364,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         appForeground = false;
         super.onPause();
+        if (webView != null) webView.onPause();
     }
 
     private void requestNotificationPermissionIfNeeded() {

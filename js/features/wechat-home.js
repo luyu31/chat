@@ -541,9 +541,6 @@
             var el = document.getElementById(tabIds[k]);
             if (el) el.classList.toggle('wx-tab--on', k === (tab === 'moments' ? 'moments' : tab));
         });
-        var titles = { chat: '微信', contacts: '通讯录', moments: '微信', discover: '发现', me: '我' };
-        var title = document.getElementById('wx-head-title');
-        if (title) title.textContent = titles[tab] || '微信';
         if (tab === 'contacts') renderContactsTab();
         if (tab === 'me') renderMeTab();
     }
@@ -688,7 +685,7 @@
         var el = document.createElement('div');
         el.id = 'wx-home';
         el.innerHTML =
-            '<div class="wx-head"><span class="wx-head-title" id="wx-head-title">微信</span>' +
+            '<div class="wx-head"><span class="wx-head-title"></span>' +
                 '<div class="wx-head-ops">' +
                     '<button class="wx-head-add" id="wx-add-group" title="拉个群"><i class="fas fa-user-group"></i></button>' +
                 '</div></div>' +
