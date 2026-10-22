@@ -24,15 +24,23 @@
         ];
     }
 
-    // ─── 存取 ───
+    // ─── 存取（按梦角隔离：每个梦角有自己的打卡任务和完成记录） ───
+    function _k(key) {
+        try {
+            if (typeof SESSION_ID === 'undefined' || !SESSION_ID) return null;
+            return getStorageKey(key);
+        } catch (e) { return null; }
+    }
     function load(key, fallback) {
         try {
-            const v = JSON.parse(localStorage.getItem(key));
+            var k = _k(key);
+            if (!k) return fallback;
+            const v = JSON.parse(localStorage.getItem(k));
             return v || fallback;
         } catch (e) { return fallback; }
     }
     function save(key, val) {
-        try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+        try { var k = _k(key); if (k) localStorage.setItem(k, JSON.stringify(val)); } catch (e) {}
     }
 
     function getItems() {

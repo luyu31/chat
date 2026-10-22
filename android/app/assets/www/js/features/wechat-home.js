@@ -161,11 +161,11 @@
         } catch (e) {}
     }
 
-    function _prefetchSession(id) {
+    function _prefetchSession(id, force) {
+        // 切梦角必须拿"存储里此刻的真实数据"。内存缓存一旦被上一次错误切换污染，
+        // 后面每次点这个梦角都会一直显示错的 —— 这是"梦角2永远是梦角1"的根源之一。
+        if (force) { try { delete _cache[id]; } catch (e) {} }
         if (_cache[id]) return Promise.resolve(_cache[id]);
-        // 之前这里在"已经在预读"时直接返回 null，调用方就会拿着上一位梦角的
-        // settings/messages 继续渲染 —— 表现就是"点新角色还是原来那位"。
-        // 现在把同一个 Promise 交出去，等它读完再切。
         if (_prefetching[id]) return _prefetching[id];
         var p = _prefix();
         var job = Promise.all([
@@ -244,11 +244,18 @@
             await new Promise(r => setTimeout(r, 60));   // 让过场先画出来一帧
         }
 
+        // 切走就取消上一位还在排队的回复和"正在输入"，不然新梦角页面会冒出他的提示
+        try {
+            if (window._pendingReplyTimer) { clearTimeout(window._pendingReplyTimer); window._pendingReplyTimer = null; }
+            var tiW = document.getElementById('typing-indicator-wrapper');
+            if (tiW) tiW.style.display = 'none';
+        } catch (e) {}
+
         // 先把当前进度收进内存缓存（同步，不碰存储 → 不拖慢点击）
         _cacheCurrent();
 
-        // 目标会话：内存里有就直接用（预读过的），没有就现场读（只有第一次会见效）
-        var tgt = _cache[id] || await _prefetchSession(id);
+        // 目标会话：直接从存储读，不走可能被污染的内存缓存
+        var tgt = await _prefetchSession(id, true);
 
         // 后台落盘 + 记住当前会话（全部异步，不阻塞切换）
         (function () {
@@ -338,6 +345,19 @@
                                 if (_currentId() !== id) return;
                                 try { if (typeof window.renderMessages === 'function') window.renderMessages(); } catch (e) {}
                                 try { if (typeof window.updateUI === 'function') window.updateUI(); } catch (e) {}
+                                // 朋友圈也是按梦角存的：切完必须重新读，否则新梦角会短暂/永久显示上一位的动态
+                                try {
+                                    if (typeof window.loadMomentsData === 'function') {
+                                        Promise.resolve(window.loadMomentsData()).then(function () {
+                                            if (_currentId() !== id) return;
+                                            try { if (typeof window._updateMomentsBadge === 'function') window._updateMomentsBadge(); } catch (e) {}
+                                            try {
+                                                var csp = document.getElementById('couple-space-page');
+                                                if (csp && csp.classList.contains('cs-open') && typeof window._csRenderFeed === 'function') window._csRenderFeed();
+                                            } catch (e) {}
+                                        }).catch(function () {});
+                                    }
+                                } catch (e) {}
                                 window._loadedSessionId = id;
                             }).catch(function () {});
                         } else if (pr2 && pr2.catch) {
@@ -350,17 +370,8 @@
                 try { if (window.Timezone && window.Timezone.refresh) window.Timezone.refresh(); } catch (e) {}
             }, 30);
 
-            // 再把切过去的这一位也缓存起来（下次切回来零等待）
-            setTimeout(function () {
-                var bg2 = null;
-                try { bg2 = localStorage.getItem(_prefix() + id + '_chatBackground'); } catch (e) {}
-                _cache[id] = {
-                    messages: messages.slice(),
-                    settings: JSON.parse(JSON.stringify(settings)),
-                    avatar: (window._avatarCache && window._avatarCache.partner) || null,
-                    background: bg2 || null
-                };
-            }, 120);
+            // 不再把切换后的数据写回内存缓存：只有确认从存储读到的内容才可信，
+            // 避免一次错误切换把"梦角1的数据"缓存到梦角2名下，之后怎么点都错。
 
             if (!instant && typeof showNotification === 'function' && name) {
                 showNotification('已切换到 ' + name, 'info', 1000);

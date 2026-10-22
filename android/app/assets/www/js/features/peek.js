@@ -71,14 +71,20 @@
         return pool;
     }
 
-    // ── 存取 ──────────────────────
+    // ── 存取（按梦角隔离） ──────────────────────
+    function _k() {
+        try {
+            if (typeof SESSION_ID === 'undefined' || !SESSION_ID) return null;
+            return getStorageKey(KEY);
+        } catch (e) { return null; }
+    }
     function load() {
-        try { return JSON.parse(localStorage.getItem(KEY)) || {}; }
+        try { var k = _k(); if (!k) return {}; return JSON.parse(localStorage.getItem(k)) || {}; }
         catch (e) { return {}; }
     }
 
     function save(d) {
-        try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {}
+        try { var k = _k(); if (k) localStorage.setItem(k, JSON.stringify(d)); } catch (e) {}
     }
 
     function todayStr() {

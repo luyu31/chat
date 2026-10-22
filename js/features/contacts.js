@@ -161,6 +161,18 @@
             st.partnerName = name;
             await localforage.setItem(_prefix() + id + '_chatSettings', st);
         } catch (e) {}
+        // 新梦角从零开始：把这些按会话存的核心数据显式初始化成空，
+        // 避免它去读上一位梦角的存档、或者触发任何"从备份恢复"的兜底
+        try {
+            var pnew = _prefix() + id;
+            await Promise.allSettled([
+                localforage.setItem(pnew + '_chatMessages', []),
+                localforage.setItem(pnew + '_momentsData', { posts: [], notifications: [] }),
+                localforage.setItem(pnew + '_envelopeData', { outbox: [], inbox: [] }),
+                localforage.setItem(pnew + '_moodCalendar', {}),
+                localforage.setItem(pnew + '_anniversaries', [])
+            ]);
+        } catch (e) {}
         renderContacts();
         if (typeof window.WxRefreshConvs === 'function') window.WxRefreshConvs();
         if (typeof window.WxRefreshContacts === 'function') window.WxRefreshContacts();

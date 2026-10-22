@@ -237,7 +237,15 @@
 
     var _sharedTimer = null;          // 调度器 setTimeout 句柄
 
+    function _sk(key) {
+        try {
+            if (typeof SESSION_ID === 'undefined' || !SESSION_ID) return null;
+            return getStorageKey(key);
+        } catch (e) { return null; }
+    }
     function storageGet(key, cb) {
+        key = _sk(key);
+        if (!key) { try { cb(null); } catch (e) {} return; }
         if (typeof localforage !== 'undefined') {
             localforage.getItem(key).then(function (v) { cb(v); }).catch(function () { cb(null); });
         } else {
@@ -247,6 +255,8 @@
         }
     }
     function storageSet(key, val) {
+        key = _sk(key);
+        if (!key) return;
         if (typeof localforage !== 'undefined') {
             try { localforage.setItem(key, val); } catch (e) {}
         } else {

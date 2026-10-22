@@ -233,15 +233,16 @@ const CUSTOM_MOOD_COLORS = ['#FFD93D','#FF6B6B','#6BCB77','#4D96FF','#8D9EFF','#
 
 async function initMoodData() {
     const savedMoods = await localforage.getItem(getStorageKey('moodCalendar'));
-    if (savedMoods) { moodData = savedMoods; }
+    // 新梦角没存过心情时回到空对象，不能沿用上一位梦角的心情记录
+    moodData = savedMoods || {};
     // 不管读到的是真数据还是空的（比如新用户第一次用），只要这次读取本身没有出错，
     // 就标记"这次会话已经确认加载成功过"——保存函数靠这个标记判断能不能安全写入，
     // 避免读取偶发失败时，用一个空对象把之前的历史记录整个覆盖掉
     _moodDataLoaded = true;
     const savedCustomMoods = await localforage.getItem(getStorageKey('customMoodOptions'));
-    if (savedCustomMoods) { customMoodOptions = savedCustomMoods; }
+    customMoodOptions = Array.isArray(savedCustomMoods) ? savedCustomMoods : [];
     const savedTrash = await localforage.getItem(getStorageKey('moodTrash'));
-    if (savedTrash && Array.isArray(savedTrash)) { moodTrash = savedTrash; }
+    moodTrash = Array.isArray(savedTrash) ? savedTrash : [];
     window.moodData = moodData;
     window.moodTrash = moodTrash;
     checkPartnerDailyMood();

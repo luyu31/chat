@@ -112,7 +112,21 @@ function _mCmtContent() {
 }
 
 async function loadMomentsData() {
-    try { const s=await localforage.getItem(getStorageKey(_M_STORAGE_KEY)); if(s){momentsData=s;if(!momentsData.notifications)momentsData.notifications=[];} _momentsDataLoaded=true; } catch(e){console.warn('[Moments] load 失败',e);}
+    try {
+        const s = await localforage.getItem(getStorageKey(_M_STORAGE_KEY));
+        // 先清空再读：新梦角还没有任何动态时，绝不能沿用上一位梦角内存里的朋友圈
+        if (s && Array.isArray(s.posts)) {
+            momentsData = s;
+            if (!momentsData.notifications) momentsData.notifications = [];
+        } else {
+            momentsData = { posts: [], notifications: [] };
+        }
+        _momentsDataLoaded = true;
+    } catch (e) {
+        console.warn('[Moments] load 失败', e);
+        momentsData = { posts: [], notifications: [] };
+        _momentsDataLoaded = false;
+    }
 }
 async function saveMomentsData() {
     // 家园"所有人"模式渲染时，会把合并后的临时列表塞进 momentsData.posts；

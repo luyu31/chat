@@ -6,7 +6,10 @@ let editingEnvSection = null;
 
 async function loadEnvelopeData() {
     const saved = await localforage.getItem(getStorageKey('envelopeData'));
-    if (saved) envelopeData = saved;
+    // 新梦角没有信件时回到空信箱，不能沿用上一位梦角的收件箱/发件箱
+    envelopeData = (saved && Array.isArray(saved.outbox) && Array.isArray(saved.inbox))
+        ? saved
+        : { outbox: [], inbox: [] };
     _envelopeDataLoaded = true; // 不管读到的是真数据还是空的，这次读取本身没出错就算加载成功
     const oldPending = await localforage.getItem(getStorageKey('pending_envelope'));
     if (oldPending && envelopeData.outbox.length === 0) {

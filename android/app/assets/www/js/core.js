@@ -437,7 +437,25 @@ const loadData = async () => {
     try {
         settings = getDefaultSettings();
 
-        
+        // 关键：这些全是"按梦角存"的内存数据。切到一个新梦角、而它还没存过对应 key 时，
+        // 必须回到空/默认值，不能继续沿用上一位梦角的数组 —— 否则就是"梦角2 和梦角1 一模一样"。
+        customReplies = [];
+        customPokes = [];
+        customStatuses = [];
+        customMottos = [];
+        customIntros = [];
+        customPeriodCare = [];
+        customCheckinLines = [];
+        stickerLibrary = [];
+        myStickerLibrary = [];
+        customEmojis = [];
+        anniversaries = [];
+        partnerPersonas = [];
+        window.myStickerGroups = [];
+        window.customReplyGroups = [];
+        window.customPokeGroups = [];
+        window.customStatusGroups = [];
+
         const results = await Promise.allSettled([
             localforage.getItem(getStorageKey('chatSettings')),
             localforage.getItem(getStorageKey('chatMessages')),
@@ -577,15 +595,15 @@ const loadData = async () => {
             '你开心我就开心','早点休息呀','有我在呢','不许熬夜哦','嘿嘿，被你发现了','这有什么好谢的',
             '你今天话有点多哦','那我陪你','好，都听你的'
         ];
-        if (savedCustomReplies && Array.isArray(savedCustomReplies) && savedCustomReplies.length) {
-            customReplies = savedCustomReplies;
-        } else if (!localStorage.getItem(getStorageKey('repliesSeeded'))) {
+        if (Array.isArray(savedCustomReplies)) {
+            customReplies = savedCustomReplies;   // 包括用户主动清空后的 []，尊重选择
+        } else {
+            // 没存过、或者存档损坏读不到：给这个梦角自己的一份兜底字卡，
+            // 绝不能沿用上一位梦角内存里的数组
             customReplies = DEFAULT_REPLIES.slice();
             try { localStorage.setItem(getStorageKey('repliesSeeded'), '1'); } catch (e) {}
             try { await localforage.setItem(getStorageKey('customReplies'), customReplies); } catch (e) {}
             console.log('[replies] 已为该梦角导入 ' + customReplies.length + ' 条预设字卡（自定义回复 → 回复库 里可改）');
-        } else if (Array.isArray(savedCustomReplies)) {
-            customReplies = savedCustomReplies;   // 你清空过：尊重你的选择
         }
         if (savedReplyGroups) window.customReplyGroups = savedReplyGroups;
         if (savedPokeGroups) window.customPokeGroups = savedPokeGroups;
@@ -681,17 +699,13 @@ const loadData = async () => {
         try {
             const ce = await localforage.getItem(getStorageKey('customEmojis'));
             const seededKey = getStorageKey('emojisSeeded');
-            let seeded = null;
-            try { seeded = localStorage.getItem(seededKey); } catch (e) {}
-            if (ce && Array.isArray(ce) && ce.length) {
-                customEmojis = ce;
-            } else if (!seeded) {
+            if (Array.isArray(ce)) {
+                customEmojis = ce;   // 包括用户清空后的 []，尊重选择
+            } else {
                 customEmojis = DEFAULT_EMOJIS.slice();
                 try { localStorage.setItem(seededKey, '1'); } catch (e) {}
                 try { await localforage.setItem(getStorageKey('customEmojis'), customEmojis); } catch (e) {}
                 console.log('[emojis] 已为该梦角导入 ' + customEmojis.length + ' 个预设 Emoji（可在 自定义回复 → Emoji 库 里增删）');
-            } else if (Array.isArray(ce)) {
-                customEmojis = ce;   // 你清空过：尊重你的选择，不硬塞回来
             }
         } catch(e) {}
         window._customReplies = customReplies;
@@ -3656,11 +3670,68 @@ function showModal(modalElement, focusElement = null) {
 // 给"原地切梦角"用：新角色必须从默认设置起步，不能继承上一位的状态/签名/主题
 window.getDefaultSettings = getDefaultSettings;
 
+// 一次性修复：旧版本串号时，新建的梦角可能被写入和第一位梦角完全相同的
+// 聊天记录 / 朋友圈 / 字卡 / 信箱 / 心情 / 纪念日。这里只清理"逐字节完全一样"的数据，
+// 真正常用的独立存档不会被误伤；清理后该梦角回到自己的空白数据。
+async function _repairDuplicatedSessionData() {
+    try {
+        if (localStorage.getItem('milk_dup_repair_v1') === '1') return;
+        if (!Array.isArray(sessionList) || sessionList.length < 2) {
+            localStorage.setItem('milk_dup_repair_v1', '1');
+            return;
+        }
+        var p = APP_PREFIX;
+        var ref = sessionList[0];
+        if (!ref || !ref.id) return;
+        var get = function (sid, key) { return localforage.getItem(p + sid + '_' + key).catch(function () { return null; }); };
+        var refSt = await get(ref.id, 'chatSettings');
+        for (var i = 1; i < sessionList.length; i++) {
+            var s = sessionList[i];
+            if (!s || !s.id) continue;
+            var st = await get(s.id, 'chatSettings');
+            // 旧 bug 的特征：自己没写过名字，或者名字直接等于第一位梦角
+            var sameName = refSt && refSt.partnerName && st && st.partnerName &&
+                String(st.partnerName) === String(refSt.partnerName);
+            if (st && st.partnerName && !sameName) continue;
+
+            var keys = [
+                ['chatMessages', []],
+                ['momentsData', { posts: [], notifications: [] }],
+                ['customReplies', null],   // null = 删除，让 loadData 重新导入该梦角自己的默认字卡
+                ['envelopeData', { outbox: [], inbox: [] }],
+                ['moodCalendar', {}],
+                ['anniversaries', []]
+            ];
+            for (var k = 0; k < keys.length; k++) {
+                var name = keys[k][0], emptyVal = keys[k][1];
+                var a = await get(s.id, name);
+                var b = await get(ref.id, name);
+                if (!a || !b) continue;
+                if (JSON.stringify(a) !== JSON.stringify(b)) continue;
+                if (Array.isArray(a) && a.length === 0) continue;
+                if (!Array.isArray(a) && (!a || Object.keys(a).length === 0)) continue;
+                if (emptyVal === null) await localforage.removeItem(p + s.id + '_' + name);
+                else await localforage.setItem(p + s.id + '_' + name, emptyVal);
+                console.warn('[repair] 已清理 ' + (s.name || s.id) + ' 串入的 ' + name);
+            }
+            // 名字写回这个梦角自己的
+            if (s.name) {
+                var st2 = st || {};
+                st2.partnerName = s.name;
+                await localforage.setItem(p + s.id + '_chatSettings', st2);
+            }
+        }
+        localStorage.setItem('milk_dup_repair_v1', '1');
+    } catch (e) { console.warn('[repair] 梦角串号清理失败（不影响使用）', e); }
+}
+
 window.initializeSession = async function() {
     await migrateData();
 
     const sessionsData = await localforage.getItem(`${APP_PREFIX}sessionList`);
     sessionList = sessionsData || [];
+
+    await _repairDuplicatedSessionData();
 
     const hash = window.location.hash.substring(1);
     if (hash && sessionList.some(s => s.id === hash)) {
