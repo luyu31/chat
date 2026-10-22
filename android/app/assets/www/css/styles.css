@@ -5058,7 +5058,7 @@
             justify-content: space-between;
             align-items: center;
             gap: 8px;
-            padding: 10px 12px 8px;
+            padding: 12px 12px 16px;
         }
         /* 左：他的头像贴左边，名字/状态在里侧；右：我的头像贴右边，镜像对称 */
         body.header-clean .user-info {
@@ -5105,15 +5105,23 @@
         }
         body.header-clean .user-info:last-of-type .username,
         body.header-clean .user-info:last-of-type .status { text-align: right; }
-        /* 返回键在最左；加大点击区、往下挪一点，避开顶部状态栏那一条不好点的边 */
+        /* 返回键在最左；往下挪到拇指顺手的位置，可点范围再外扩一圈 */
         body.header-clean #wx-back-btn {
             order: 0;
-            flex: 0 0 42px;
-            width: 42px; height: 42px;
-            margin: 4px 0 0 0;
-            font-size: 17px;
+            flex: 0 0 48px;
+            width: 48px; height: 48px;
+            margin: 0;
+            position: relative;
+            transform: translateY(10px);
+            font-size: 19px;
         }
-        body.header-clean .header-inner::after { content: ''; flex: 0 0 42px; width: 42px; }
+        body.header-clean #wx-back-btn::after {
+            content: '';
+            position: absolute;
+            inset: -8px;
+            border-radius: 50%;
+        }
+        body.header-clean .header-inner::after { content: ''; flex: 0 0 48px; width: 48px; }
         /* 开了「减少动画」：切换过场整块隐藏 —— 连转圈都不想让你看到 */
         html.motion-off #ct-switch-overlay { display: none !important; }
 

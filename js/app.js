@@ -1402,7 +1402,7 @@ function selectCompanionMode(mode) {
     applyKeyboardOffset();
 
     /* ── ② 侧滑返回 ─────────────────────────────────────────────────────── */
-    var startX = 0, startY = 0, startAt = 0, tracking = false;
+    var S = { on: false, x: 0, y: 0, t: 0 };
 
     function isVisible(el) {
         if (!el || el.disabled) return false;
@@ -1412,10 +1412,39 @@ function selectCompanionMode(mode) {
         return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.pointerEvents !== 'none';
     }
 
+    // 横向能滚动 / 明确声明不管的区域（相册、表情面板、纪念日左滑删除…）不抢手势
+    function swipeIgnored(el) {
+        for (var n = el; n && n !== document.body; n = n.parentNode) {
+            if (!n || n.nodeType !== 1) break;
+            if (n.hasAttribute && n.hasAttribute('data-no-swipe')) return true;
+            var tag = n.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA') return true;
+            if (n.classList && (n.classList.contains('ann-swipe-inner') ||
+                                n.classList.contains('ann-swipe-wrap'))) return true;
+            var ox = window.getComputedStyle(n).overflowX;
+            if ((ox === 'auto' || ox === 'scroll') && n.scrollWidth > n.clientWidth + 12) return true;
+        }
+        return false;
+    }
+
+    // 当前最上层、基本铺满屏幕的可关闭层（后出现在 DOM 里的在上层）
+    var LAYER_SEL = '.ed-root,.edd-root,.ct-modal-mask,#couple-space-page,.cs-sheet.on,.cs-sheet--on,.ct-sheet.on';
+    function topLayer() {
+        var nodes = document.querySelectorAll(LAYER_SEL);
+        for (var i = nodes.length - 1; i >= 0; i--) {
+            var el = nodes[i];
+            if (!isVisible(el)) continue;
+            var r = el.getBoundingClientRect();
+            if (r.width < window.innerWidth * 0.55 || r.height < window.innerHeight * 0.45) continue;
+            return el;
+        }
+        return null;
+    }
+
     // 找当前页面上可见的返回/关闭按钮；聊天页的返回键只算兜底
     function findBackButton() {
         var sels = ['[id$="-back"]', '[id$="-close"]', '[id$="-cancel"]',
-                    '.ed-close', '.edd-back'];
+                    '.ed-close', '.edd-back', '#wx-back-btn'];
         var fallback = null;
         for (var i = 0; i < sels.length; i++) {
             var list = document.querySelectorAll(sels[i]);
@@ -1430,22 +1459,31 @@ function selectCompanionMode(mode) {
     }
 
     function swipeBack() {
-        // 1) 最上层弹窗/整页（交换日记、通用对话框、选期限…）
-        var masks = document.querySelectorAll('.ct-modal-mask.on');
-        if (masks.length) {
-            var mask = masks[masks.length - 1];
-            var btn = mask.querySelector('.ed-close, .edd-back, .ct-modal-btn--cancel');
-            if (btn) { btn.click(); return true; }
-            // ctConfirm / ctPrompt / 选期限：点背景就是取消
-            mask.click();
-            if (mask.classList.contains('on')) {
-                mask.classList.remove('on');
-                setTimeout(function () { if (mask.parentNode) mask.parentNode.removeChild(mask); }, 220);
+        // 1) 最上层整页/弹层：只在这一层里找关闭键，避免点到下层页面的按钮
+        var layer = topLayer();
+        if (layer) {
+            var btn = layer.querySelector('.ed-close,.edd-back,[id$="-back"],[id$="-close"],[id$="-cancel"],.ct-modal-close');
+            if (btn && isVisible(btn)) { btn.click(); return true; }
+
+            if (layer.id === 'couple-space-page') {
+                try {
+                    if (typeof window.csSpaceBack === 'function') window.csSpaceBack();
+                    else if (typeof window.closeCoupleSpace === 'function') window.closeCoupleSpace();
+                } catch (e) {}
+                return true;
             }
-            return true;
+            if (layer.classList.contains('ct-modal-mask')) {
+                // 通用弹窗没有关闭键 → 点背景等价于取消
+                layer.click();
+                if (layer.classList.contains('on')) {
+                    layer.classList.remove('on');
+                    setTimeout(function () { if (layer.parentNode) layer.parentNode.removeChild(layer); }, 220);
+                }
+                return true;
+            }
+            return true; // 有整页层就不往下层穿透
         }
 
-        // 2) 情侣空间（家园）
         var cs = document.getElementById('couple-space-page');
         if (cs && cs.style.display !== 'none' && cs.classList.contains('cs-open')) {
             try {
@@ -1455,11 +1493,11 @@ function selectCompanionMode(mode) {
             return true;
         }
 
-        // 3) 其它全屏页/详情页：点掉它自己的返回/关闭键
+        // 2) 其它全屏页/详情页：点掉它自己的返回/关闭键
         var back = findBackButton();
         if (back) { back.click(); return true; }
 
-        // 4) 微信首页不在"消息"页 → 回到消息页
+        // 3) 微信首页不在"消息"页 → 回到消息页
         var home = document.getElementById('wx-home');
         if (home && home.style.display !== 'none') {
             var onTab = document.querySelector('.wx-tab.wx-tab--on');
@@ -1470,39 +1508,41 @@ function selectCompanionMode(mode) {
     }
     window._uxSwipeBack = swipeBack;
 
+    // 捕获阶段监听：部分面板会在冒泡阶段 stopPropagation，挂 document 冒泡会收不到
     document.addEventListener('touchstart', function (e) {
-        if (e.touches.length !== 1) { tracking = false; return; }
+        S.on = false;
+        if (e.touches.length !== 1) return;
         var t = e.touches[0];
-        // 只认屏幕左边缘起手，避免和列表横滑、图片预览之类的手势打架
-        if (t.clientX > 36) { tracking = false; return; }
-        tracking = true;
-        startX = t.clientX;
-        startY = t.clientY;
-        startAt = Date.now();
-    }, { passive: true });
+        // 起手区放到左侧 55%：Android 手势导航会吞掉最左边那一条，
+        // 只认 36px 的话真机上几乎划不到
+        if (t.clientX > window.innerWidth * 0.55) return;
+        if (swipeIgnored(e.target)) return;
+        S.on = true; S.x = t.clientX; S.y = t.clientY; S.t = Date.now();
+    }, { capture: true, passive: true });
 
     document.addEventListener('touchmove', function (e) {
-        if (!tracking) return;
+        if (!S.on) return;
         var t = e.touches[0];
-        if (!t) { tracking = false; return; }
-        // 开始明显竖着划 → 用户是在滚动，不是在返回
-        if (Math.abs(t.clientY - startY) > 60) tracking = false;
-    }, { passive: true });
+        if (!t) { S.on = false; return; }
+        // 明显竖着划 → 用户是在滚动，不是在返回
+        if (Math.abs(t.clientY - S.y) > 70) S.on = false;
+    }, { capture: true, passive: true });
 
     function endSwipe(e) {
-        if (!tracking) return;
-        tracking = false;
+        if (!S.on) return;
+        S.on = false;
         var t = e.changedTouches && e.changedTouches[0];
         if (!t) return;
-        var dx = t.clientX - startX;
-        var dy = Math.abs(t.clientY - startY);
-        var dt = Date.now() - startAt;
-        if (dx >= 70 && dy <= 60 && dx > dy * 1.4 && dt <= 1000) {
+        var dx = t.clientX - S.x;
+        var dy = Math.abs(t.clientY - S.y);
+        var dt = Date.now() - S.t;
+        if (dx >= 56 && dy <= 70 && dx > dy * 1.15 && dt <= 1400) {
+            try { if (navigator.vibrate) navigator.vibrate(8); } catch (err) {}
             try { swipeBack(); } catch (err) { console.warn('[swipe-back]', err); }
         }
     }
-    document.addEventListener('touchend', endSwipe, { passive: true });
-    document.addEventListener('touchcancel', function () { tracking = false; }, { passive: true });
+    document.addEventListener('touchend', endSwipe, { capture: true, passive: true });
+    document.addEventListener('touchcancel', function () { S.on = false; }, { capture: true, passive: true });
 
     /* ── ③ 从别的 App 切回来：重算布局 ──────────────────────────────────── */
     var resumeTimer = 0;
