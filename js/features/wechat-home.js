@@ -878,25 +878,26 @@
             var st = document.createElement('style');
             st.id = 'chd-style';
             st.textContent = [
-                // 头部容器：一行三块（返回键 / 他 / 我），上下留白充足
-                'body.header-clean .header-inner{display:flex;align-items:center;gap:10px;padding:14px 14px 18px;}',
+                // 华为灵动岛机型状态栏偏厚：给足顶部空间，避免头一块被胶囊挤住
+                'body.header-clean .header{padding-top:calc(var(--sat,0px) + 10px)!important;}',
+                // 头部容器：一行三块，整块放大
+                'body.header-clean .header-inner{display:flex;align-items:flex-end;gap:8px;padding:10px 12px 14px!important;max-width:600px!important;}',
                 'body.header-clean .header-inner::after{content:none!important;}',
                 'body.header-clean .header-actions{display:none!important;}',
-                // 人物块：头像 + 文字列
-                '.chd-person{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:10px;}',
-                '.chd-person.chd-mirror{flex-direction:row-reverse;}',
-                '.chd-av{flex:0 0 52px;width:52px;height:52px;position:relative;line-height:0;cursor:pointer;}',
+                'body.header-clean .header-motto{display:none!important;}',
+                // 人物块：竖排 —— 大头像在上，名字/签名在头像下面
+                '.chd-person{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;}',
+                '.chd-av{flex:0 0 auto;width:64px;height:64px;position:relative;line-height:0;cursor:pointer;order:0!important;}',
                 '.chd-av .avatar{width:100%!important;height:100%!important;margin:0!important;order:0!important;border-radius:50%!important;}',
                 '.chd-av .avatar img{width:100%!important;height:100%!important;object-fit:cover;border-radius:50%!important;}',
-                '.chd-text{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:3px;}',
-                '.chd-mirror .chd-text{align-items:flex-end;text-align:right;}',
-                '.chd-text .username{font-size:15px;font-weight:600;max-width:100%!important;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.2px;}',
-                // 签名：最多两行，完整露出
-                '.chd-sig{font-size:11.5px;line-height:1.45;color:var(--text-secondary);max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;}',
+                '.chd-text{display:flex;flex-direction:column;align-items:center;gap:2px;max-width:100%;min-width:0;order:1!important;}',
+                '.chd-text .username{font-size:15.5px;font-weight:600;max-width:100%!important;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.3px;text-align:center!important;order:0!important;}',
+                // 签名就在头像下面，字号放大一点，最多两行（order 压过老规则的默认排序）
+                '.chd-sig{font-size:12.5px;line-height:1.5;color:var(--text-secondary);max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;text-align:center;order:1!important;}',
                 // 旧的状态元素留在 DOM 里供老代码写入，但不显示
                 '.chd-hide{display:none!important;}',
-                // 返回键：贴着头部下沿，好按
-                'body.header-clean #wx-back-btn{flex:0 0 48px;width:48px;height:48px;margin:0 0 -12px 0;transform:none;font-size:20px;position:relative;align-self:flex-end;}',
+                // 返回键：竖排头像块整体变高，返回键贴底对齐
+                'body.header-clean #wx-back-btn{flex:0 0 52px;width:52px;height:52px;margin:0 0 4px 0;transform:none;font-size:22px;position:relative;align-self:flex-end;}',
                 'body.header-clean #wx-back-btn::after{content:"";position:absolute;inset:-8px;border-radius:50%;}'
             ].join('\n');
             document.head.appendChild(st);
@@ -923,6 +924,7 @@
             sig.className = 'chd-sig ' + sigCls;
             tx.appendChild(sig);
             if (stEl) { stEl.classList.add('chd-hide'); tx.appendChild(stEl); }
+            // 竖排：大头像在上，名字/签名紧贴头像下面
             p.appendChild(avw);
             p.appendChild(tx);
             return p;
