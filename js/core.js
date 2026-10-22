@@ -3730,6 +3730,8 @@ window.initializeSession = async function() {
 
     const sessionsData = await localforage.getItem(`${APP_PREFIX}sessionList`);
     sessionList = sessionsData || [];
+    // 告诉 UI 层"梦角列表已经读回来了"，首页占位提示不会再先闪一下"还没有梦角"
+    try { window._sessionsLoaded = true; } catch (e) {}
 
     await _repairDuplicatedSessionData();
 

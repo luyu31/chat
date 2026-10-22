@@ -337,6 +337,19 @@ public class MainActivity extends Activity {
         // 回前台时把后台主动消息重新排一遍（间隔重新随机）
         AutoMsgScheduler.scheduleNext(this);
         requestNotificationPermissionIfNeeded();
+
+        // 从别的 App 切回来：让 WebView 重绘一次，并通知 JS 重新量一遍布局。
+        // 部分机型把后台 WebView 的渲染表面回收后，直接显示会出现半屏/错位的残影。
+        if (webView != null) {
+            webView.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (webView == null) return;
+                    webView.invalidate();
+                    evaluateJsSafe("window._onNativeResume && window._onNativeResume()");
+                }
+            }, 120);
+        }
     }
 
     @Override

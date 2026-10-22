@@ -1339,3 +1339,192 @@ function selectCompanionMode(mode) {
     };
 
 })();
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 手机手感三件套
+ *   ① 软键盘跟随：输入框/弹层随系统键盘上移，永远看得到自己在打什么
+ *   ② 侧滑返回：从屏幕左边缘往右划，等价于点当前页面的返回/关闭
+ *   ③ 回前台修复：从别的 App 切回来时重算一次布局，避免半屏/错位
+ * ════════════════════════════════════════════════════════════════════════════ */
+(function () {
+    if (window._uxPolishReady) return;
+    window._uxPolishReady = true;
+
+    /* ── ① 软键盘 ───────────────────────────────────────────────────────── */
+    var vv = window.visualViewport;
+    var kbRaf = 0;
+
+    function applyKeyboardOffset() {
+        var kb = 0;
+        if (vv) {
+            // 沉浸式模式（setDecorFitsSystemWindows(false)）下窗口不会 resize，
+            // 键盘只体现在 visualViewport 变矮，所以用它反推键盘高度
+            kb = Math.round(window.innerHeight - vv.height);
+        }
+        if (!isFinite(kb) || kb < 80) kb = 0;                 // 地址栏/工具栏的小抖动不算键盘
+        if (kb > window.innerHeight * 0.65) kb = 0;          // 异常值保护，避免整页被顶飞
+
+        document.documentElement.style.setProperty('--kb', kb + 'px');
+        document.body.style.setProperty('--kb', kb + 'px');
+        document.body.classList.toggle('kb-open', kb > 0);
+
+        var wrap = document.querySelector('.input-area-wrapper');
+        if (wrap) wrap.style.bottom = kb > 0 ? kb + 'px' : '';
+    }
+
+    function scheduleKeyboardOffset() {
+        if (kbRaf) return;
+        kbRaf = requestAnimationFrame(function () {
+            kbRaf = 0;
+            applyKeyboardOffset();
+        });
+    }
+
+    if (vv) {
+        vv.addEventListener('resize', scheduleKeyboardOffset);
+        vv.addEventListener('scroll', scheduleKeyboardOffset);
+    }
+    window.addEventListener('resize', scheduleKeyboardOffset);
+    window.addEventListener('orientationchange', function () {
+        setTimeout(applyKeyboardOffset, 260);
+    });
+    document.addEventListener('focusin', function (e) {
+        var t = e.target;
+        if (!t || (t.tagName !== 'TEXTAREA' && t.tagName !== 'INPUT')) return;
+        // 部分机型键盘动画跑完才发 resize，补两次校正
+        setTimeout(applyKeyboardOffset, 80);
+        setTimeout(applyKeyboardOffset, 340);
+    });
+    document.addEventListener('focusout', function () {
+        setTimeout(applyKeyboardOffset, 80);
+        setTimeout(applyKeyboardOffset, 340);
+    });
+    applyKeyboardOffset();
+
+    /* ── ② 侧滑返回 ─────────────────────────────────────────────────────── */
+    var startX = 0, startY = 0, startAt = 0, tracking = false;
+
+    function isVisible(el) {
+        if (!el || el.disabled) return false;
+        var r = el.getBoundingClientRect();
+        if (r.width < 2 || r.height < 2) return false;
+        var cs = window.getComputedStyle(el);
+        return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.pointerEvents !== 'none';
+    }
+
+    // 找当前页面上可见的返回/关闭按钮；聊天页的返回键只算兜底
+    function findBackButton() {
+        var sels = ['[id$="-back"]', '[id$="-close"]', '[id$="-cancel"]',
+                    '.ed-close', '.edd-back'];
+        var fallback = null;
+        for (var i = 0; i < sels.length; i++) {
+            var list = document.querySelectorAll(sels[i]);
+            for (var j = list.length - 1; j >= 0; j--) {
+                var el = list[j];
+                if (!isVisible(el)) continue;
+                if (el.id === 'wx-back-btn') { if (!fallback) fallback = el; continue; }
+                return el;
+            }
+        }
+        return fallback;
+    }
+
+    function swipeBack() {
+        // 1) 最上层弹窗/整页（交换日记、通用对话框、选期限…）
+        var masks = document.querySelectorAll('.ct-modal-mask.on');
+        if (masks.length) {
+            var mask = masks[masks.length - 1];
+            var btn = mask.querySelector('.ed-close, .edd-back, .ct-modal-btn--cancel');
+            if (btn) { btn.click(); return true; }
+            // ctConfirm / ctPrompt / 选期限：点背景就是取消
+            mask.click();
+            if (mask.classList.contains('on')) {
+                mask.classList.remove('on');
+                setTimeout(function () { if (mask.parentNode) mask.parentNode.removeChild(mask); }, 220);
+            }
+            return true;
+        }
+
+        // 2) 情侣空间（家园）
+        var cs = document.getElementById('couple-space-page');
+        if (cs && cs.style.display !== 'none' && cs.classList.contains('cs-open')) {
+            try {
+                if (typeof window.csSpaceBack === 'function') window.csSpaceBack();
+                else if (typeof window.closeCoupleSpace === 'function') window.closeCoupleSpace();
+            } catch (e) {}
+            return true;
+        }
+
+        // 3) 其它全屏页/详情页：点掉它自己的返回/关闭键
+        var back = findBackButton();
+        if (back) { back.click(); return true; }
+
+        // 4) 微信首页不在"消息"页 → 回到消息页
+        var home = document.getElementById('wx-home');
+        if (home && home.style.display !== 'none') {
+            var onTab = document.querySelector('.wx-tab.wx-tab--on');
+            var chatTab = document.getElementById('wx-tab-chat');
+            if (onTab && onTab.id !== 'wx-tab-chat' && chatTab) { chatTab.click(); return true; }
+        }
+        return false;
+    }
+    window._uxSwipeBack = swipeBack;
+
+    document.addEventListener('touchstart', function (e) {
+        if (e.touches.length !== 1) { tracking = false; return; }
+        var t = e.touches[0];
+        // 只认屏幕左边缘起手，避免和列表横滑、图片预览之类的手势打架
+        if (t.clientX > 36) { tracking = false; return; }
+        tracking = true;
+        startX = t.clientX;
+        startY = t.clientY;
+        startAt = Date.now();
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function (e) {
+        if (!tracking) return;
+        var t = e.touches[0];
+        if (!t) { tracking = false; return; }
+        // 开始明显竖着划 → 用户是在滚动，不是在返回
+        if (Math.abs(t.clientY - startY) > 60) tracking = false;
+    }, { passive: true });
+
+    function endSwipe(e) {
+        if (!tracking) return;
+        tracking = false;
+        var t = e.changedTouches && e.changedTouches[0];
+        if (!t) return;
+        var dx = t.clientX - startX;
+        var dy = Math.abs(t.clientY - startY);
+        var dt = Date.now() - startAt;
+        if (dx >= 70 && dy <= 60 && dx > dy * 1.4 && dt <= 1000) {
+            try { swipeBack(); } catch (err) { console.warn('[swipe-back]', err); }
+        }
+    }
+    document.addEventListener('touchend', endSwipe, { passive: true });
+    document.addEventListener('touchcancel', function () { tracking = false; }, { passive: true });
+
+    /* ── ③ 从别的 App 切回来：重算布局 ──────────────────────────────────── */
+    var resumeTimer = 0;
+    function repairAfterResume() {
+        clearTimeout(resumeTimer);
+        resumeTimer = setTimeout(function () {
+            try {
+                applyKeyboardOffset();
+                // 通知原生重新下发一次安全区（桥里没这个方法就跳过）
+                if (window.MilkChat && typeof window.MilkChat.refreshInsets === 'function') {
+                    window.MilkChat.refreshInsets();
+                }
+                window.dispatchEvent(new Event('resize'));
+            } catch (e) {}
+        }, 120);
+    }
+    window._onNativeResume = repairAfterResume;
+
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) repairAfterResume();
+    });
+    window.addEventListener('pageshow', function (e) {
+        if (e.persisted) repairAfterResume();
+    });
+})();

@@ -554,6 +554,7 @@
         if (!box) return;
         var sessions = _sessions();
         if (!sessions.length) {
+            if (!window._sessionsLoaded) { box.innerHTML = ''; return; }
             box.innerHTML = '<div class="wx-empty">还没有梦角</div>';
             return;
         }
@@ -808,7 +809,12 @@
         var list = document.getElementById('wx-conv-list');
         if (!list) return;
         var sessions = _sessions();
-        if (!sessions.length) { list.innerHTML = '<div class="wx-empty">还没有梦角</div>'; return; }
+        if (!sessions.length) {
+            // sessionList 还在从 localforage 读：先什么都不写，避免闪一下"还没有梦角"
+            if (!window._sessionsLoaded) { list.innerHTML = ''; return; }
+            list.innerHTML = '<div class="wx-empty">还没有梦角</div>';
+            return;
+        }
         var metas = await Promise.all(sessions.map(_convMeta));
         metas.sort(function (a, b) { return (b.time || 0) - (a.time || 0); });
         list.innerHTML = metas.map(function (m) {

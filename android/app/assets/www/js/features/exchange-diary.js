@@ -159,7 +159,10 @@
     // ─── UI：自定义 modal（复用 ct-modal-mask 样式） ──────────────────
     function _mkMask(html) {
         var el = document.createElement('div');
-        el.className = 'ct-modal-mask';
+        // 带 ed-root / edd-root 的是"整页"（列表页、日记详情），走 ed-mask 全屏布局；
+        // 其余（选期限、更多菜单）还是通用居中弹窗
+        var fullPage = /class="edd?-root"/.test(html);
+        el.className = 'ct-modal-mask' + (fullPage ? ' ed-mask' : '');
         el.innerHTML = html;
         document.body.appendChild(el);
         void el.offsetWidth;
@@ -278,7 +281,7 @@
                                     return '<button class="ct-modal-btn" data-days="' + p.days + '" style="background:var(--primary-bg);color:var(--text-primary);border:1px solid var(--border-color);padding:12px 0;font-weight:500;">' + p.label + '</button>';
                                 }).join('') +
                             '</div>' +
-                            '<button class="ct-modal-btn ct-modal-btn--cancel" data-days="cancel">取消</button>' +
+                            '<button class="ct-modal-btn ct-modal-btn--cancel" data-days="cancel" style="width:100%;padding:10px 0;font-weight:500;">取消</button>' +
                         '</div>');
                     mask.addEventListener('click', function (ev) {
                         var btn = ev.target.closest('.ct-modal-btn');
@@ -456,6 +459,10 @@
                 // 梦角可能还没补这一篇，确保他今天也有一篇
                 ensurePartnerEntries(d2);
                 await saveList(list2);
+
+                // 关键：renderEntries 读的是外面那个 diary 引用，这里必须换到刚保存的 d2，
+                // 否则刚写下的内容要重新打开才看得到
+                diary = d2;
 
                 // 换 UI：textarea 消失，显示"已写"提示 + 重新 render
                 var bar = el.querySelector('#edd-write-bar');

@@ -1341,6 +1341,19 @@
             left: 0;
             right: 0;
         }
+
+        /* ── 软键盘适配（Android WebView 沉浸式下窗口不会 resize，只能靠 visualViewport 换算） ── */
+        body.kb-open .input-area-wrapper {
+            /* 键盘已经盖住导航栏，底部安全区让位给键盘，避免多出一条空隙 */
+            padding-bottom: 0 !important;
+        }
+        body.kb-open .main-chat-area {
+            padding-bottom: calc(70px + var(--sab, 0px) + var(--kb, 0px)) !important;
+        }
+        /* 全屏弹层/日记页在键盘弹起时整体缩短，输入区不会被挡住 */
+        body.kb-open .ct-modal-mask {
+            bottom: var(--kb, 0px);
+        }
         body.immersive-mode .main-chat-area {
             padding-bottom: 80px;
         }
@@ -5044,31 +5057,31 @@
         body.header-clean .header-inner {
             justify-content: space-between;
             align-items: center;
-            gap: 6px;
-            padding: 4px 10px;
+            gap: 8px;
+            padding: 10px 12px 8px;
         }
         /* 左：他的头像贴左边，名字/状态在里侧；右：我的头像贴右边，镜像对称 */
         body.header-clean .user-info {
             flex: 1 1 0;
             min-width: 0;
             display: grid;
-            grid-template-columns: 36px minmax(0, 1fr);
+            grid-template-columns: 48px minmax(0, 1fr);
             grid-template-areas: "av nm" "av st";
-            grid-template-rows: 18px 14px;
+            grid-template-rows: 22px 18px;
             align-items: center;
             justify-items: start;
-            column-gap: 8px;
+            column-gap: 10px;
             row-gap: 1px;
         }
         body.header-clean .user-info .avatar-container {
             grid-area: av;
-            width: 36px !important;
-            height: 36px !important;
+            width: 48px !important;
+            height: 48px !important;
             margin: 0;
         }
         body.header-clean .user-info .username {
             grid-area: nm;
-            font-size: 13px;
+            font-size: 14.5px;
             max-width: 100%;
             text-align: left;
             line-height: 1.2;
@@ -5076,7 +5089,7 @@
         }
         body.header-clean .user-info .status {
             grid-area: st;
-            font-size: 10.5px;
+            font-size: 11px;
             line-height: 1.2;
             padding: 0;
             text-align: left;
@@ -5086,20 +5099,21 @@
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         body.header-clean .user-info:last-of-type {
-            grid-template-columns: minmax(0, 1fr) 36px;
+            grid-template-columns: minmax(0, 1fr) 48px;
             grid-template-areas: "nm av" "st av";
             justify-items: end;
         }
         body.header-clean .user-info:last-of-type .username,
         body.header-clean .user-info:last-of-type .status { text-align: right; }
-        /* 返回键在最左；右侧补一个等宽占位，保证两边头像左右对称 */
+        /* 返回键在最左；加大点击区、往下挪一点，避开顶部状态栏那一条不好点的边 */
         body.header-clean #wx-back-btn {
             order: 0;
-            flex: 0 0 32px;
-            width: 32px; height: 32px;
-            margin: 0;
+            flex: 0 0 42px;
+            width: 42px; height: 42px;
+            margin: 4px 0 0 0;
+            font-size: 17px;
         }
-        body.header-clean .header-inner::after { content: ''; flex: 0 0 32px; width: 32px; }
+        body.header-clean .header-inner::after { content: ''; flex: 0 0 42px; width: 42px; }
         /* 开了「减少动画」：切换过场整块隐藏 —— 连转圈都不想让你看到 */
         html.motion-off #ct-switch-overlay { display: none !important; }
 
@@ -14423,16 +14437,16 @@ body #user-sticker-picker .empty-sticker-tip {
     padding-bottom: 9px;
 }
 
-/* 家园双头像（覆盖样式）：做大 + 更突出的边框阴影 */
+/* 家园双头像（覆盖样式）：收小到更协调的比例，边框和阴影也一并收敛 */
 .cs-big-av {
-    width: 120px;
-    height: 120px;
-    font-size: 42px;
-    border-width: 5px;
-    box-shadow: 0 8px 24px rgba(var(--accent-color-rgb,244,166,179),.22);
+    width: 76px;
+    height: 76px;
+    font-size: 28px;
+    border-width: 3px;
+    box-shadow: 0 5px 14px rgba(var(--accent-color-rgb,244,166,179),.18);
 }
 .cs-couple-row {
-    max-width: 400px;
+    max-width: 330px;
     gap: 0;
 }
 
@@ -14923,5 +14937,38 @@ body > .ct-modal-mask .edd-send:active { transform: scale(.96); }
 body > .ct-modal-mask .edd-done-hint {
     flex: 1; text-align: center;
     padding: 10px 0; font-size: 13px; color: var(--text-secondary);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 交换日记：整页模式（ed-mask）
+ * 之前把 .ed-root 塞进通用 .ct-modal-mask 里，但 .ed-root 自身一直是
+ * opacity:0 / pointer-events:none，结果遮罩出来了、内容却是透明的 ——
+ * 用户点开看到的是一片空白。这里把整页模式单独定义清楚。
+ * ════════════════════════════════════════════════════════════════════════════ */
+.ct-modal-mask.ed-mask {
+    background: var(--primary-bg, #fff);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: var(--sat, 0px) 0 var(--sab, 0px);
+}
+.ct-modal-mask.ed-mask > .ed-root,
+.ct-modal-mask.ed-mask > .edd-root {
+    position: relative; inset: auto;
+    width: 100%; max-width: 100%;
+    height: 100%; max-height: none;
+    margin: 0; border-radius: 0;
+    box-shadow: none;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    opacity: 0; pointer-events: none;
+    transform: translateX(18px);
+    transition: opacity .2s ease, transform .22s cubic-bezier(.22,1,.36,1);
+}
+.ct-modal-mask.ed-mask.on > .ed-root,
+.ct-modal-mask.ed-mask.on > .edd-root {
+    opacity: 1; pointer-events: auto;
+    transform: none;
 }
 
