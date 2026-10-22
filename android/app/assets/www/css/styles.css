@@ -2226,6 +2226,15 @@
             font-size: 34px;
             filter: drop-shadow(0 2px 6px rgba(var(--accent-color-rgb),0.3));
         }
+        /* 今日公告里"他的头像"圆框：有头像时铺满圆圈，心情颜文字叠在上面 */
+        .dg-mood-icon-big[style*="background-image"] {
+            width: 52px; height: 52px; min-width: 52px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden;
+            filter: none;
+        }
+        .dg-mood-icon-big[style*="background-image"] svg { display: none; }
         .dg-mood-info { flex: 1; }
         .dg-mood-name { font-size: 14px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.3px; }
         .dg-mood-sub { font-size: 11.5px; color: var(--text-secondary); margin-top: 4px; line-height: 1.6; }
@@ -14963,7 +14972,25 @@ body > .ct-modal-mask .edd-done-hint {
     backdrop-filter: none;
     align-items: stretch;
     justify-content: flex-start;
-    padding: var(--sat, 0px) 0 var(--sab, 0px);
+    /* 顶部给状态栏 + 富余量（华为灵动岛那类胶囊比一般状态栏高），
+       叉号不再贴着屏幕顶沿 */
+    padding: calc(var(--sat, 0px) + 18px) 0 var(--sab, 0px);
+}
+/* 叉号/返回键放大，手指好点 */
+body > .ct-modal-mask .ed-close,
+body > .ct-modal-mask .edd-back,
+body > .ct-modal-mask .edd-more {
+    width: 44px; height: 44px;
+    font-size: 18px;
+    position: relative;
+}
+body > .ct-modal-mask .ed-close::after,
+body > .ct-modal-mask .edd-back::after,
+body > .ct-modal-mask .edd-more::after {
+    content: ''; position: absolute; inset: -8px; border-radius: 50%;
+}
+body > .ct-modal-mask .ed-header {
+    padding-top: 6px;
 }
 .ct-modal-mask.ed-mask > .ed-root,
 .ct-modal-mask.ed-mask > .edd-root {

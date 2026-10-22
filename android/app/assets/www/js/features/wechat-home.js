@@ -392,8 +392,17 @@
     }
 
     // ─── 「朋友圈」：先看所有人的动态（微信式封面），点某个人的头像才进他个人的朋友圈 ───
+    // 打开全屏层（家园/影院等）之前记住当前 tab，关掉后好原路返回
+    function _rememberTabBeforeCs() {
+        try {
+            var onTab = document.querySelector('.wx-tab.wx-tab--on');
+            window._wxTabBeforeCs = (onTab && onTab.id) ? onTab.id.replace('wx-tab-', '') : 'chat';
+        } catch (e) { window._wxTabBeforeCs = 'chat'; }
+    }
+
     function openAllMoments() {
         try {
+            _rememberTabBeforeCs();
             if (typeof window._mShowMomentsHome === 'function') { window._mShowMomentsHome(); return; }
             if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
             else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
@@ -402,6 +411,7 @@
     function openOwnerMoments() {
         enterChat();
         try {
+            _rememberTabBeforeCs();
             if (typeof window._mShowOwner === 'function') { window._mShowOwner(); return; }
             if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
             else if (typeof window.openCoupleSpace === 'function') window.openCoupleSpace();
@@ -596,7 +606,6 @@
                 '<i class="fas fa-chevron-right wx-me-arrow"></i>' +
             '</div>' +
             '<div class="wx-me-group">' +
-                '<div class="wx-me-item" data-me-act="contacts"><i class="fas fa-user-group"></i><span>我的梦角</span><i class="fas fa-chevron-right"></i></div>' +
                 '<div class="wx-me-item" data-me-act="appearance"><i class="fas fa-palette"></i><span>外观设置</span><i class="fas fa-chevron-right"></i></div>' +
                 '<div class="wx-me-item" data-me-act="chat"><i class="fas fa-comments"></i><span>聊天设置</span><i class="fas fa-chevron-right"></i></div>' +
                 '<div class="wx-me-item" data-me-act="advanced"><i class="fas fa-tools"></i><span>高级功能</span><i class="fas fa-chevron-right"></i></div>' +
@@ -607,6 +616,15 @@
 
     // ─── 统一信箱：把**所有梦角**的信汇总到一处（这才是"集中收多个人的信"） ───
     async function openUnifiedInbox() {
+        var sessions = _sessions();
+        // 只有一个梦角：直接开他本人的信箱（汇总面板反而不顺手）
+        if (sessions.length <= 1) {
+            if (typeof enterChat === 'function') enterChat();
+            if (!_click('envelope-header-btn')) {
+                if (typeof showNotification === 'function') showNotification('信箱还没就绪，稍后再试', 'warning');
+            }
+            return;
+        }
         var old = document.getElementById('wx-inbox');
         if (old) old.remove();
         var el = document.createElement('div');
@@ -710,7 +728,6 @@
             { ic: 'fa-film', nm: '一起看电影', sub: '影院 / 观影', act: function () { if (window.Cinema) window.Cinema.open(); else if (typeof csSwitchTab === 'function') { if (typeof openCoupleSpace === 'function') openCoupleSpace(); setTimeout(function () { csSwitchTab('cinema'); }, 420); } } },
             { ic: 'fa-envelope-open-text', nm: '信箱', sub: '集中收所有人的信', act: function () { openUnifiedInbox(); } },
             { ic: 'fa-newspaper', nm: '今日公告', sub: '按人查看', act: function () { openDailyGreetingPicker(); } },
-            { ic: 'fa-user-group', nm: '我的梦角', sub: '管理 / 切换', act: function () { if (typeof window.openContactsPanel === 'function') window.openContactsPanel(); } },
             { ic: 'fa-wallet', nm: '记账', sub: '聊天自动记账', act: function () { if (window.Ledger) window.Ledger.open(); } },
             { ic: 'fa-utensils', nm: '食光记', sub: '今天吃了什么', act: function () { if (window.Food) window.Food.open(); } },
             { ic: 'fa-book-open-reader', nm: '交换日记', sub: '你一篇他一篇', act: function () { if (window.ExchangeDiary) window.ExchangeDiary.open(); } }
@@ -879,7 +896,7 @@
             st.id = 'chd-style';
             st.textContent = [
                 // 华为灵动岛机型状态栏偏厚：给足顶部空间，避免头一块被胶囊挤住
-                'body.header-clean .header{padding-top:calc(var(--sat,0px) + 10px)!important;}',
+                'body.header-clean .header{padding-top:calc(var(--sat,0px) + 22px)!important;}',
                 // 头部容器：一行三块，整块放大
                 'body.header-clean .header-inner{display:flex;align-items:flex-end;gap:8px;padding:10px 12px 14px!important;max-width:600px!important;}',
                 'body.header-clean .header-inner::after{content:none!important;}',
@@ -1013,8 +1030,10 @@
         if (!window._wxCsClosedBound) {
             window._wxCsClosedBound = true;
             window.addEventListener('cs:closed', function () {
+                // 家园/阅读/影院这些全屏层关掉后，回到进它之前所在的 tab
+                // （从「发现」进去的，关掉就应该还在「发现」，而不是弹回「消息」）
                 var home = document.getElementById('wx-home');
-                if (home && home.style.display !== 'none') _setTab('chat');
+                if (home && home.style.display !== 'none') _setTab(window._wxTabBeforeCs || 'chat');
             });
         }
 

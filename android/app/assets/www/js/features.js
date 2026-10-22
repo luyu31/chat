@@ -1197,6 +1197,27 @@ function _buildDailyGreeting() {
         setEl('dg-weather-label', pName + ' 的天气');
         setEl('dg-status-label', pName + ' 的状态');
 
+        // 他的头像放进"今日状态"那个圆圈：有心情颜文字叠在头像上，没心情就是纯头像
+        try {
+            var moodIconEl2 = document.getElementById('dg-partner-mood-icon');
+            if (moodIconEl2) {
+                var pav = (window._avatarCache && window._avatarCache.partner) || null;
+                if (!pav) {
+                    var pimg = document.querySelector('#partner-avatar img');
+                    if (pimg && pimg.src && pimg.src.indexOf('data:') === 0) pav = pimg.src;
+                }
+                if (pav) {
+                    moodIconEl2.style.backgroundImage = 'url(' + pav + ')';
+                    moodIconEl2.style.backgroundSize = 'cover';
+                    moodIconEl2.style.backgroundPosition = 'center';
+                    moodIconEl2.style.border = '2px solid rgba(255,255,255,.85)';
+                    moodIconEl2.style.boxShadow = '0 2px 10px rgba(0,0,0,.14)';
+                    if (partnerMoodIcon) moodIconEl2.textContent = partnerMoodIcon;
+                    else moodIconEl2.textContent = '';
+                }
+            }
+        } catch (e3) {}
+
         var months = ['一','二','三','四','五','六','七','八','九','十','十一','十二'];
         setEl('dg-date-stamp', now.getFullYear() + ' · ' + months[now.getMonth()] + '月' + now.getDate() + '日');
 

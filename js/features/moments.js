@@ -868,6 +868,11 @@ window._mChangePartnerMotto = function () {
 // ─── 主入口 ───
 window.openCoupleSpace=window.openMomentsModal=function(scrollToPostId){
     const page=document.getElementById('couple-space-page');if(!page)return;
+    // 记住打开前所在 tab，关闭时原路返回（从「发现」进来的就回「发现」）
+    try{
+        const onTab=document.querySelector('.wx-tab.wx-tab--on');
+        window._wxTabBeforeCs=(onTab&&onTab.id)?onTab.id.replace('wx-tab-',''):'chat';
+    }catch(e){}
     page.style.display='flex';
     // 关掉「进入家园动画」的人：直接到位，不滑那一下（也省掉两层 rAF 的等待）
     const skipAnim=!!(window._skipHomeEnterAnim&&window._skipHomeEnterAnim());
