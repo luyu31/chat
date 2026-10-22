@@ -468,6 +468,8 @@
                         await localforage.setItem(_sessKey(id, 'chatSettings'), st2);
                     } catch (err) {}
                     _applyToLiveProfile(m, { signature: String(sg).trim() });
+                    // 聊天头部的签名条同步刷新
+                    try { if (window._chdRefresh) window._chdRefresh(); } catch (err) {}
                 }
                 var wantChangeAv = await (window.ctConfirm
                     ? window.ctConfirm('换头像？', '要不要顺便换一下头像？', '好，换', '下次吧')

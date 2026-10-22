@@ -289,6 +289,7 @@
             // ③ 立刻重画
             if (typeof window.renderMessages === 'function') window.renderMessages();
             if (typeof window.updateUI === 'function') { try { window.updateUI(); } catch (e) {} }
+            try { _chdRefresh(); } catch (e) {}
 
             // ③b 名字以这个会话自己的存档为准，绝不显示上一个角色的名字
             try {
@@ -782,6 +783,7 @@
                         if (typeof updateUI === 'function') updateUI();
                     }
                 } catch (err) {}
+                try { _chdRefresh(); } catch (err) {}
                 renderMeTab();
             } else if (act === 'contacts') {
                 if (typeof window.openContactsPanel === 'function') window.openContactsPanel();
@@ -845,6 +847,7 @@
         if (el) el.style.display = 'none';
         var back = document.getElementById('wx-back-btn');
         if (back) back.style.display = 'flex';
+        try { _chdRefresh(); } catch (e) {}
     }
 
     // 聊天头部左侧的返回键
@@ -860,13 +863,83 @@
         inner.insertBefore(b, inner.firstChild);
     }
 
-    // ─── 聊天页头部整理：像微信一样清爽 ───
-    //  · 中间那排功能按钮全部收掉（都搬到「发现」里了），只留返回 + 两边头像
-    //  · 他的头像在左、我的头像在右，各自带自己的状态，左右对称
-    //  · 点他的头像 → 进他的朋友圈空间；点我的头像 → 只看我发的
+    // ─── 聊天页头部整理：彻底重排 ───
+    // 旧样式表里 .user-info/.username/.status 有十几处历史规则（含多个 media query）
+    // 互相打架，真机上怎么调都压不稳。这里直接把头部 DOM 重新组织成全新的
+    // chd-* 结构，配一段只有 chd-* 才会命中的样式（注入在所有样式表之后），
+    // 与老样式彻底隔离 —— 老规则再怎么打架也碰不到新结构。
     function tidyChatHeader() {
         try { document.body.classList.add('header-clean'); } catch (e) {}
+        var inner = document.querySelector('.header-inner');
+        if (!inner || inner._chdDone) return;
+        inner._chdDone = true;
 
+        if (!document.getElementById('chd-style')) {
+            var st = document.createElement('style');
+            st.id = 'chd-style';
+            st.textContent = [
+                // 头部容器：一行三块（返回键 / 他 / 我），上下留白充足
+                'body.header-clean .header-inner{display:flex;align-items:center;gap:10px;padding:14px 14px 18px;}',
+                'body.header-clean .header-inner::after{content:none!important;}',
+                'body.header-clean .header-actions{display:none!important;}',
+                // 人物块：头像 + 文字列
+                '.chd-person{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:10px;}',
+                '.chd-person.chd-mirror{flex-direction:row-reverse;}',
+                '.chd-av{flex:0 0 52px;width:52px;height:52px;position:relative;line-height:0;cursor:pointer;}',
+                '.chd-av .avatar{width:100%!important;height:100%!important;margin:0!important;order:0!important;border-radius:50%!important;}',
+                '.chd-av .avatar img{width:100%!important;height:100%!important;object-fit:cover;border-radius:50%!important;}',
+                '.chd-text{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:3px;}',
+                '.chd-mirror .chd-text{align-items:flex-end;text-align:right;}',
+                '.chd-text .username{font-size:15px;font-weight:600;max-width:100%!important;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.2px;}',
+                // 签名：最多两行，完整露出
+                '.chd-sig{font-size:11.5px;line-height:1.45;color:var(--text-secondary);max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;}',
+                // 旧的状态元素留在 DOM 里供老代码写入，但不显示
+                '.chd-hide{display:none!important;}',
+                // 返回键：贴着头部下沿，好按
+                'body.header-clean #wx-back-btn{flex:0 0 48px;width:48px;height:48px;margin:0 0 -12px 0;transform:none;font-size:20px;position:relative;align-self:flex-end;}',
+                'body.header-clean #wx-back-btn::after{content:"";position:absolute;inset:-8px;border-radius:50%;}'
+            ].join('\n');
+            document.head.appendChild(st);
+        }
+
+        var pAv = document.getElementById('partner-avatar-container');
+        var pName = document.getElementById('partner-name');
+        var pSt = document.getElementById('partner-status');
+        var mAv = document.getElementById('my-avatar-container');
+        var mName = document.getElementById('my-name');
+        var mSt = document.getElementById('my-status-container');
+        if (!pAv || !mAv || !pName || !mName) return;
+
+        function mkPerson(av, name, stEl, sigCls, mirror) {
+            var p = document.createElement('div');
+            p.className = 'chd-person' + (mirror ? ' chd-mirror' : '');
+            var avw = document.createElement('div');
+            avw.className = 'chd-av';
+            avw.appendChild(av);
+            var tx = document.createElement('div');
+            tx.className = 'chd-text';
+            tx.appendChild(name);
+            var sig = document.createElement('div');
+            sig.className = 'chd-sig ' + sigCls;
+            tx.appendChild(sig);
+            if (stEl) { stEl.classList.add('chd-hide'); tx.appendChild(stEl); }
+            p.appendChild(avw);
+            p.appendChild(tx);
+            return p;
+        }
+
+        var back = document.getElementById('wx-back-btn');
+        var actions = inner.querySelector('.header-actions');
+        var left = mkPerson(pAv, pName, pSt, 'chd-sig--p', false);
+        var right = mkPerson(mAv, mName, mSt, 'chd-sig--m', true);
+
+        inner.innerHTML = '';
+        if (back) inner.appendChild(back);
+        inner.appendChild(left);
+        inner.appendChild(right);
+        if (actions) inner.appendChild(actions);   // 老按钮容器留着（由老规则隐藏），别的代码还要按 id 找它们
+
+        // 头像点击：他的 → 他的朋友圈；我的 → 只看我发的
         var openHis = function (e) {
             if (e) { e.stopPropagation(); e.preventDefault(); }
             openOwnerMoments();
@@ -878,17 +951,55 @@
                 else if (typeof window.openMomentsWithTransition === 'function') window.openMomentsWithTransition();
             } catch (err) {}
         };
-        var bind = function (id, fn) {
-            var el = document.getElementById(id);
+        var bind = function (el, fn) {
             if (!el || el._wxBound) return;
             el._wxBound = true;
-            el.style.cursor = 'pointer';
             el.addEventListener('click', fn);
         };
-        // 绑整个头像容器：点到头像/边框/空白都算，手指更好点
-        bind('partner-avatar-container', openHis);
-        bind('my-avatar-container', openMine);
+        bind(pAv, openHis);
+        bind(mAv, openMine);
+
+        _chdRefresh();
     }
+
+    // 签名刷新：他的 = 会话资料卡签名 → 全局设置签名 → 在线状态；
+    // 我的 = 我的签名（localStorage/设置）→ 我的状态
+    function _chdRefresh() {
+        var lp = document.querySelector('.chd-sig--p');
+        var lm = document.querySelector('.chd-sig--m');
+        if (lm) {
+            var my = '';
+            try { my = localStorage.getItem('milk_my_signature') || ''; } catch (e) {}
+            if (!my && typeof settings !== 'undefined' && settings) my = settings.mySignature || settings.myStatus || '';
+            lm.textContent = String(my || '').trim() || '在线';
+        }
+        if (lp) {
+            var p = '';
+            try {
+                if (typeof settings !== 'undefined' && settings && settings.partnerSignature)
+                    p = String(settings.partnerSignature).trim();
+            } catch (e) {}
+            var fallback = '';
+            try {
+                if (typeof settings !== 'undefined' && settings && settings.partnerStatus)
+                    fallback = settings.partnerStatus;
+            } catch (e) {}
+            lp.textContent = p || fallback || '在线';
+            if (!p) {
+                // 会话资料卡里可能单独存了签名（优先级更高，异步补上）
+                try {
+                    var cid = _currentId();
+                    if (cid) {
+                        localforage.getItem(_prefix() + cid + '_chatSettings').then(function (st) {
+                            if (st && st.partnerSignature && String(st.partnerSignature).trim() && lp.isConnected)
+                                lp.textContent = String(st.partnerSignature).trim();
+                        }).catch(function () {});
+                    }
+                } catch (e) {}
+            }
+        }
+    }
+    window._chdRefresh = _chdRefresh;
 
     var _booted = false;
     function boot() {
