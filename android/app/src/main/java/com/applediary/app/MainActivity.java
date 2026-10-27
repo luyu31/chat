@@ -995,7 +995,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getVersion() {
-            return "1.3.0";
+            return "1.4.0";
         }
 
         @JavascriptInterface
@@ -1438,22 +1438,35 @@ public class MainActivity extends AppCompatActivity {
                 AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
                 obj.put("exact", Build.VERSION.SDK_INT < Build.VERSION_CODES.S
                         || (am != null && am.canScheduleExactAlarms()));
+                obj.put("chain", PushCenter.isChainActive(MainActivity.this));
+                obj.put("gap", PushCenter.chainGap(MainActivity.this));
+                obj.put("until", PushCenter.chainUntil(MainActivity.this));
+                obj.put("battery", isIgnoringBattery());
             } catch (Exception ignored) {}
             return obj.toString();
         }
 
         @JavascriptInterface
-        public void pushSchedule(String json) {
+        public void pushStartChain(String json) {
             try {
                 JSONObject obj = new JSONObject(json == null ? "{}" : json);
-                PushCenter.schedule(MainActivity.this, obj.optJSONArray("items"),
-                        obj.optJSONArray("texts"), obj.optLong("gap", 15 * 60 * 1000L));
+                long gap = obj.optLong("gap", 15 * 60 * 1000L);
+                long hours = obj.optLong("hours", 24);
+                long now = System.currentTimeMillis();
+                long until;
+                if (hours <= 0) {
+                    until = now + 30L * 24 * 60 * 60 * 1000L;
+                } else {
+                    until = now + hours * 60 * 60 * 1000L;
+                }
+                PushCenter.startChain(MainActivity.this, gap, until,
+                        obj.optString("title", "苹果日记"), obj.optJSONArray("texts"));
             } catch (Exception ignored) {}
         }
 
         @JavascriptInterface
         public void pushCancelAll() {
-            PushCenter.cancelAll(MainActivity.this);
+            PushCenter.stopChain(MainActivity.this);
         }
 
         @JavascriptInterface
@@ -1473,10 +1486,38 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void pushClear() {
+            PushCenter.clearNotifications(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public boolean isIgnoringBattery() {
             try {
-                android.app.NotificationManager nm = PushCenter.manager(MainActivity.this);
-                if (nm != null) nm.cancelAll();
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true;
+                android.os.PowerManager pm =
+                        (android.os.PowerManager) getSystemService(POWER_SERVICE);
+                return pm == null || pm.isIgnoringBatteryOptimizations(getPackageName());
+            } catch (Exception e) {
+                return true;
+            }
+        }
+
+        @JavascriptInterface
+        public void openBatterySettings() {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    Intent i = new Intent(
+                            android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse("package:" + getPackageName()));
+                    startActivity(i);
+                    return;
+                }
             } catch (Exception ignored) {}
+            try {
+                startActivity(new Intent(
+                        android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+            } catch (Exception e) {
+                openAppSettings();
+            }
         }
 
         @JavascriptInterface
