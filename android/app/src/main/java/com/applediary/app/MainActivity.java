@@ -3,6 +3,7 @@ package com.applediary.app;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
@@ -134,13 +135,21 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        if (webView != null) webView.onPause();
+        if (webView != null) {
+            webView.evaluateJavascript(
+                    "window.__applePushOnBackground&&window.__applePushOnBackground()", null);
+            webView.onPause();
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (webView != null) webView.onResume();
+        if (webView != null) {
+            webView.onResume();
+            webView.evaluateJavascript(
+                    "window.__applePushOnForeground&&window.__applePushOnForeground()", null);
+        }
     }
 
     private void setupWebView() {
@@ -986,7 +995,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getVersion() {
-            return "1.2.0";
+            return "1.3.0";
         }
 
         @JavascriptInterface
@@ -1418,6 +1427,55 @@ public class MainActivity extends AppCompatActivity {
                     cm.setPrimaryClip(ClipData.newPlainText("苹果日记", text));
                     toast("提取码已复制");
                 }
+            } catch (Exception ignored) {}
+        }
+
+        @JavascriptInterface
+        public String pushStatus() {
+            JSONObject obj = new JSONObject();
+            try {
+                obj.put("enabled", PushCenter.enabled(MainActivity.this));
+                AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
+                obj.put("exact", Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                        || (am != null && am.canScheduleExactAlarms()));
+            } catch (Exception ignored) {}
+            return obj.toString();
+        }
+
+        @JavascriptInterface
+        public void pushSchedule(String json) {
+            try {
+                JSONObject obj = new JSONObject(json == null ? "{}" : json);
+                PushCenter.schedule(MainActivity.this, obj.optJSONArray("items"),
+                        obj.optJSONArray("texts"), obj.optLong("gap", 15 * 60 * 1000L));
+            } catch (Exception ignored) {}
+        }
+
+        @JavascriptInterface
+        public void pushCancelAll() {
+            PushCenter.cancelAll(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public String pushTakePending() {
+            return PushCenter.takePending(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void pushNow(String title, String body) {
+            PushCenter.post(MainActivity.this, title, body, System.currentTimeMillis());
+        }
+
+        @JavascriptInterface
+        public void pushTest(String title, String body) {
+            PushCenter.post(MainActivity.this, title, body, System.currentTimeMillis());
+        }
+
+        @JavascriptInterface
+        public void pushClear() {
+            try {
+                android.app.NotificationManager nm = PushCenter.manager(MainActivity.this);
+                if (nm != null) nm.cancelAll();
             } catch (Exception ignored) {}
         }
 

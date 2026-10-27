@@ -524,7 +524,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
 window._sendPartnerNotification = function(title, body) {
     try {
-        if (localStorage.getItem('notifEnabled') !== '1') return;
+        if (localStorage.getItem('notifEnabled') === '0') return;
+        var bridge = window.AppleDiary;
+        if (bridge && bridge.isNative && bridge.isNative() && typeof bridge.pushNow === 'function') {
+            bridge.pushNow(title || '苹果日记', body || '对方发来了消息');
+            return;
+        }
         if (!('Notification' in window)) return;
         if (Notification.permission !== 'granted') return;
         if (!document.hidden) return;
@@ -539,6 +544,25 @@ window._sendPartnerNotification = function(title, body) {
 
 window.handleNotifToggle = function(checkbox) {
     var statusEl = document.getElementById('notif-status-text');
+    var bridge = window.AppleDiary;
+    if (bridge && bridge.isNative && bridge.isNative() && typeof bridge.pushStatus === 'function') {
+        if (checkbox.checked) {
+            var allowed = true;
+            try { allowed = JSON.parse(bridge.pushStatus() || '{}').enabled !== false; } catch(e) {}
+            localStorage.setItem('notifEnabled', '1');
+            if (allowed) {
+                if (statusEl) statusEl.textContent = '✅ 已开启 — 退到后台也会收到系统通知';
+                try { bridge.pushNow('苹果日记', '通知已开启，后台也会提醒你啦'); } catch(e) {}
+            } else {
+                if (statusEl) statusEl.textContent = '⚠️ 请在本机系统设置里允许「苹果日记」发送通知';
+                try { bridge.openAppSettings(); } catch(e) {}
+            }
+        } else {
+            localStorage.setItem('notifEnabled', '0');
+            if (statusEl) statusEl.textContent = '已关闭 — 后台将不再弹出消息提醒';
+        }
+        return;
+    }
     if (!('Notification' in window)) {
         checkbox.checked = false;
         if (statusEl) statusEl.textContent = '⚠️ 您的浏览器不支持通知功能，请更换浏览器';
@@ -576,11 +600,16 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!toggle) return;
     var enabled = localStorage.getItem('notifEnabled') === '1';
     var granted = ('Notification' in window) && Notification.permission === 'granted';
+    var isNative = !!(window.AppleDiary && window.AppleDiary.isNative && window.AppleDiary.isNative());
+    if (isNative) {
+        enabled = localStorage.getItem('notifEnabled') !== '0';
+        granted = true;
+    }
     toggle.checked = enabled && granted;
     if (!statusEl) return;
     if (toggle.checked) {
-        statusEl.textContent = '✅ 已开启 — 当页面在后台时，收到消息会弹出系统通知';
-    } else if ('Notification' in window && Notification.permission === 'denied') {
+        statusEl.textContent = '✅ 已开启 — 退到后台也会收到系统通知';
+    } else if (!isNative && 'Notification' in window && Notification.permission === 'denied') {
         statusEl.textContent = '❌ 通知权限已被浏览器屏蔽，请自行搜索如何开启';
     } else {
         statusEl.textContent = '关闭状态 — 开启后可在后台接收消息提醒';

@@ -1,74 +1,78 @@
 [
     {
-        "merged": "com.applediary.app-release-25:/mipmap-xxxhdpi_ic_launcher_round.png.flat",
-        "source": "com.applediary.app-main-26:/mipmap-xxxhdpi/ic_launcher_round.png"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/xml_file_paths.xml.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/xml/file_paths.xml"
     },
     {
-        "merged": "com.applediary.app-release-25:/drawable-nodpi_cover_bg.png.flat",
-        "source": "com.applediary.app-main-26:/drawable-nodpi/cover_bg.png"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/drawable-nodpi_cover_bg.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/drawable-nodpi/cover_bg.png"
     },
     {
-        "merged": "com.applediary.app-release-25:/mipmap-mdpi_ic_launcher.png.flat",
-        "source": "com.applediary.app-main-26:/mipmap-mdpi/ic_launcher.png"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/mipmap-xxxhdpi_ic_launcher_round.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/mipmap-xxxhdpi/ic_launcher_round.png"
     },
     {
-        "merged": "com.applediary.app-release-25:/xml_data_extraction_rules.xml.flat",
-        "source": "com.applediary.app-main-26:/xml/data_extraction_rules.xml"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/mipmap-hdpi_ic_launcher_round.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/mipmap-hdpi/ic_launcher_round.png"
     },
     {
-        "merged": "com.applediary.app-release-25:/mipmap-xhdpi_ic_launcher.png.flat",
-        "source": "com.applediary.app-main-26:/mipmap-xhdpi/ic_launcher.png"
+        "merged": "com.applediary.app-release-25:/drawable_ic_notify.xml.flat",
+        "source": "com.applediary.app-main-26:/drawable/ic_notify.xml"
     },
     {
-        "merged": "com.applediary.app-release-25:/xml_file_paths.xml.flat",
-        "source": "com.applediary.app-main-26:/xml/file_paths.xml"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/drawable-nodpi_cover_logo.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/drawable-nodpi/cover_logo.png"
     },
     {
-        "merged": "com.applediary.app-release-25:/mipmap-xxhdpi_ic_launcher.png.flat",
-        "source": "com.applediary.app-main-26:/mipmap-xxhdpi/ic_launcher.png"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/layout_activity_main.xml.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/layout/activity_main.xml"
     },
     {
-        "merged": "com.applediary.app-release-25:/mipmap-xhdpi_ic_launcher_round.png.flat",
-        "source": "com.applediary.app-main-26:/mipmap-xhdpi/ic_launcher_round.png"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/drawable-nodpi_ic_launcher_foreground.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/drawable-nodpi/ic_launcher_foreground.png"
     },
     {
-        "merged": "com.applediary.app-release-25:/mipmap-anydpi-v26_ic_launcher.xml.flat",
-        "source": "com.applediary.app-main-26:/mipmap-anydpi-v26/ic_launcher.xml"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/mipmap-xxhdpi_ic_launcher_round.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/mipmap-xxhdpi/ic_launcher_round.png"
     },
     {
-        "merged": "com.applediary.app-release-25:/drawable-nodpi_ic_launcher_foreground.png.flat",
-        "source": "com.applediary.app-main-26:/drawable-nodpi/ic_launcher_foreground.png"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/xml_data_extraction_rules.xml.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/xml/data_extraction_rules.xml"
     },
     {
-        "merged": "com.applediary.app-release-25:/drawable-nodpi_cover_logo.png.flat",
-        "source": "com.applediary.app-main-26:/drawable-nodpi/cover_logo.png"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/mipmap-mdpi_ic_launcher_round.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/mipmap-mdpi/ic_launcher_round.png"
     },
     {
-        "merged": "com.applediary.app-release-25:/mipmap-hdpi_ic_launcher_round.png.flat",
-        "source": "com.applediary.app-main-26:/mipmap-hdpi/ic_launcher_round.png"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/mipmap-mdpi_ic_launcher.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/mipmap-mdpi/ic_launcher.png"
     },
     {
-        "merged": "com.applediary.app-release-25:/mipmap-hdpi_ic_launcher.png.flat",
-        "source": "com.applediary.app-main-26:/mipmap-hdpi/ic_launcher.png"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/mipmap-hdpi_ic_launcher.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/mipmap-hdpi/ic_launcher.png"
     },
     {
-        "merged": "com.applediary.app-release-25:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
-        "source": "com.applediary.app-main-26:/mipmap-anydpi-v26/ic_launcher_round.xml"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/mipmap-xxxhdpi/ic_launcher.png"
     },
     {
-        "merged": "com.applediary.app-release-25:/mipmap-xxhdpi_ic_launcher_round.png.flat",
-        "source": "com.applediary.app-main-26:/mipmap-xxhdpi/ic_launcher_round.png"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/mipmap-anydpi-v26/ic_launcher_round.xml"
     },
     {
-        "merged": "com.applediary.app-release-25:/mipmap-mdpi_ic_launcher_round.png.flat",
-        "source": "com.applediary.app-main-26:/mipmap-mdpi/ic_launcher_round.png"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/mipmap-xhdpi/ic_launcher.png"
     },
     {
-        "merged": "com.applediary.app-release-25:/mipmap-xxxhdpi_ic_launcher.png.flat",
-        "source": "com.applediary.app-main-26:/mipmap-xxxhdpi/ic_launcher.png"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/mipmap-anydpi-v26/ic_launcher.xml"
     },
     {
-        "merged": "com.applediary.app-release-25:/layout_activity_main.xml.flat",
-        "source": "com.applediary.app-main-26:/layout/activity_main.xml"
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/mipmap-xxhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "/root/.gradle/daemon/8.14.6/com.applediary.app-release-25:/mipmap-xhdpi_ic_launcher_round.png.flat",
+        "source": "/root/.gradle/daemon/8.14.6/com.applediary.app-main-26:/mipmap-xhdpi/ic_launcher_round.png"
     }
 ]

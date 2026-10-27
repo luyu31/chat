@@ -12,6 +12,7 @@ color theme_orange
 drawable cover_bg
 drawable cover_logo
 drawable ic_launcher_foreground
+drawable ic_notify
 id cover
 id cover_bg
 id cover_loading
