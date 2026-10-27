@@ -1,0 +1,26 @@
+R_DEF: Internal format may change without notice
+local
+color apple_green
+color apple_red
+color cream
+color cream_dark
+color ic_launcher_background
+color ink
+color ink_dark
+drawable cover_bg
+drawable cover_logo
+drawable ic_launcher_foreground
+id cover
+id cover_bg
+id cover_loading
+id cover_logo
+id cover_title
+id web_view
+layout activity_main
+mipmap ic_launcher
+mipmap ic_launcher_round
+string app_name
+string cover_subtitle
+style Theme.AppleDiary
+xml data_extraction_rules
+xml file_paths

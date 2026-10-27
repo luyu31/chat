@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.applediary.app-mergeReleaseResources-23:/values-port/values-port.xml",
+            "map": [
+                {
+                    "source": "/root/.gradle/caches/8.14.6/transforms/da241f6fe6011c8d0616b099a7c180d1/transformed/appcompat-1.7.0/res/values-port/values-port.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "55",
+                        "endOffsets": "106"
+                    }
+                }
+            ]
+        }
+    ]
+}

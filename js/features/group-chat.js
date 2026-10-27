@@ -385,7 +385,7 @@ if (importAllBtn) {
                         backup.formatVersion === 5 ||
                         backup.localforage ||
                         backup.indexedDB;
-                    if (!okShape) throw new Error('不是有效的传讯备份文件');
+                    if (!okShape) throw new Error('不是有效的苹果日记备份文件');
 
                     if (!confirm('导入全量备份将覆盖备份文件中包含的数据（按文件内容写入）。\n\nv5 ZIP：从 media/ 还原图片；v4 JSON：从 mediaStore 还原。\n\n确定继续吗？')) return;
 

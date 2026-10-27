@@ -308,7 +308,7 @@ let isTourActive = false;
 
 const tourSteps = [
     {
-        title: "✨ 欢迎来到「传讯」",
+        title: "✨ 欢迎来到「苹果日记」",
         content: "这里是你们专属的私密空间。<br><br>这个教程共 <b>20 步</b>，带你从头到尾认识每一个功能，建议完整看完哦 🥺<br><br>点击「下一步」开始吧！",
         position: 'center'
     },
@@ -424,7 +424,7 @@ const tourSteps = [
     },
     {
         title: "🎉 你已了解所有功能！",
-        content: "现在你已经掌握了「传讯」的全部功能，希望你们在这里留下满满的回忆 💕",
+        content: "现在你已经掌握了「苹果日记」的全部功能，希望你们在这里留下满满的回忆 💕",
         position: 'center',
         onBefore: () => { if (isTourActive) document.querySelectorAll('.modal').forEach(m => hideModal(m)); }
     }
