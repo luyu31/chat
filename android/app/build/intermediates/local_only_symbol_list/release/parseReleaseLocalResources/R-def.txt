@@ -7,6 +7,8 @@ color cream_dark
 color ic_launcher_background
 color ink
 color ink_dark
+color theme_blue
+color theme_orange
 drawable cover_bg
 drawable cover_logo
 drawable ic_launcher_foreground

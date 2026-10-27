@@ -8,7 +8,7 @@
         <item name="android:windowLightNavigationBar" ns1:targetApi="27">false</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:colorAccent">@color/apple_red</item>
+        <item name="android:colorAccent">@color/theme_orange</item>
         <item name="android:windowSoftInputMode">adjustResize</item>
     </style>
 </resources>

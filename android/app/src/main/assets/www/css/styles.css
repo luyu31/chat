@@ -102,6 +102,51 @@
             --accent-color-dark: #2E5B9A;
             --accent-color-rgb: 74, 144, 226;
         }
+        /* ---- 夏以昼 · 橙蓝（默认主题）---- */
+        :root[data-color-theme="xiayizhou"] {
+            --accent-color: #EE7B2F;          /* 落日橙 */
+            --accent-color-dark: #C75F1C;
+            --accent-color-rgb: 238, 123, 47;
+            --accent-color-2: #3C5C93;        /* 深海蓝 */
+            --accent-color-2-rgb: 60, 92, 147;
+            --message-sent-bg: #E06A22;
+            --message-sent-text: #ffffff;
+            --favorite-color: #F0A03C;
+        }
+        html[data-color-theme="xiayizhou"]:not([data-theme="dark"]) {
+            --primary-bg: #FAF6F1;
+            --secondary-bg: #FFFDFA;
+            --header-bg: #FFFDFA;
+            --input-area-bg: #FFFDFA;
+            --text-primary: #241F1B;
+            --text-secondary: #7C7268;
+            --border-color: #EFE4D8;
+            --message-received-bg: #E9EFF9;
+            --message-received-text: #1D2A3D;
+            --toolbar-btn-bg: #E9EFF9;
+            --toolbar-btn-color: #3C5C93;
+            --primary-bg-rgb: 250, 246, 241;
+            --secondary-bg-rgb: 255, 253, 250;
+        }
+        html[data-theme="dark"][data-color-theme="xiayizhou"] {
+            --primary-bg: #10141B;
+            --secondary-bg: #181E28;
+            --header-bg: #181E28;
+            --input-area-bg: #181E28;
+            --border-color: #29313E;
+            --message-received-bg: #1E2634;
+            --message-received-text: #DCE4F0;
+            --toolbar-btn-bg: #1E2634;
+            --toolbar-btn-color: #8FB2E0;
+            --primary-bg-rgb: 16, 20, 27;
+            --secondary-bg-rgb: 24, 30, 40;
+        }
+        html[data-color-theme="xiayizhou"] .action-btn {
+            color: var(--accent-color-2);
+        }
+        html[data-color-theme="xiayizhou"] .username {
+            color: var(--accent-color-2);
+        }
 
 
         html[data-theme="dark"] {
@@ -4066,6 +4111,9 @@
         }
         #theme-ocean {
             background: linear-gradient(135deg, #4A90E2, #2E5B9A);
+        }
+        #theme-xiayizhou {
+            background: linear-gradient(135deg, #EE7B2F 0%, #EE7B2F 48%, #3C5C93 52%, #3C5C93 100%);
         }
 
         .font-size-control {

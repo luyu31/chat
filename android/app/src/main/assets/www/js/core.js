@@ -234,7 +234,7 @@ function loadMoreFuture() {
                 myStatus: "在线",
                 partnerStatus: "在线",
                 isDarkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
-                colorTheme: "gold",
+                colorTheme: "xiayizhou",
                 soundEnabled: true,
                 typingIndicatorEnabled: true,
                 readReceiptsEnabled: true,
@@ -484,6 +484,15 @@ const loadData = async () => {
         if (savedPartnerPersonas) partnerPersonas = savedPartnerPersonas;
 
         if (savedSettings) Object.assign(settings, savedSettings);
+
+        // 主色调改为「夏以昼」橙蓝：老用户一次性迁移（自定义主题不覆盖）
+        try {
+            if (!localStorage.getItem('appleThemeXiayizhou')
+                && !String(settings.colorTheme || '').startsWith('custom-')) {
+                settings.colorTheme = 'xiayizhou';
+                localStorage.setItem('appleThemeXiayizhou', '1');
+            }
+        } catch (e) {}
 
         if (settings.showPartnerNameInChat !== undefined) {
             showPartnerNameInChat = settings.showPartnerNameInChat;

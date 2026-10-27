@@ -95,7 +95,7 @@
         + '.apple-sync-btn{display:flex;align-items:center;gap:12px;width:100%;padding:13px 16px;border-radius:14px;border:1.5px solid var(--border-color);background:var(--primary-bg);color:var(--text-primary);font-family:var(--font-family);font-size:14px;text-align:left;cursor:pointer;transition:transform .12s ease;}'
         + '.apple-sync-btn:active{transform:scale(.98);}'
         + '.apple-sync-btn .ico{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;flex-shrink:0;}'
-        + '.apple-sync-btn.red .ico{background:linear-gradient(135deg,#FF7A6B,#E84A4A);}'
+        + '.apple-sync-btn.red .ico{background:linear-gradient(135deg,#F49B54,#E06A22);}'
         + '.apple-sync-btn.green .ico{background:linear-gradient(135deg,#9BE07D,#6FBF52);}'
         + '.apple-sync-btn.blue .ico{background:linear-gradient(135deg,#7FC8F8,#3C8DDE);}'
         + '.apple-sync-btn .txt{display:flex;flex-direction:column;gap:3px;}'
@@ -105,7 +105,7 @@
         + '.apple-sync-card{background:var(--secondary-bg);border:1.5px dashed var(--border-color);border-radius:14px;padding:14px;}'
         + '.apple-sync-card h4{margin:0 0 8px;font-size:13px;color:var(--text-primary);display:flex;align-items:center;gap:6px;}'
         + '.apple-sync-card p{margin:6px 0;font-size:12px;line-height:1.7;color:var(--text-secondary);}'
-        + '.apple-sync-code{display:inline-block;font-family:monospace;font-size:26px;letter-spacing:6px;color:#E84A4A;background:rgba(232,74,74,.08);border:1.5px dashed rgba(232,74,74,.4);border-radius:10px;padding:4px 12px;margin:6px 0;}'
+        + '.apple-sync-code{display:inline-block;font-family:monospace;font-size:26px;letter-spacing:6px;color:var(--accent-color,#EE7B2F);background:rgba(var(--accent-color-rgb,238,123,47),.08);border:1.5px dashed rgba(var(--accent-color-rgb,238,123,47),.4);border-radius:10px;padding:4px 12px;margin:6px 0;}'
         + '.apple-sync-addr{font-family:monospace;font-size:11.5px;color:var(--text-primary);word-break:break-all;}'
         + '.apple-sync-peer{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border:1px solid var(--border-color);border-radius:10px;margin-bottom:8px;background:var(--primary-bg);cursor:pointer;}'
         + '.apple-sync-peer .pname{font-size:13px;color:var(--text-primary);}'
@@ -113,7 +113,7 @@
         + '.apple-sync-input{width:100%;box-sizing:border-box;padding:9px 10px;margin:4px 0 8px;border-radius:9px;border:1px solid var(--border-color);background:var(--primary-bg);color:var(--text-primary);font-size:13px;outline:none;}'
         + '.apple-sync-row{display:flex;gap:8px;}'
         + '.apple-sync-row .apple-sync-input{margin-bottom:0;}'
-        + '.apple-sync-mini{flex-shrink:0;padding:9px 14px;border-radius:9px;border:none;background:#E84A4A;color:#fff;font-size:12px;font-weight:600;cursor:pointer;}'
+        + '.apple-sync-mini{flex-shrink:0;padding:9px 14px;border-radius:9px;border:none;background:var(--accent-color,#EE7B2F);color:#fff;font-size:12px;font-weight:600;cursor:pointer;}'
         + '.apple-sync-mini.ghost{background:var(--primary-bg);color:var(--text-primary);border:1px solid var(--border-color);}'
         + '.apple-sync-note{font-size:10.5px;color:var(--text-secondary);margin-top:10px;text-align:center;line-height:1.7;}'
         + '.apple-sync-note a{color:var(--accent-color);text-decoration:underline;cursor:pointer;}'
@@ -122,7 +122,7 @@
         + '.apple-sync-hint{font-size:10.5px;color:var(--text-secondary);text-align:center;line-height:1.7;margin:10px 0 0;}'
         + '.apple-sync-code.small{font-size:21px;letter-spacing:3px;}'
         + '.apple-sync-progress{height:8px;border-radius:6px;background:var(--border-color);overflow:hidden;margin:8px 0;}'
-        + '.apple-sync-progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#9BE07D,#E84A4A);transition:width .2s;}'
+        + '.apple-sync-progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#8FB2E0,#E06A22);transition:width .2s;}'
         + '.apple-sync-spin{display:inline-block;animation:appleSpin 1s linear infinite;}'
         + '@keyframes appleSpin{to{transform:rotate(360deg);}}'
         + '.apple-sync-state{text-align:center;padding:14px 0;font-size:13px;color:var(--text-secondary);}'
@@ -161,7 +161,7 @@
         card.className = 'settings-card';
         card.id = 'apple-sync-entry';
         card.style.gridColumn = '1 / -1';
-        card.innerHTML = '<i class="fas fa-apple-whole" style="color:#E84A4A"></i>'
+        card.innerHTML = '<i class="fas fa-apple-whole" style="color:var(--accent-color,#EE7B2F)"></i>'
             + '<span>设备同步</span>'
             + '<span style="font-size:10px;color:var(--text-secondary);margin-top:-2px;">把日记搬到另一台手机</span>';
         card.addEventListener('click', function (e) {
@@ -243,7 +243,7 @@
     }
 
     function showError(text) {
-        panelEl.innerHTML = '<div class="apple-sync-card"><h4><i class="fas fa-circle-exclamation" style="color:#E84A4A"></i> 同步失败</h4>'
+        panelEl.innerHTML = '<div class="apple-sync-card"><h4><i class="fas fa-circle-exclamation" style="color:var(--accent-color,#EE7B2F)"></i> 同步失败</h4>'
             + '<p>' + escapeHtml(text) + '</p>'
             + '<button class="apple-sync-mini ghost" id="apple-sync-retry">返回</button></div>';
         document.getElementById('apple-sync-retry').addEventListener('click', resetSyncPanel);
@@ -363,7 +363,7 @@
 
     function showSenderPanel(res, bytes) {
         panelEl.innerHTML = '<div class="apple-sync-card">'
-            + '<h4><i class="fas fa-tower-broadcast" style="color:#E84A4A"></i> 已开启，等待新手机接收</h4>'
+            + '<h4><i class="fas fa-tower-broadcast" style="color:var(--accent-color,#EE7B2F)"></i> 已开启，等待新手机接收</h4>'
             + '<p>配对码</p>'
             + '<div class="apple-sync-code">' + escapeHtml(res.code) + '</div>'
             + '<p>在另一台手机打开：设置 → 设备同步 → 从另一台手机接收，输入上面的配对码。</p>'
@@ -801,7 +801,7 @@
         modal.className = 'modal';
         modal.id = 'apple-sync-modal';
         modal.innerHTML = '<div class="modal-content">'
-            + '<div class="modal-title"><i class="fas fa-apple-whole" style="color:#E84A4A"></i><span>设备同步</span></div>'
+            + '<div class="modal-title"><i class="fas fa-apple-whole" style="color:var(--accent-color,#EE7B2F)"></i><span>设备同步</span></div>'
             + '<div class="apple-sync-body"><div id="apple-sync-panel"></div></div>'
             + '<div class="modal-buttons" style="padding-bottom: max(14px, env(safe-area-inset-bottom, 14px));">'
             + '<span></span><button class="modal-btn modal-btn-secondary" id="apple-sync-close">关闭</button>'

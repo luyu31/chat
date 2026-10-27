@@ -7,6 +7,8 @@
     <color name="ic_launcher_background">#FFF3E0</color>
     <color name="ink">#5A3A2E</color>
     <color name="ink_dark">#FFF1E0</color>
+    <color name="theme_blue">#3C5C93</color>
+    <color name="theme_orange">#EE7B2F</color>
     <string name="app_name">苹果日记</string>
     <string name="cover_subtitle">一颗大红苹果 · 一颗小青苹果</string>
     <style name="Theme.AppleDiary" parent="Theme.AppCompat.Light.NoActionBar">
@@ -17,7 +19,7 @@
         <item name="android:windowLightNavigationBar" ns1:targetApi="27">true</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:colorAccent">@color/apple_red</item>
+        <item name="android:colorAccent">@color/theme_orange</item>
         <item name="android:windowSoftInputMode">adjustResize</item>
     </style>
 </resources>

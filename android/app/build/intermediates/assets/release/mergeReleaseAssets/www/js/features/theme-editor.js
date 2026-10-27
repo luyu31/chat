@@ -509,7 +509,7 @@ function populateThemeSelector() {
         const THEME_COLOR_NAMES = {
             'gold': '金色', 'blue': '蓝色', 'purple': '紫色', 'green': '绿色',
             'pink': '粉色', 'black-white': '黑白', 'pastel': '柔蓝', 
-            'sunset': '夕阳', 'forest': '森林', 'ocean': '深蓝'
+            'sunset': '夕阳', 'forest': '森林', 'ocean': '深蓝', 'xiayizhou': '橙蓝'
         };
         const BUBBLE_STYLE_NAMES_SCM = { standard: '标准', rounded: '圆角', 'rounded-large': '大圆角', square: '方形' };
 
