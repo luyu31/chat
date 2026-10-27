@@ -97,6 +97,7 @@
         + '.apple-sync-btn .ico{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;flex-shrink:0;}'
         + '.apple-sync-btn.red .ico{background:linear-gradient(135deg,#FF7A6B,#E84A4A);}'
         + '.apple-sync-btn.green .ico{background:linear-gradient(135deg,#9BE07D,#6FBF52);}'
+        + '.apple-sync-btn.blue .ico{background:linear-gradient(135deg,#7FC8F8,#3C8DDE);}'
         + '.apple-sync-btn .txt{display:flex;flex-direction:column;gap:3px;}'
         + '.apple-sync-btn .txt b{font-size:14px;font-weight:600;}'
         + '.apple-sync-btn .txt small{font-size:11px;color:var(--text-secondary);}'
@@ -116,6 +117,10 @@
         + '.apple-sync-mini.ghost{background:var(--primary-bg);color:var(--text-primary);border:1px solid var(--border-color);}'
         + '.apple-sync-note{font-size:10.5px;color:var(--text-secondary);margin-top:10px;text-align:center;line-height:1.7;}'
         + '.apple-sync-note a{color:var(--accent-color);text-decoration:underline;cursor:pointer;}'
+        + '.apple-sync-divider{display:flex;align-items:center;gap:10px;margin:16px 0 12px;font-size:11px;color:var(--text-secondary);}'
+        + '.apple-sync-divider:before,.apple-sync-divider:after{content:"";height:1px;background:var(--border-color);flex:1;}'
+        + '.apple-sync-hint{font-size:10.5px;color:var(--text-secondary);text-align:center;line-height:1.7;margin:10px 0 0;}'
+        + '.apple-sync-code.small{font-size:21px;letter-spacing:3px;}'
         + '.apple-sync-progress{height:8px;border-radius:6px;background:var(--border-color);overflow:hidden;margin:8px 0;}'
         + '.apple-sync-progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#9BE07D,#E84A4A);transition:width .2s;}'
         + '.apple-sync-spin{display:inline-block;animation:appleSpin 1s linear infinite;}'
@@ -139,6 +144,8 @@
 
     function closeSyncModal() {
         try { native.syncStopSend(); } catch (e) {}
+        if (cloudTimer) { clearInterval(cloudTimer); cloudTimer = null; }
+        try { native.cloudCloseAll(); } catch (e) {}
         var modal = document.getElementById('apple-sync-modal');
         if (typeof hideModal === 'function') hideModal(modal);
         else modal.style.display = 'none';
@@ -176,6 +183,8 @@
     // ---------------- 同步弹窗 ----------------
 
     var panelEl;
+    var cloudTimer = null;
+    var activeCloudToken = null;
 
     function resetSyncPanel() {
         panelEl = document.getElementById('apple-sync-panel');
@@ -183,7 +192,7 @@
         panelEl.innerHTML = '';
         var tip = document.createElement('p');
         tip.className = 'apple-sync-tip';
-        tip.textContent = '同一 WiFi 下，把本机的聊天与日记同步到另一台手机。数据不经过服务器。';
+        tip.textContent = '同一 WiFi 用局域网直传；不在同一网络时，用下面的免费云通道，凭提取码跨网络同步。';
         panelEl.appendChild(tip);
 
         var actions = document.createElement('div');
@@ -191,13 +200,28 @@
         actions.innerHTML =
             '<button class="apple-sync-btn red" id="apple-send-btn">'
             + '<span class="ico"><i class="fas fa-paper-plane"></i></span>'
-            + '<span class="txt"><b>发送到另一台手机</b><small>在新手机上接收全部数据</small></span>'
+            + '<span class="txt"><b>发送到另一台手机</b><small>同一 WiFi · 输入配对码接收</small></span>'
             + '</button>'
             + '<button class="apple-sync-btn green" id="apple-recv-btn">'
             + '<span class="ico"><i class="fas fa-download"></i></span>'
             + '<span class="txt"><b>从另一台手机接收</b><small>搜索附近设备，输入配对码</small></span>'
             + '</button>';
         panelEl.appendChild(actions);
+
+        var cloud = document.createElement('div');
+        cloud.innerHTML = '<div class="apple-sync-divider"><span>或跨网络同步</span></div>'
+            + '<div class="apple-sync-actions">'
+            + '<button class="apple-sync-btn blue" id="apple-cloud-send-btn">'
+            + '<span class="ico"><i class="fas fa-cloud-arrow-up"></i></span>'
+            + '<span class="txt"><b>上传到免费云端</b><small>生成提取码 · 6 天内有效 · 免注册</small></span>'
+            + '</button>'
+            + '<button class="apple-sync-btn blue" id="apple-cloud-recv-btn">'
+            + '<span class="ico"><i class="fas fa-cloud-arrow-down"></i></span>'
+            + '<span class="txt"><b>从云端恢复</b><small>输入提取码 · 不用同一 WiFi</small></span>'
+            + '</button>'
+            + '</div>'
+            + '<p class="apple-sync-hint"><i class="fas fa-lock"></i> 文件在本机加密后才上传，公共中转站看不到内容，6 天后自动失效。</p>';
+        panelEl.appendChild(cloud);
 
         var note = document.createElement('div');
         note.className = 'apple-sync-note';
@@ -210,6 +234,8 @@
         });
         document.getElementById('apple-send-btn').addEventListener('click', startSend);
         document.getElementById('apple-recv-btn').addEventListener('click', startReceive);
+        document.getElementById('apple-cloud-send-btn').addEventListener('click', startCloudSend);
+        document.getElementById('apple-cloud-recv-btn').addEventListener('click', startCloudReceive);
     }
 
     function showBusy(text) {
@@ -506,6 +532,227 @@
                 }
             }
         }, 350);
+    }
+
+    // ---------------- 免费云同步（免注册） ----------------
+
+    function normalizeCloudCode(v) {
+        return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    }
+
+    function copyCloudCode(code) {
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(code).then(function () {
+                    notify('提取码已复制', 'success');
+                }).catch(function () {
+                    if (native.copyText) native.copyText(code);
+                });
+                return;
+            }
+        } catch (e) {}
+        if (native.copyText) native.copyText(code);
+        else notify('提取码：' + code, 'info');
+    }
+
+    async function startCloudSend() {
+        showBusy('正在打包本机数据…');
+        try {
+            var bytes = await buildBackupBytes();
+            var info = {};
+            try { info = JSON.parse(native.cloudBeginUpload() || '{}'); } catch (e) {}
+            if (!info.token) throw new Error('无法创建云端任务');
+            var CHUNK = 512 * 1024;
+            for (var offset = 0; offset < bytes.length; offset += CHUNK) {
+                var slice = bytes.subarray(offset, Math.min(offset + CHUNK, bytes.length));
+                if (!native.cloudPushChunk(info.token, bytesToBase64(slice))) {
+                    native.cloudCancelUpload(info.token);
+                    throw new Error('写入备份包失败，可能是存储空间不足');
+                }
+                if (offset % (CHUNK * 4) === 0) {
+                    showBusy('正在打包本机数据… ' + Math.min(99, Math.round(offset / bytes.length * 100)) + '%');
+                    await new Promise(function (r) { setTimeout(r, 0); });
+                }
+            }
+            var res = {};
+            try { res = JSON.parse(native.cloudFinishUpload(info.token) || '{}'); } catch (e) {}
+            if (!res.ok) throw new Error(res.error || '上传失败');
+            pollCloudUpload(info.token, bytes.length);
+        } catch (e) {
+            console.error('[apple-cloud] send failed', e);
+            showError(e && e.message ? e.message : '上传失败');
+        }
+    }
+
+    function pollCloudUpload(token, size) {
+        activeCloudToken = token;
+        var started = Date.now();
+        if (cloudTimer) clearInterval(cloudTimer);
+        cloudTimer = setInterval(function () {
+            var st = {};
+            try { st = JSON.parse(native.cloudUploadState(token) || '{}'); } catch (e) {}
+            if (st.state === 'error') {
+                clearInterval(cloudTimer);
+                cloudTimer = null;
+                activeCloudToken = null;
+                native.cloudCloseUpload(token);
+                showError(st.error || '上传失败');
+                return;
+            }
+            if (st.state === 'done') {
+                clearInterval(cloudTimer);
+                cloudTimer = null;
+                activeCloudToken = null;
+                native.cloudCloseUpload(token);
+                try { localStorage.setItem('appleCloudLastCode', st.code || ''); } catch (e) {}
+                showCloudCode(st.code, size);
+                return;
+            }
+            var pct = st.state === 'uploading' ? Math.max(0, Math.min(100, st.progress || 0)) : 0;
+            var title = st.state === 'encrypting' ? '正在加密备份…' : '正在上传到云端…';
+            panelEl.innerHTML = '<div class="apple-sync-card">'
+                + '<h4><i class="fas fa-cloud-arrow-up" style="color:#3C8DDE"></i> ' + title + '</h4>'
+                + '<div class="apple-sync-progress"><i style="width:' + pct + '%"></i></div>'
+                + '<p style="text-align:center">' + pct + '% · ' + formatSize(size) + '</p>'
+                + '<p style="text-align:center;opacity:.7">先在本机加密再上传，请保持网络畅通。</p>'
+                + '<button class="apple-sync-mini ghost" id="apple-cloud-cancel">取消上传</button>'
+                + '</div>';
+            var cancelBtn = document.getElementById('apple-cloud-cancel');
+            if (cancelBtn) cancelBtn.addEventListener('click', function () {
+                native.cloudCancelUpload(token);
+                if (cloudTimer) { clearInterval(cloudTimer); cloudTimer = null; }
+                activeCloudToken = null;
+                native.cloudCloseUpload(token);
+                resetSyncPanel();
+                notify('已取消上传', 'info');
+            });
+            if (Date.now() - started > 10 * 60 * 1000) {
+                clearInterval(cloudTimer);
+                cloudTimer = null;
+                activeCloudToken = null;
+                native.cloudCancelUpload(token);
+                native.cloudCloseUpload(token);
+                showError('上传超时，请检查网络后重试');
+            }
+        }, 400);
+    }
+
+    function showCloudCode(code, size) {
+        panelEl.innerHTML = '<div class="apple-sync-card">'
+            + '<h4><i class="fas fa-cloud-check" style="color:#3C8DDE"></i> 已上传到免费云端</h4>'
+            + '<p>在另一台手机输入这个提取码：</p>'
+            + '<div class="apple-sync-code small" id="apple-cloud-code">' + escapeHtml(code) + '</div>'
+            + '<p style="text-align:center;opacity:.75">大小 ' + formatSize(size) + ' · 6 天内有效 · 已加密</p>'
+            + '<div class="apple-sync-row" style="margin-top:8px">'
+            + '<button class="apple-sync-mini" id="apple-cloud-copy">复制提取码</button>'
+            + '<button class="apple-sync-mini ghost" id="apple-cloud-done">完成</button>'
+            + '</div>'
+            + '<p class="apple-sync-hint">新手机：设置 → 设备同步 → 从云端恢复</p>'
+            + '</div>';
+        document.getElementById('apple-cloud-copy').addEventListener('click', function () {
+            copyCloudCode(code);
+        });
+        document.getElementById('apple-cloud-done').addEventListener('click', resetSyncPanel);
+    }
+
+    function startCloudReceive() {
+        var last = '';
+        try { last = localStorage.getItem('appleCloudLastCode') || ''; } catch (e) {}
+        panelEl.innerHTML = '<div class="apple-sync-card">'
+            + '<h4><i class="fas fa-cloud-arrow-down" style="color:#3C8DDE"></i> 从免费云端恢复</h4>'
+            + '<p>输入另一台手机显示的提取码：</p>'
+            + '<input class="apple-sync-input" id="apple-cloud-input" placeholder="XXXXX-XXXXX" autocapitalize="characters" autocorrect="off" maxlength="13" value="' + escapeHtml(last) + '">'
+            + '<div class="apple-sync-row">'
+            + '<button class="apple-sync-mini" id="apple-cloud-go">下载并恢复</button>'
+            + '<button class="apple-sync-mini ghost" id="apple-cloud-back">返回</button>'
+            + '</div>'
+            + '<p class="apple-sync-hint">提取码 6 天内有效；下载后仍需确认要恢复的内容。</p>'
+            + '</div>';
+        document.getElementById('apple-cloud-back').addEventListener('click', resetSyncPanel);
+        var input = document.getElementById('apple-cloud-input');
+        if (input) input.focus();
+        document.getElementById('apple-cloud-go').addEventListener('click', function () {
+            var code = normalizeCloudCode(input.value);
+            if (code.length !== 10) return notify('提取码应为 10 位字母数字', 'error');
+            beginCloudReceive(code);
+        });
+    }
+
+    function beginCloudReceive(code) {
+        showBusy('正在连接云端…');
+        var res = {};
+        try { res = JSON.parse(native.cloudBeginDownload(code) || '{}'); } catch (e) {}
+        if (!res.ok || !res.token) return showError(res.error || '无法开始下载');
+        var token = res.token;
+        activeCloudToken = token;
+        var started = Date.now();
+        if (cloudTimer) clearInterval(cloudTimer);
+        cloudTimer = setInterval(async function () {
+            var st = {};
+            try { st = JSON.parse(native.cloudDownloadState(token) || '{}'); } catch (e) {}
+            if (st.state === 'error') {
+                clearInterval(cloudTimer);
+                cloudTimer = null;
+                activeCloudToken = null;
+                native.cloudCloseDownload(token);
+                showError(st.error || '下载失败');
+                return;
+            }
+            if (st.state === 'done') {
+                clearInterval(cloudTimer);
+                cloudTimer = null;
+                activeCloudToken = null;
+                try {
+                    var size = native.cloudDownloadSize(token);
+                    if (!size) throw new Error('云端文件为空');
+                    showBusy('正在写入本机数据…');
+                    var bytes = new Uint8Array(size);
+                    var off = 0;
+                    var CHUNK = 512 * 1024;
+                    while (off < size) {
+                        var b64 = native.cloudReadChunk(token, off, CHUNK);
+                        if (!b64) throw new Error('读取云端备份失败');
+                        var chunk = base64ToBytes(b64);
+                        bytes.set(chunk, off);
+                        off += chunk.length;
+                    }
+                    native.cloudCloseDownload(token);
+                    var file = new File([bytes], 'apple-diary-cloud.zip', { type: 'application/zip' });
+                    closeSyncModal();
+                    notify('云端备份已下载，请选择要恢复的内容', 'success');
+                    if (typeof importAllData === 'function') {
+                        await importAllData(file);
+                    } else {
+                        showError('备份恢复模块未加载，请重启应用');
+                    }
+                } catch (e) {
+                    native.cloudCloseDownload(token);
+                    showError(e && e.message ? e.message : '写入失败');
+                }
+                return;
+            }
+            var pct = 0;
+            if (st.state === 'downloading' && st.total > 0) {
+                pct = Math.max(0, Math.min(100, Math.round(st.received / st.total * 100)));
+            }
+            var title = st.state === 'decrypting' ? '正在解密备份…' : '正在从云端下载…';
+            panelEl.innerHTML = '<div class="apple-sync-card">'
+                + '<h4><i class="fas fa-cloud-arrow-down" style="color:#3C8DDE"></i> ' + title + '</h4>'
+                + '<div class="apple-sync-progress"><i style="width:' + pct + '%"></i></div>'
+                + '<p style="text-align:center">' + (st.state === 'downloading'
+                    ? (pct + '% · ' + formatSize(st.received) + (st.total > 0 ? ' / ' + formatSize(st.total) : ''))
+                    : '请稍候') + '</p>'
+                + '<p style="text-align:center;opacity:.7">不要锁屏，保持网络畅通。</p>'
+                + '</div>';
+            if (Date.now() - started > 8 * 60 * 1000) {
+                clearInterval(cloudTimer);
+                cloudTimer = null;
+                activeCloudToken = null;
+                native.cloudCancelDownload(token);
+                native.cloudCloseDownload(token);
+                showError('下载超时，请检查网络后重试');
+            }
+        }, 400);
     }
 
     // ---------------- 返回键 ----------------

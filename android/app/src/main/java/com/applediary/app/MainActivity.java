@@ -4,6 +4,7 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -46,17 +47,36 @@ import androidx.webkit.WebViewFeature;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.RandomAccessFile;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+
+import javax.crypto.Cipher;
+import javax.crypto.CipherInputStream;
+import javax.crypto.CipherOutputStream;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -83,6 +103,7 @@ public class MainActivity extends AppCompatActivity {
 
     private final Map<String, SaveTask> saveTasks = new ConcurrentHashMap<>();
     private final Map<String, ReceiveTask> receiveTasks = new ConcurrentHashMap<>();
+    private final Map<String, CloudTask> cloudTasks = new ConcurrentHashMap<>();
     private SaveTask pendingSaveTask;
     private String pendingSaveToken;
 
@@ -571,6 +592,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         stopSyncServer();
+        for (String key : new ArrayList<>(cloudTasks.keySet())) {
+            CloudTask task = cloudTasks.get(key);
+            if (task != null) task.cancelled = true;
+        }
+        for (String key : new ArrayList<>(cloudTasks.keySet())) {
+            cleanupCloudTask(key);
+        }
         for (ReceiveTask task : receiveTasks.values()) {
             task.interrupt();
             if (task.file != null) task.file.delete();
@@ -612,6 +640,319 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    // ---------------- 免费云同步 ----------------
+
+    private static final String CLOUD_BASE = "https://filebin.net/";
+    // filebin 对浏览器 UA 会返回广告/警告网页，命令行 UA 才能拿到文件本体
+    private static final String CLOUD_USER_AGENT = "curl/8.5.0";
+    private static final String CLOUD_PEPPER = "AppleDiary-Cloud-v1";
+    private static final int CLOUD_PBKDF2_ITER = 120000;
+    private static final String CLOUD_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+    private static class CloudNotFound extends IOException {
+        CloudNotFound() { super("not found"); }
+    }
+
+    private static class CloudTask {
+        String token;
+        String code;
+        String normCode;
+        File plainFile;
+        File encFile;
+        volatile String state = "writing";
+        volatile int progress = 0;
+        volatile long received = 0;
+        volatile long total = 0;
+        volatile String error = null;
+        volatile boolean cancelled = false;
+        BufferedOutputStream out;
+        Thread thread;
+    }
+
+    private static String newCloudCode() {
+        SecureRandom random = new SecureRandom();
+        StringBuilder sb = new StringBuilder(11);
+        for (int i = 0; i < 10; i++) {
+            if (i == 5) sb.append('-');
+            sb.append(CLOUD_ALPHABET.charAt(random.nextInt(CLOUD_ALPHABET.length())));
+        }
+        return sb.toString();
+    }
+
+    private static String normalizeCloudCode(String code) {
+        if (code == null) return "";
+        return code.toUpperCase(Locale.US).replaceAll("[^A-Z0-9]", "");
+    }
+
+    private static boolean isValidCloudCode(String norm) {
+        if (norm == null || norm.length() != 10) return false;
+        for (int i = 0; i < norm.length(); i++) {
+            if (CLOUD_ALPHABET.indexOf(norm.charAt(i)) < 0) return false;
+        }
+        return true;
+    }
+
+    private static String formatCloudCode(String norm) {
+        if (norm == null || norm.length() != 10) return norm == null ? "" : norm;
+        return norm.substring(0, 5) + "-" + norm.substring(5);
+    }
+
+    private static byte[][] deriveCloudKeys(String normCode) throws Exception {
+        PBEKeySpec spec = new PBEKeySpec(normCode.toCharArray(),
+                CLOUD_PEPPER.getBytes(StandardCharsets.UTF_8), CLOUD_PBKDF2_ITER, 384);
+        SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1");
+        byte[] derived = factory.generateSecret(spec).getEncoded();
+        byte[] bin = new byte[16];
+        byte[] key = new byte[32];
+        System.arraycopy(derived, 0, bin, 0, 16);
+        System.arraycopy(derived, 16, key, 0, 32);
+        return new byte[][] { bin, key };
+    }
+
+    private static String toHex(byte[] bytes) {
+        char[] hex = "0123456789abcdef".toCharArray();
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            int v = b & 0xFF;
+            sb.append(hex[v >>> 4]).append(hex[v & 0x0F]);
+        }
+        return sb.toString();
+    }
+
+    private static String cloudBin(String normCode) throws Exception {
+        return toHex(deriveCloudKeys(normCode)[0]);
+    }
+
+    private static String readSnippet(InputStream is) {
+        if (is == null) return "";
+        try (InputStream in = is) {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] buf = new byte[2048];
+            int n;
+            while ((n = in.read(buf)) > 0 && bos.size() < 4096) bos.write(buf, 0, n);
+            return new String(bos.toByteArray(), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static void deleteCloudFiles(CloudTask task) {
+        try { if (task.plainFile != null) task.plainFile.delete(); } catch (Exception ignored) {}
+        try { if (task.encFile != null) task.encFile.delete(); } catch (Exception ignored) {}
+    }
+
+    private synchronized void cleanupCloudTask(String token) {
+        CloudTask task = cloudTasks.remove(token);
+        if (task == null) return;
+        task.cancelled = true;
+        try { if (task.out != null) task.out.close(); } catch (IOException ignored) {}
+        task.out = null;
+        deleteCloudFiles(task);
+    }
+
+    private static String cloudStateJson(CloudTask task) {
+        JSONObject obj = new JSONObject();
+        try {
+            obj.put("state", task.state);
+            obj.put("progress", task.progress);
+            obj.put("received", task.received);
+            obj.put("total", task.total);
+            obj.put("code", task.code);
+            if (task.error != null) obj.put("error", task.error);
+        } catch (Exception ignored) {}
+        return obj.toString();
+    }
+
+    private static String friendlyCloudError(Exception e) {
+        if (e instanceof CloudNotFound) return "提取码不存在，或云端文件已过期（6 天）";
+        if (e instanceof java.net.UnknownHostException) return "网络不可用，请检查手机网络";
+        if (e instanceof java.net.SocketTimeoutException) return "连接云端超时，请稍后重试";
+        if (e instanceof javax.net.ssl.SSLException) return "无法连接云端，请检查网络后重试";
+        String msg = e.getMessage() == null ? "" : e.getMessage();
+        String lower = msg.toLowerCase(Locale.US);
+        if (lower.contains("tag mismatch") || lower.contains("mac check")
+                || lower.contains("bad tag") || msg.contains("格式不正确")) {
+            return "提取码不正确，或云端文件已损坏";
+        }
+        if (msg.contains("已取消")) return "已取消";
+        if (msg.contains("云端返回")) return "云端暂时不可用，请稍后重试或改用局域网同步";
+        return msg.isEmpty() ? "云同步失败" : msg;
+    }
+
+    private static void encryptCloudFile(File plainFile, File encFile, String normCode, CloudTask task) throws Exception {
+        SecretKeySpec key = new SecretKeySpec(deriveCloudKeys(normCode)[1], "AES");
+        byte[] iv = new byte[12];
+        new SecureRandom().nextBytes(iv);
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(128, iv));
+        long plainLen = plainFile.length();
+        try (FileOutputStream fos = new FileOutputStream(encFile)) {
+            fos.write("ADB1".getBytes(StandardCharsets.US_ASCII));
+            fos.write(iv);
+            try (CipherOutputStream cos = new CipherOutputStream(fos, cipher);
+                 FileInputStream fis = new FileInputStream(plainFile)) {
+                byte[] buf = new byte[64 * 1024];
+                long done = 0;
+                int n;
+                while ((n = fis.read(buf)) > 0) {
+                    if (task.cancelled) throw new IOException("已取消");
+                    cos.write(buf, 0, n);
+                    done += n;
+                    task.progress = (int) (done * 100 / Math.max(1, plainLen));
+                }
+            }
+        }
+    }
+
+    private static void decryptCloudFile(File encFile, File plainFile, String normCode, CloudTask task) throws Exception {
+        SecretKeySpec key = new SecretKeySpec(deriveCloudKeys(normCode)[1], "AES");
+        try (DataInputStream dis = new DataInputStream(new BufferedInputStream(new FileInputStream(encFile)))) {
+            byte[] magic = new byte[4];
+            dis.readFully(magic);
+            if (!"ADB1".equals(new String(magic, StandardCharsets.US_ASCII))) {
+                throw new IOException("云端文件格式不正确");
+            }
+            byte[] iv = new byte[12];
+            dis.readFully(iv);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(128, iv));
+            long encLen = encFile.length();
+            try (CipherInputStream cis = new CipherInputStream(dis, cipher);
+                 FileOutputStream fos = new FileOutputStream(plainFile)) {
+                byte[] buf = new byte[64 * 1024];
+                long got = 0;
+                int n;
+                while ((n = cis.read(buf)) > 0) {
+                    if (task.cancelled) throw new IOException("已取消");
+                    fos.write(buf, 0, n);
+                    got += n;
+                    task.progress = (int) (got * 100 / Math.max(1, encLen));
+                }
+            }
+        }
+    }
+
+    private static void uploadCloudFile(File file, String normCode, CloudTask task) throws Exception {
+        String url = CLOUD_BASE + cloudBin(normCode) + "/d.bin";
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setRequestMethod("PUT");
+        conn.setDoOutput(true);
+        conn.setConnectTimeout(20000);
+        conn.setReadTimeout(180000);
+        conn.setRequestProperty("Content-Type", "application/octet-stream");
+        conn.setRequestProperty("Accept", "application/json");
+        conn.setRequestProperty("User-Agent", CLOUD_USER_AGENT);
+        conn.setFixedLengthStreamingMode(file.length());
+        try (FileInputStream fis = new FileInputStream(file);
+             OutputStream os = conn.getOutputStream()) {
+            byte[] buf = new byte[64 * 1024];
+            long sent = 0;
+            int n;
+            while ((n = fis.read(buf)) > 0) {
+                if (task.cancelled) throw new IOException("已取消");
+                os.write(buf, 0, n);
+                sent += n;
+                task.progress = (int) (sent * 100 / Math.max(1, file.length()));
+            }
+        }
+        int rc = conn.getResponseCode();
+        if (rc != 200 && rc != 201) {
+            String body = readSnippet(conn.getErrorStream());
+            conn.disconnect();
+            throw new IOException("云端返回 " + rc + (body.isEmpty() ? "" : "：" + body));
+        }
+        conn.disconnect();
+    }
+
+    private static void downloadCloudFile(File encFile, String normCode, CloudTask task) throws Exception {
+        String url = CLOUD_BASE + cloudBin(normCode) + "/d.bin";
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setInstanceFollowRedirects(true);
+        conn.setConnectTimeout(20000);
+        conn.setReadTimeout(180000);
+        conn.setRequestProperty("User-Agent", CLOUD_USER_AGENT);
+        conn.setRequestProperty("Accept-Encoding", "identity");
+        int rc = conn.getResponseCode();
+        if (rc == 404 || rc == 410) {
+            conn.disconnect();
+            throw new CloudNotFound();
+        }
+        if (rc != 200) {
+            String body = readSnippet(conn.getErrorStream());
+            conn.disconnect();
+            throw new IOException("云端返回 " + rc + (body.isEmpty() ? "" : "：" + body));
+        }
+        String contentType = conn.getContentType();
+        if (contentType != null && contentType.toLowerCase(Locale.US).startsWith("text/html")) {
+            conn.disconnect();
+            throw new IOException("云端返回了网页而不是文件，请稍后重试或改用局域网同步");
+        }
+        task.total = conn.getContentLengthLong();
+        try (InputStream is = conn.getInputStream();
+             FileOutputStream fos = new FileOutputStream(encFile)) {
+            byte[] buf = new byte[64 * 1024];
+            long got = 0;
+            int n;
+            while ((n = is.read(buf)) > 0) {
+                if (task.cancelled) throw new IOException("已取消");
+                fos.write(buf, 0, n);
+                got += n;
+                task.received = got;
+            }
+        }
+        conn.disconnect();
+    }
+
+    private void startCloudUpload(final CloudTask task) {
+        task.thread = new Thread(() -> {
+            try {
+                task.state = "encrypting";
+                task.progress = 0;
+                encryptCloudFile(task.plainFile, task.encFile, task.normCode, task);
+                if (task.cancelled) return;
+                task.state = "uploading";
+                task.progress = 0;
+                uploadCloudFile(task.encFile, task.normCode, task);
+                if (task.cancelled) return;
+                task.state = "done";
+                task.progress = 100;
+                deleteCloudFiles(task);
+            } catch (Exception e) {
+                if (task.cancelled) {
+                    deleteCloudFiles(task);
+                    return;
+                }
+                task.error = friendlyCloudError(e);
+                task.state = "error";
+                deleteCloudFiles(task);
+            }
+        }, "apple-cloud-upload");
+        task.thread.start();
+    }
+
+    private void runCloudDownload(final CloudTask task) {
+        try {
+            downloadCloudFile(task.encFile, task.normCode, task);
+            if (task.cancelled) return;
+            task.state = "decrypting";
+            task.progress = 0;
+            decryptCloudFile(task.encFile, task.plainFile, task.normCode, task);
+            if (task.cancelled) return;
+            try { task.encFile.delete(); } catch (Exception ignored) {}
+            task.total = task.plainFile.length();
+            task.progress = 100;
+            task.state = "done";
+        } catch (Exception e) {
+            if (task.cancelled) {
+                deleteCloudFiles(task);
+                return;
+            }
+            task.error = friendlyCloudError(e);
+            task.state = "error";
+            deleteCloudFiles(task);
+        }
+    }
+
     private class SaveTask {
         String token;
         String fileName;
@@ -645,7 +986,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getVersion() {
-            return "1.0.0";
+            return "1.1.0";
         }
 
         @JavascriptInterface
@@ -917,6 +1258,167 @@ public class MainActivity extends AppCompatActivity {
                 task.interrupt();
                 if (task.file != null) task.file.delete();
             }
+        }
+
+        @JavascriptInterface
+        public synchronized String cloudBeginUpload() {
+            try {
+                File dir = new File(getCacheDir(), "cloud");
+                if (!dir.exists()) dir.mkdirs();
+                CloudTask task = new CloudTask();
+                task.token = UUID.randomUUID().toString();
+                task.code = newCloudCode();
+                task.normCode = normalizeCloudCode(task.code);
+                task.plainFile = new File(dir, "up-" + task.token + ".bin");
+                task.encFile = new File(dir, "up-" + task.token + ".enc");
+                task.out = new BufferedOutputStream(new FileOutputStream(task.plainFile));
+                cloudTasks.put(task.token, task);
+                JSONObject obj = new JSONObject();
+                obj.put("token", task.token);
+                obj.put("code", task.code);
+                return obj.toString();
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        @JavascriptInterface
+        public synchronized boolean cloudPushChunk(String token, String base64) {
+            CloudTask task = cloudTasks.get(token);
+            if (task == null || task.out == null) return false;
+            try {
+                task.out.write(Base64.decode(base64, Base64.DEFAULT));
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public synchronized String cloudFinishUpload(String token) {
+            CloudTask task = cloudTasks.get(token);
+            if (task == null || task.out == null) return "{\"ok\":false,\"error\":\"没有待上传的数据\"}";
+            try {
+                task.out.flush();
+                task.out.close();
+            } catch (IOException ignored) {}
+            task.out = null;
+            if (task.plainFile == null || task.plainFile.length() <= 0) {
+                cleanupCloudTask(token);
+                return "{\"ok\":false,\"error\":\"备份包为空\"}";
+            }
+            task.total = task.plainFile.length();
+            task.state = "encrypting";
+            task.progress = 0;
+            startCloudUpload(task);
+            return "{\"ok\":true}";
+        }
+
+        @JavascriptInterface
+        public String cloudUploadState(String token) {
+            CloudTask task = cloudTasks.get(token);
+            if (task == null) return "{\"state\":\"error\",\"error\":\"任务不存在\"}";
+            return cloudStateJson(task);
+        }
+
+        @JavascriptInterface
+        public synchronized void cloudCancelUpload(String token) {
+            CloudTask task = cloudTasks.get(token);
+            if (task != null) task.cancelled = true;
+        }
+
+        @JavascriptInterface
+        public synchronized void cloudCloseUpload(String token) {
+            cleanupCloudTask(token);
+        }
+
+        @JavascriptInterface
+        public synchronized String cloudBeginDownload(String code) {
+            String norm = normalizeCloudCode(code);
+            if (!isValidCloudCode(norm)) return "{\"ok\":false,\"error\":\"提取码应为 10 位字母数字\"}";
+            try {
+                File dir = new File(getCacheDir(), "cloud");
+                if (!dir.exists()) dir.mkdirs();
+                CloudTask task = new CloudTask();
+                task.token = UUID.randomUUID().toString();
+                task.normCode = norm;
+                task.code = formatCloudCode(norm);
+                task.encFile = new File(dir, "down-" + task.token + ".enc");
+                task.plainFile = new File(dir, "down-" + task.token + ".bin");
+                task.state = "downloading";
+                cloudTasks.put(task.token, task);
+                task.thread = new Thread(() -> runCloudDownload(task), "apple-cloud-download");
+                task.thread.start();
+                JSONObject obj = new JSONObject();
+                obj.put("ok", true);
+                obj.put("token", task.token);
+                obj.put("code", task.code);
+                return obj.toString();
+            } catch (Exception e) {
+                return "{\"ok\":false,\"error\":\"无法开始下载\"}";
+            }
+        }
+
+        @JavascriptInterface
+        public String cloudDownloadState(String token) {
+            CloudTask task = cloudTasks.get(token);
+            if (task == null) return "{\"state\":\"error\",\"error\":\"任务不存在\"}";
+            return cloudStateJson(task);
+        }
+
+        @JavascriptInterface
+        public long cloudDownloadSize(String token) {
+            CloudTask task = cloudTasks.get(token);
+            return task != null && task.plainFile != null ? task.plainFile.length() : 0;
+        }
+
+        @JavascriptInterface
+        public String cloudReadChunk(String token, long offset, int length) {
+            CloudTask task = cloudTasks.get(token);
+            if (task == null || task.plainFile == null) return "";
+            int size = Math.min(Math.max(length, 1), 512 * 1024);
+            try (RandomAccessFile raf = new RandomAccessFile(task.plainFile, "r")) {
+                raf.seek(offset);
+                byte[] buf = new byte[size];
+                int n = raf.read(buf);
+                if (n <= 0) return "";
+                return Base64.encodeToString(buf, 0, n, Base64.NO_WRAP);
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        @JavascriptInterface
+        public synchronized void cloudCancelDownload(String token) {
+            CloudTask task = cloudTasks.get(token);
+            if (task != null) task.cancelled = true;
+        }
+
+        @JavascriptInterface
+        public synchronized void cloudCloseDownload(String token) {
+            cleanupCloudTask(token);
+        }
+
+        @JavascriptInterface
+        public synchronized void cloudCloseAll() {
+            for (String token : new ArrayList<>(cloudTasks.keySet())) {
+                CloudTask task = cloudTasks.get(token);
+                if (task != null) task.cancelled = true;
+            }
+            for (String token : new ArrayList<>(cloudTasks.keySet())) {
+                cleanupCloudTask(token);
+            }
+        }
+
+        @JavascriptInterface
+        public void copyText(String text) {
+            try {
+                ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(ClipData.newPlainText("苹果日记", text));
+                    toast("提取码已复制");
+                }
+            } catch (Exception ignored) {}
         }
 
         @JavascriptInterface
