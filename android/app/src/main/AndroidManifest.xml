@@ -26,6 +26,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
@@ -81,6 +82,15 @@
             android:name=".CallForegroundService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback"
+            android:stopWithTask="true" />
+
+        <!-- 后台常驻前台服务：App 退到后台时弹一条「其他」渠道的常驻通知，
+             提升进程优先级避免被系统回收，保持连接接收新消息。
+             回到前台时由 MainActivity 主动停止。 -->
+        <service
+            android:name=".KeepAliveForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
             android:stopWithTask="true" />
 
         <receiver

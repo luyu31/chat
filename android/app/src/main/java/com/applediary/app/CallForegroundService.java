@@ -52,6 +52,12 @@ public class CallForegroundService extends Service {
     private PowerManager.WakeLock wakeLock;
     private MediaPlayer silence;
     private boolean foreground = false;
+    private static volatile boolean running = false;
+
+    /** 通话前台服务是否正在运行：用来决定后台是否还要再弹一条常驻通知。 */
+    static boolean isRunning() {
+        return running;
+    }
 
     // ---------------- 供 MainActivity 桥调用 ----------------
 
@@ -124,6 +130,7 @@ public class CallForegroundService extends Service {
         } catch (Exception ignored) {}
         prefs().edit().remove(K_START).apply();
         foreground = false;
+        running = false;
         super.onDestroy();
     }
 
@@ -193,6 +200,7 @@ public class CallForegroundService extends Service {
             startForeground(NOTIFY_ID, n);
         }
         foreground = true;
+        running = true;
 
         acquireLock();
         startSilence();
@@ -206,6 +214,7 @@ public class CallForegroundService extends Service {
         } catch (Exception ignored) {}
         prefs().edit().remove(K_START).apply();
         foreground = false;
+        running = false;
         stopSelf();
     }
 

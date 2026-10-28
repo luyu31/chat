@@ -203,11 +203,17 @@ public class MainActivity extends AppCompatActivity {
                     "window.__applePushOnBackground&&window.__applePushOnBackground()", null);
             webView.onPause();
         }
+        // 退到后台：常驻一条通知保活（通话中已有 CallForegroundService，不重复弹）
+        if (!CallForegroundService.isRunning()) {
+            KeepAliveForegroundService.start(this);
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        // 回到前台：撤掉后台常驻通知（通话中的保活通知不受影响，它是另一个服务）
+        KeepAliveForegroundService.stop(this);
         if (webView != null) {
             webView.onResume();
             webView.evaluateJavascript(
