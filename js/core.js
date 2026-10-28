@@ -786,8 +786,106 @@ window.deleteAnniversaryItem = function(id) {
 };
 
 const _BACKUP_PREFIX = 'BACKUP_V1_';
-function _backupCriticalData() {
+
+// ── 保存层：内容指纹 ───────────────────────────────────────────
+// 目的：发一条消息时，不要顺手把几 MB 的贴纸库/头像重新写一遍 IndexedDB。
+// 做法：给"内容没变"的大 key 算一个便宜指纹，没变化就跳过这次写入。
+// 指纹是近似值：文本做完整哈希；base64 图片/贴纸只取长度 + 尾部 12 个字符，
+// 避免为了判断"有没有变"再去遍历几 MB 的 base64。
+let _saveSigSession = null;
+let _sigChatMessages = null;
+let _sigStickerLibrary = null;
+let _sigMyStickerLibrary = null;
+let _sigPartnerAvatar = null;
+let _sigMyAvatar = null;
+
+function _mixHash(h, str) {
+    if (!str) return h;
+    for (let i = 0; i < str.length; i++) {
+        h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    }
+    return h;
+}
+
+function _blobSig(str) {
+    return str.length + ':' + str.slice(-12);
+}
+
+function _stringArraySig(arr) {
+    if (!Array.isArray(arr)) return '0';
+    let total = 0;
+    let h = arr.length;
+    for (let i = 0; i < arr.length; i++) {
+        const item = arr[i];
+        if (typeof item === 'string') {
+            total += item.length;
+            h = _mixHash(h, _blobSig(item));
+        } else {
+            h = _mixHash(h, item && item.id ? String(item.id) : '');
+        }
+    }
+    return arr.length + ':' + total + ':' + h;
+}
+
+function _textSig(t) {
+    if (!t) return '';
+    // 超长文本只取首尾各 2000 字符，避免一次指纹计算扫过整段大文本；
+    // 长度已包含在签名里，改动长度一定会被识别
+    if (t.length <= 4000) return t;
+    return t.length + ':' + t.slice(0, 2000) + ':' + t.slice(-2000);
+}
+
+function _messagesSig() {
+    let h = messages.length;
+    for (let i = 0; i < messages.length; i++) {
+        const m = messages[i];
+        if (!m) continue;
+        h = _mixHash(h, String(m.id));
+        h = _mixHash(h, _textSig(m.text));
+        h = _mixHash(h, m.type || '');
+        h = _mixHash(h, m.sender || '');
+        h = _mixHash(h, m.status || '');
+        h = _mixHash(h, m.reaction || '');
+        h = _mixHash(h, _textSig(m.note));
+        if (m.image) h = _mixHash(h, _blobSig(m.image));
+        if (m.favorited) h = (h + 1) | 0;
+        if (m.replyTo) h = _mixHash(h, String(m.replyTo.id || ''));
+    }
+    return messages.length + ':' + h;
+}
+
+// 切换梦角（SESSION_ID 变化）后 storage key 全变了，指纹缓存必须一起清掉，
+// 否则可能误判"内容没变"而跳过一次对新会话的首次写入
+function _resetSaveSignatures() {
+    if (_saveSigSession !== SESSION_ID) {
+        _saveSigSession = SESSION_ID;
+        _sigChatMessages = null;
+        _sigStickerLibrary = null;
+        _sigMyStickerLibrary = null;
+        _sigPartnerAvatar = null;
+        _sigMyAvatar = null;
+    }
+}
+
+// 同步 localStorage 兜底备份：不强制时最短 8 秒一次。
+// 消息本身已经异步写进 IndexedDB，这里只是为了防"进程被杀/闪退"，
+// 没必要每发一条消息就把整段 messages JSON.stringify 一次（大图时是几 MB）。
+// 退出/切后台/挂断等路径仍需立即落盘，所以外部调用默认 force = true。
+const BACKUP_MIN_INTERVAL = 8000;
+let _lastBackupAt = 0;
+if (!window.__SAVE_STATS__) {
+    window.__SAVE_STATS__ = { saves: 0, skippedWrites: 0, backups: 0, skippedBackups: 0, lastBackupMs: 0, lastBackupBytes: 0 };
+}
+
+function _backupCriticalData(force = true) {
     if (window._skipBackup) return;
+    const now = Date.now();
+    if (!force && now - _lastBackupAt < BACKUP_MIN_INTERVAL) {
+        window.__SAVE_STATS__.skippedBackups++;
+        return;
+    }
+    _lastBackupAt = now;
+    const _t0 = (window.performance && performance.now) ? performance.now() : 0;
     try {
         const backupPayload = {
             ts: Date.now(),
@@ -809,18 +907,21 @@ function _backupCriticalData() {
 
         const json = JSON.stringify(payloadToStore);
 
+        let storedJson = json;
         if (json.length > 4.5 * 1024 * 1024) {
             const smallerPayload = {
                 ...payloadToStore,
                 messages: messages.slice(-50),
                 _truncated: true
             };
-            const smallerJson = JSON.stringify(smallerPayload);
-            localStorage.setItem(_BACKUP_PREFIX + 'critical', smallerJson);
-        } else {
-            localStorage.setItem(_BACKUP_PREFIX + 'critical', json);
+            storedJson = JSON.stringify(smallerPayload);
         }
+        localStorage.setItem(_BACKUP_PREFIX + 'critical', storedJson);
         localStorage.setItem(_BACKUP_PREFIX + 'timestamp', String(Date.now()));
+        const _stats = window.__SAVE_STATS__;
+        _stats.backups++;
+        _stats.lastBackupBytes = storedJson.length;
+        if (_t0) _stats.lastBackupMs = Math.round((performance.now() - _t0) * 10) / 10;
     } catch (e) {
         console.warn('localStorage 备份写入失败（可能存储已满）:', e);
     }
@@ -836,64 +937,122 @@ function _tryRecoverFromBackup() {
     }
 }
 
+let _saveInFlight = null;
+let _saveQueued = false;
+
 const saveData = async () => {
     if (!SESSION_ID) {
         console.warn('[saveData] SESSION_ID 尚未初始化，跳过保存以防数据写入临时 key');
         return;
     }
 
-    const promises = [
-        { key: 'chatSettings',           val: () => localforage.setItem(getStorageKey('chatSettings'), settings) },
-        { key: 'customReplies',          val: () => localforage.setItem(getStorageKey('customReplies'), customReplies) },
-        { key: 'customReplyGroups',      val: () => localforage.setItem(getStorageKey('customReplyGroups'), window.customReplyGroups || []) },
-        { key: 'customPokeGroups',        val: () => localforage.setItem(getStorageKey('customPokeGroups'), window.customPokeGroups || []) },
-        { key: 'customStatusGroups',      val: () => localforage.setItem(getStorageKey('customStatusGroups'), window.customStatusGroups || []) },
-        { key: 'customEmojis',           val: () => localforage.setItem(getStorageKey('customEmojis'), customEmojis) },
-        { key: 'anniversaries',          val: () => localforage.setItem(getStorageKey('anniversaries'), anniversaries) },
-        { key: 'customPokes',            val: () => localforage.setItem(getStorageKey('customPokes'), customPokes) },
-        { key: 'customStatuses',         val: () => localforage.setItem(getStorageKey('customStatuses'), customStatuses) },
-        { key: 'customMottos',           val: () => localforage.setItem(getStorageKey('customMottos'), customMottos) },
-        { key: 'customIntros',           val: () => localforage.setItem(getStorageKey('customIntros'), customIntros) },
-        { key: 'customPeriodCare',       val: () => localforage.setItem(getStorageKey('customPeriodCare'), customPeriodCare) },
-        { key: 'stickerLibrary',         val: () => localforage.setItem(getStorageKey('stickerLibrary'), stickerLibrary) },
-        { key: 'myStickerLibrary',       val: () => localforage.setItem(getStorageKey('myStickerLibrary'), myStickerLibrary) },
-        { key: 'myStickerGroups',        val: () => localforage.setItem(getStorageKey('myStickerGroups'), window.myStickerGroups || []) },
-        { key: 'customThemes',           val: () => localforage.setItem(`${APP_PREFIX}customThemes`, customThemes) },
-        { key: 'themeSchemes',           val: () => localforage.setItem(`${APP_PREFIX}themeSchemes`, themeSchemes) },
-        { key: 'chatMessages',           val: () => localforage.setItem(getStorageKey('chatMessages'), messages) },
-    ];
-
-    // 头像从内存缓存读（不从 DOM 读，DOM 的 img.src 不可靠：可能是 blob URL、绝对路径或空字符串）
-    const partnerAvatarSrc = window._avatarCache && window._avatarCache.partner || null;
-    const myAvatarSrc = window._avatarCache && window._avatarCache.me || null;
-
-    if (partnerAvatarSrc) {
-        promises.push({ key: 'partnerAvatar', val: () => localforage.setItem(getStorageKey('partnerAvatar'), partnerAvatarSrc) });
-    }
-    // 注意：头像不做 removeItem —— 用户没改头像时 _avatarCache 可能是 null，不能误删
-
-    if (myAvatarSrc) {
-        promises.push({ key: 'myAvatar', val: () => localforage.setItem(getStorageKey('myAvatar'), myAvatarSrc) });
+    // 同一时刻只跑一轮写入；期间再有保存请求就合并成"跑完再补一次"，
+    // 避免连续发消息 / 拖动滑块时多轮全量写入互相叠加
+    if (_saveInFlight) {
+        _saveQueued = true;
+        return _saveInFlight;
     }
 
-    const results = await Promise.allSettled(promises.map(p => {
-        try { return p.val(); }
-        catch(e) { return Promise.reject(e); }
-    }));
+    _saveInFlight = (async () => {
+        _resetSaveSignatures();
+        const stats = window.__SAVE_STATS__;
+        stats.saves++;
 
-    const failed = [];
-    results.forEach((r, i) => {
-        if (r.status === 'rejected') {
-            failed.push(promises[i].key);
-            console.error(`[saveData] 保存失败: ${promises[i].key}`, r.reason);
+        const msgsSig = _messagesSig();
+        const stickerSig = _stringArraySig(stickerLibrary);
+        const myStickerSig = _stringArraySig(myStickerLibrary);
+
+        const promises = [
+            { key: 'chatSettings',           val: () => localforage.setItem(getStorageKey('chatSettings'), settings) },
+            { key: 'customReplies',          val: () => localforage.setItem(getStorageKey('customReplies'), customReplies) },
+            { key: 'customReplyGroups',      val: () => localforage.setItem(getStorageKey('customReplyGroups'), window.customReplyGroups || []) },
+            { key: 'customPokeGroups',        val: () => localforage.setItem(getStorageKey('customPokeGroups'), window.customPokeGroups || []) },
+            { key: 'customStatusGroups',      val: () => localforage.setItem(getStorageKey('customStatusGroups'), window.customStatusGroups || []) },
+            { key: 'customEmojis',           val: () => localforage.setItem(getStorageKey('customEmojis'), customEmojis) },
+            { key: 'anniversaries',          val: () => localforage.setItem(getStorageKey('anniversaries'), anniversaries) },
+            { key: 'customPokes',            val: () => localforage.setItem(getStorageKey('customPokes'), customPokes) },
+            { key: 'customStatuses',         val: () => localforage.setItem(getStorageKey('customStatuses'), customStatuses) },
+            { key: 'customMottos',           val: () => localforage.setItem(getStorageKey('customMottos'), customMottos) },
+            { key: 'customIntros',           val: () => localforage.setItem(getStorageKey('customIntros'), customIntros) },
+            { key: 'customPeriodCare',       val: () => localforage.setItem(getStorageKey('customPeriodCare'), customPeriodCare) },
+            { key: 'myStickerGroups',        val: () => localforage.setItem(getStorageKey('myStickerGroups'), window.myStickerGroups || []) },
+            { key: 'customThemes',           val: () => localforage.setItem(`${APP_PREFIX}customThemes`, customThemes) },
+            { key: 'themeSchemes',           val: () => localforage.setItem(`${APP_PREFIX}themeSchemes`, themeSchemes) },
+        ];
+
+        // 体积大、写入贵的 key：内容没变就跳过，省掉一次几 MB 的 structured clone
+        if (msgsSig !== _sigChatMessages) {
+            promises.push({ key: 'chatMessages', val: () => localforage.setItem(getStorageKey('chatMessages'), messages) });
+        } else {
+            stats.skippedWrites++;
         }
-    });
+        if (stickerSig !== _sigStickerLibrary) {
+            promises.push({ key: 'stickerLibrary', val: () => localforage.setItem(getStorageKey('stickerLibrary'), stickerLibrary) });
+        } else {
+            stats.skippedWrites++;
+        }
+        if (myStickerSig !== _sigMyStickerLibrary) {
+            promises.push({ key: 'myStickerLibrary', val: () => localforage.setItem(getStorageKey('myStickerLibrary'), myStickerLibrary) });
+        } else {
+            stats.skippedWrites++;
+        }
 
-    if (failed.length > 0) {
-        console.warn(`[saveData] ${failed.length} 项写入失败，已触发 localStorage 降级备份`, failed);
+        // 头像从内存缓存读（不从 DOM 读，DOM 的 img.src 不可靠：可能是 blob URL、绝对路径或空字符串）
+        const partnerAvatarSrc = window._avatarCache && window._avatarCache.partner || null;
+        const myAvatarSrc = window._avatarCache && window._avatarCache.me || null;
+
+        if (partnerAvatarSrc && _blobSig(partnerAvatarSrc) !== _sigPartnerAvatar) {
+            promises.push({ key: 'partnerAvatar', val: () => localforage.setItem(getStorageKey('partnerAvatar'), partnerAvatarSrc) });
+        }
+        // 注意：头像不做 removeItem —— 用户没改头像时 _avatarCache 可能是 null，不能误删
+
+        if (myAvatarSrc && _blobSig(myAvatarSrc) !== _sigMyAvatar) {
+            promises.push({ key: 'myAvatar', val: () => localforage.setItem(getStorageKey('myAvatar'), myAvatarSrc) });
+        }
+
+        const results = await Promise.allSettled(promises.map(p => {
+            try { return p.val(); }
+            catch(e) { return Promise.reject(e); }
+        }));
+
+        const failed = [];
+        results.forEach((r, i) => {
+            if (r.status === 'rejected') {
+                failed.push(promises[i].key);
+                console.error(`[saveData] 保存失败: ${promises[i].key}`, r.reason);
+            }
+        });
+
+        // 写成功才记指纹；失败时保留旧指纹，下次保存会重试这一项
+        const wrote = {};
+        promises.forEach(p => { wrote[p.key] = true; });
+        const ok = k => wrote[k] && failed.indexOf(k) === -1;
+        if (ok('chatMessages')) _sigChatMessages = msgsSig;
+        if (ok('stickerLibrary')) _sigStickerLibrary = stickerSig;
+        if (ok('myStickerLibrary')) _sigMyStickerLibrary = myStickerSig;
+        if (ok('partnerAvatar') && partnerAvatarSrc) _sigPartnerAvatar = _blobSig(partnerAvatarSrc);
+        if (ok('myAvatar') && myAvatarSrc) _sigMyAvatar = _blobSig(myAvatarSrc);
+
+        if (failed.length > 0) {
+            console.warn(`[saveData] ${failed.length} 项写入失败，已触发 localStorage 降级备份`, failed);
+        }
+
+        // 非强制：距上次同步兜底备份不足 8 秒就跳过（退出/切后台路径仍会强制立即备份）
+        _backupCriticalData(false);
+    })();
+
+    try {
+        return await _saveInFlight;
+    } finally {
+        _saveInFlight = null;
+        if (_saveQueued) {
+            _saveQueued = false;
+            setTimeout(() => {
+                const p = saveData();
+                if (p && typeof p.catch === 'function') p.catch(e => console.warn('[saveData] 尾随保存失败:', e));
+            }, 0);
+        }
     }
-
-    _backupCriticalData();
 };
 
         function initializeRandomUI() {
