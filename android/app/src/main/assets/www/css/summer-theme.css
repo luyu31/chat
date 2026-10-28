@@ -82,13 +82,29 @@ html[data-skin="summer"] #message-input {
     color: var(--text);
     border-color: var(--divider);
 }
+/* 普通图标统一走 --icon；只有激活/悬停才用 --icon-active */
 html[data-skin="summer"] .input-btn:not(.send-btn) {
     background: var(--surface-2);
+    color: var(--icon);
+}
+html[data-skin="summer"] .input-btn:not(.send-btn):hover,
+html[data-skin="summer"] .input-btn:not(.send-btn):active {
     color: var(--icon-active);
 }
 html[data-skin="summer"] .send-btn {
     background: var(--primary-hover);
     color: #fff;
+}
+/* 顶栏按钮与"更多"菜单图标：默认 --icon，激活/悬停 --icon-active */
+html[data-skin="summer"] .action-btn {
+    color: var(--icon);
+}
+html[data-skin="summer"] .action-btn:hover,
+html[data-skin="summer"] .action-btn.active {
+    color: var(--icon-active);
+}
+html[data-skin="summer"] .more-menu-item .more-menu-icon {
+    color: var(--icon);
 }
 
 /* 聊天气泡：自己浅绿，对方白底 + 1px 分隔线 */
