@@ -1687,6 +1687,13 @@
             flex-shrink: 0;
         }
         .call-event-detail::before { content: '\00B7'; margin-right: 4px; }
+        .call-event-time {
+            font-variant-numeric: tabular-nums;
+            font-size: 10px;
+            opacity: 0.55;
+            flex-shrink: 0;
+            margin-left: 2px;
+        }
         .call-event-delete {
             background: none;
             border: none;

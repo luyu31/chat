@@ -528,6 +528,12 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         return img ? img.src : null;
     };
     const getName = () => window.settings?.partnerName || document.getElementById('partner-name')?.textContent.trim() || '对方';
+    const getMyName = () => window.settings?.myName || '我';
+
+    // 通话记录统一走 _addCallEvent，聊天里渲染成带时间的小药丸
+    function recordCall(icon, label, detail) {
+        sendCallEvent(icon, label, detail || null);
+    }
 
     function fillAv(avId) {
         const av = document.getElementById(avId), src = getAvSrc();
@@ -647,12 +653,15 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
     }
 
     function sendCallMsg(dur) {
-        if (dur < 2000) return;
-        sendCallEvent('fa-video', '视频通话已结束', fmt(dur));
+        // 挂断也要留记录：接通过的写时长，没接通就写"已取消"
+        if (dur > 0) recordCall('fa-video', '视频通话已结束', fmt(dur));
+        else recordCall('fa-video', '视频通话已取消', null);
     }
 
     function startCall(isPartner) {
         if (!S.enabled) return;
+        // 我打给对方：拨出时立刻留一条带时间的记录
+        if (!isPartner) recordCall('fa-video', `${getMyName()} 向 ${getName()} 发起视频通话`, null);
         S.active = true; S.startTime = null; S.elapsed = 0;
         S.minimized = false; S.isPartnerCall = !!isPartner; S.immersive = false;
         document.getElementById('call-window')?.classList.remove('immersive');
@@ -934,6 +943,8 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             document.getElementById('call-incoming-overlay')?.classList.remove('visible');
             clearTimeout(S.incomingTimer);
             try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
+            // 他打给我、我接听：在聊天界面留一条提示（带时间）
+            recordCall('fa-video', `${getMyName()} 接听了 ${getName()} 的视频通话`, null);
             startCall(true);
         });
 
@@ -987,6 +998,24 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             if (!S.enabled && S.active) endCall();
             S.enabled ? scheduleRandomCall() : clearTimeout(S.randomCallTimer);
         });
+
+        // 退出页面/关闭应用/切到后台：通话自动挂断，并在聊天里留下记录。
+        // 换通话背景会打开系统相册，那一刻页面也会短暂隐藏，所以用一个标记把它排除掉
+        let _ignoreHideOnce = false;
+        document.getElementById('call-bg-btn')?.addEventListener('click', () => { _ignoreHideOnce = true; });
+        const hangupOnExit = () => {
+            if (!S.active) return;
+            endCall();
+            // 退出时立刻落盘，别只等 500ms 防抖；_backupCriticalData 由 core.js 同步写入本地备份
+            try { if (typeof saveData === 'function') saveData(); } catch (e) {}
+        };
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') { _ignoreHideOnce = false; return; }
+            if (_ignoreHideOnce) return;
+            hangupOnExit();
+        });
+        window.addEventListener('pagehide', hangupOnExit);
+        window.addEventListener('beforeunload', hangupOnExit);
 
         initDrag(); initPillDrag(); initResize();
     }
