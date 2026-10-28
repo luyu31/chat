@@ -797,6 +797,8 @@ const _perf = {
     saves: [],      // 最近 20 次 saveData 的耗时
     backups: [],    // 最近 20 次兜底备份的耗时与字节数
     inputSync: [],  // 最近 100 次输入框高度测量的布局耗时（ms）
+    scrollFrames: [], // 最近 100 次滚动帧的处理耗时（ms）
+    scrollEvents: 0,  // 收到的原始 scroll 事件数（用来对比合并前后的触发次数）
     skippedBackups: 0
 };
 try {
@@ -819,6 +821,8 @@ window.__PERF__ = {
         _perf.saves.length = 0;
         _perf.backups.length = 0;
         _perf.inputSync.length = 0;
+        _perf.scrollFrames.length = 0;
+        _perf.scrollEvents = 0;
         _perf.skippedBackups = 0;
     },
     // 输入框高度测量的布局耗时统计（配合 console 里 __PERF__.enable() 使用）
@@ -834,6 +838,27 @@ window.__PERF__ = {
             p95: arr[Math.min(arr.length - 1, Math.floor(arr.length * 0.95))],
             skipped: _inputSync.skipped
         };
+    },
+    // 滚动帧处理耗时统计：events 是原始 scroll 事件数，frames 是真正处理了几帧
+    get scrollStats() {
+        const s = _perf.scrollFrames.slice();
+        if (!s.length) return { events: _perf.scrollEvents, frames: 0, avg: 0, max: 0, p95: 0 };
+        const arr = s.slice().sort((a, b) => a - b);
+        const sum = s.reduce((n, v) => n + v, 0);
+        return {
+            events: _perf.scrollEvents,
+            frames: s.length,
+            avg: Math.round(sum / s.length * 100) / 100,
+            max: Math.round(arr[arr.length - 1] * 100) / 100,
+            p95: Math.round(arr[Math.min(arr.length - 1, Math.floor(arr.length * 0.95))] * 100) / 100
+        };
+    },
+    bumpScrollEvent() {
+        _perf.scrollEvents++;
+    },
+    recordScrollFrame(ms) {
+        _perf.scrollFrames.push(ms);
+        if (_perf.scrollFrames.length > 100) _perf.scrollFrames.shift();
     },
     // "连续 20 条消息"的观察窗口：最近 20 次 saveData 的累计耗时
     get last20TotalMs() {
