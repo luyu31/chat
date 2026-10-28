@@ -14049,7 +14049,8 @@ body #user-sticker-picker .empty-sticker-tip {
 .input-area {
     padding: 10px 12px;
     gap: 8px;
-    align-items: center;
+    /* 输入框多行变高时，按钮固定贴底，不再跟着中线往上浮 */
+    align-items: flex-end;
     border-top: none;
 }
 
