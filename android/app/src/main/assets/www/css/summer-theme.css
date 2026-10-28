@@ -1,0 +1,122 @@
+/* ============================================================
+   夏日白昼 · 可选主题覆盖层
+   - 默认关闭，<html> 上不会出现 data-skin，本文件的规则全部不命中
+   - 开启时由 summer-theme.js 给 <html> 加 data-skin="summer"
+   - 核心颜色变量在 JS 里以内联变量覆盖（可精确还原，兼容自定义主题编辑器）；
+     本文件只负责少量组件级的视觉打磨
+   ============================================================ */
+
+html[data-skin="summer"] {
+    color-scheme: light;
+    --summer-radius-card: 16px;
+    --summer-radius-btn: 12px;
+    --summer-shadow-soft: 0 4px 16px rgba(127, 176, 105, 0.10);
+    --radius: 16px;
+    --shadow: var(--summer-shadow-soft);
+}
+html[data-skin="summer"][data-theme="dark"] {
+    color-scheme: dark;
+}
+
+/* 主界面底色 / 输入区 */
+html[data-skin="summer"] body,
+html[data-skin="summer"] .chat-container {
+    background: var(--primary-bg);
+    color: var(--text-primary);
+}
+html[data-skin="summer"] .input-area-wrapper {
+    background: var(--input-area-bg);
+    border-top-color: var(--border-color);
+}
+html[data-skin="summer"] #message-input {
+    background: var(--secondary-bg);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+html[data-skin="summer"] .input-btn:not(.send-btn) {
+    background: rgba(var(--accent-color-rgb), 0.10);
+    color: var(--accent-color-dark);
+}
+html[data-skin="summer"] .send-btn {
+    background: var(--accent-color);
+    color: #fff;
+}
+
+/* 聊天气泡：自己浅绿，对方白底 + 1px 分隔线 */
+html[data-skin="summer"] .message.message-sent {
+    background: #EAF4E4;
+    color: #2F3E2E;
+    border-radius: 16px 16px 4px 16px;
+}
+html[data-skin="summer"] .message.message-received {
+    background: #FFFFFF;
+    color: #2F3E2E;
+    border: 1px solid var(--border-color);
+    border-radius: 16px 16px 16px 4px;
+}
+html[data-skin="summer"][data-theme="dark"] .message.message-sent {
+    background: #35502F;
+    color: #EAF4E4;
+}
+html[data-skin="summer"][data-theme="dark"] .message.message-received {
+    background: #273526;
+    color: #E8F0E4;
+}
+
+/* 时间戳等宽数字 */
+html[data-skin="summer"] .timestamp,
+html[data-skin="summer"] .call-event-time {
+    font-variant-numeric: tabular-nums;
+}
+
+/* 按钮 150ms 颜色过渡 */
+html[data-skin="summer"] button,
+html[data-skin="summer"] .settings-card,
+html[data-skin="summer"] .theme-color-btn,
+html[data-skin="summer"] .more-menu-item {
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+/* 页面进入：200ms 淡入 + 上移 4px */
+html[data-skin="summer"] .chat-container {
+    animation: summerPageIn 0.2s ease both;
+}
+@keyframes summerPageIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* 来电头像 1.2s 呼吸缩放 */
+html[data-skin="summer"] #call-inc-avatar {
+    animation: summerBreath 1.2s ease-in-out infinite;
+}
+@keyframes summerBreath {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.04); }
+}
+
+/* 单色线性苹果：仅启动页徽标（1.5px 线宽，主色） */
+html[data-skin="summer"] .splash-badge::before {
+    content: '';
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237FB069' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 7.2c-2.6-1.6-5.7-.2-6.6 2.4-.9 2.7.9 6.4 3.1 8.4 1.2 1.1 2.4 1.4 3.5.8 1.1.6 2.3.3 3.5-.8 2.2-2 4-5.7 3.1-8.4-.9-2.6-4-4-6.6-2.4z'/%3E%3Cpath d='M12 7.2c.1-1.7 1-2.8 2.5-3.2'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+html[data-skin="summer"][data-theme="dark"] .splash-badge::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239BC98A' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 7.2c-2.6-1.6-5.7-.2-6.6 2.4-.9 2.7.9 6.4 3.1 8.4 1.2 1.1 2.4 1.4 3.5.8 1.1.6 2.3.3 3.5-.8 2.2-2 4-5.7 3.1-8.4-.9-2.6-4-4-6.6-2.4z'/%3E%3Cpath d='M12 7.2c.1-1.7 1-2.8 2.5-3.2'/%3E%3C/svg%3E");
+}
+
+/* 尊重系统“减少动态效果”设置 */
+@media (prefers-reduced-motion: reduce) {
+    html[data-skin="summer"] .chat-container,
+    html[data-skin="summer"] #call-inc-avatar {
+        animation: none !important;
+    }
+    html[data-skin="summer"] button,
+    html[data-skin="summer"] .settings-card,
+    html[data-skin="summer"] .theme-color-btn,
+    html[data-skin="summer"] .more-menu-item {
+        transition: none !important;
+    }
+}

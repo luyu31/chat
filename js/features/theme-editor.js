@@ -421,12 +421,16 @@ function initThemeEditor() {
                 for (const variable of Object.keys(themeColorMappings)) {
                     document.documentElement.style.removeProperty(variable);
                 }
+                // 夏日白昼开启时，自定义主题清空后仍由主题接管
+                if (window.SummerTheme && window.SummerTheme.isEnabled()) window.SummerTheme.refresh();
                 return;
             }
             if (!colors) return;
             for (const [variable, color] of Object.entries(colors)) {
                 document.documentElement.style.setProperty(variable, color);
             }
+            // 自定义主题写入的是内联变量，优先级高于主题层，这里重新覆盖一次
+            if (window.SummerTheme && window.SummerTheme.isEnabled()) window.SummerTheme.refresh();
         }
         
         function saveCurrentThemeAsPreset() {

@@ -1093,7 +1093,12 @@ function manageAutoSendTimer() {
                 }
             }
 
-            DOMElements.html.setAttribute('data-theme', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            if (window.SummerTheme && window.SummerTheme.isEnabled()) {
+                // 夏日白昼主题接管明暗与变量：避免被系统昼夜或自定义主题的变量覆盖
+                window.SummerTheme.refresh();
+            } else {
+                DOMElements.html.setAttribute('data-theme', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            }
             DOMElements.partner.name.textContent = settings.partnerName;
             DOMElements.me.name.textContent = settings.myName;
             DOMElements.partner.status.textContent = settings.partnerStatus || '在线';
@@ -3445,6 +3450,8 @@ window.initializeSession = async function() {
 
 // 监听系统昼夜变化，实时更新 data-theme
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    // 夏日白昼开启时由主题自己控制明暗，系统变化不覆盖
+    if (document.documentElement.getAttribute('data-skin') === 'summer') return;
     document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
 });
 
