@@ -2036,21 +2036,57 @@ function renderMessages(preserveScroll = false) {
 
 // 反应标签默认是居中卡在气泡的左下/右下角的（见 CSS），内容长度正常的话不会跑出屏幕。
 // 但碰上特别长的自定义表情/颜文字，居中之后还是可能有一侧探出屏幕，这里量一下、
-// 超出了就用 --badge-safe-shift 往回拉一点，跟长按工具栏那个安全边距是同一个思路
-function _clampReactionBadges() {
+// 超出了就用 --badge-safe-shift 往回拉一点，跟长按工具栏那个安全边距是同一个思路。
+//
+// 注意：这里必须"先写、再统一读、最后统一写"。原来的写法是每个标签"写属性→读 rect→写位移"，
+// 每读一次都让上一次写入造成的布局失效，N 个标签就是 N 次强制同步布局。
+let _badgeClampQueued = false;
+let _badgeClampFull = false;
+let _badgeClampScope = null;
+
+// scope 传节点时只量该节点里的标签（新增/改动单条消息）；不传则整列表全量量一次
+function _clampReactionBadges(scope) {
+    if (scope && scope.nodeType === 1) {
+        if (!_badgeClampFull) _badgeClampScope = scope;
+    } else {
+        _badgeClampFull = true;
+        _badgeClampScope = null;
+    }
+    if (_badgeClampQueued) return;
+    _badgeClampQueued = true;
     requestAnimationFrame(() => {
+        _badgeClampQueued = false;
+        const full = _badgeClampFull;
+        const scoped = _badgeClampScope;
+        _badgeClampFull = false;
+        _badgeClampScope = null;
+
+        const root = (!full && scoped && scoped.isConnected) ? scoped : document;
+        const badges = root.querySelectorAll('.message-reaction-badge');
+        const n = badges.length;
+        if (!n) return;
         const SAFE_MARGIN = 10;
-        document.querySelectorAll('.message-reaction-badge').forEach(badge => {
-            badge.style.removeProperty('--badge-safe-shift');
-            const rect = badge.getBoundingClientRect();
+
+        // 阶段 1：只写——清掉上一轮的位移，此时不读任何几何信息
+        for (let i = 0; i < n; i++) badges[i].style.removeProperty('--badge-safe-shift');
+
+        // 阶段 2：一次性读完全部 rect，只会触发一次强制布局
+        _perf.renderLayoutReads += 1;
+        const rects = new Array(n);
+        for (let i = 0; i < n; i++) rects[i] = badges[i].getBoundingClientRect();
+
+        // 阶段 3：只写——按刚读到的矩形算位移
+        const vw = window.innerWidth;
+        for (let i = 0; i < n; i++) {
+            const rect = rects[i];
             let shift = 0;
             if (rect.left < SAFE_MARGIN) {
                 shift = SAFE_MARGIN - rect.left;
-            } else if (rect.right > window.innerWidth - SAFE_MARGIN) {
-                shift = (window.innerWidth - SAFE_MARGIN) - rect.right;
+            } else if (rect.right > vw - SAFE_MARGIN) {
+                shift = (vw - SAFE_MARGIN) - rect.right;
             }
-            if (shift !== 0) badge.style.setProperty('--badge-safe-shift', shift + 'px');
-        });
+            if (shift !== 0) badges[i].style.setProperty('--badge-safe-shift', shift + 'px');
+        }
     });
 }
 
@@ -2254,7 +2290,8 @@ function _updateReactionBadgeInPlace(messageId, reaction) {
         badge.title = '反应：' + reaction;
         bubbleWrap.appendChild(badge);
     }
-    _clampReactionBadges();
+    // 只量这一条消息里的标签，不做全列表扫描
+    _clampReactionBadges(wrapper);
     return true;
 }
 
