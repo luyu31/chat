@@ -796,6 +796,7 @@ const _perf = {
     enabled: false,
     saves: [],      // 最近 20 次 saveData 的耗时
     backups: [],    // 最近 20 次兜底备份的耗时与字节数
+    inputSync: [],  // 最近 100 次输入框高度测量的布局耗时（ms）
     skippedBackups: 0
 };
 try {
@@ -817,7 +818,22 @@ window.__PERF__ = {
     reset() {
         _perf.saves.length = 0;
         _perf.backups.length = 0;
+        _perf.inputSync.length = 0;
         _perf.skippedBackups = 0;
+    },
+    // 输入框高度测量的布局耗时统计（配合 console 里 __PERF__.enable() 使用）
+    get inputStats() {
+        const s = _perf.inputSync.slice();
+        if (!s.length) return { count: 0, avg: 0, max: 0, skipped: 0 };
+        const arr = s.slice().sort((a, b) => a - b);
+        const sum = s.reduce((n, v) => n + v, 0);
+        return {
+            count: s.length,
+            avg: Math.round(sum / s.length * 100) / 100,
+            max: arr[arr.length - 1],
+            p95: arr[Math.min(arr.length - 1, Math.floor(arr.length * 0.95))],
+            skipped: _inputSync.skipped
+        };
     },
     // "连续 20 条消息"的观察窗口：最近 20 次 saveData 的累计耗时
     get last20TotalMs() {
@@ -2448,10 +2464,101 @@ const addMessage = (message) => {
         // 42px/更小屏幕≤480px是38px），写死一个数字在窄屏上就会跟正确值对不上，
         // 表现出来就是"空的时候"（走写死值）比"有文字的时候"（走这里的scrollHeight动态测量）更高或更矮。
         // 用 scrollHeight 量出来的高度，天然就是当前断点下 CSS 实际生效的那个值，不用关心断点数字本身。
+        //
+        // 性能：原来每敲一个字都"写 height:auto → 读 scrollHeight"，等于每键一次强制同步布局。
+        // 现在先按估算的视觉行数做一次便宜的比较，行数没变就直接跳过；
+        // 真要测的时候合并到一帧 rAF 里，写完 auto 只读一次，再统一写像素高度，
+        // 不再和 ResizeObserver 各跑一轮读写。
+        const _inputSync = {
+            rafId: 0,
+            lastLines: -1,      // 上次测量时的估算行数，相同就跳过测量
+            charsPerLine: 0,    // 按当前宽度折算的"每行几个字"，宽度变化时失效重算
+            width: 0,           // 上次测量时输入框自身的宽度
+            areaW: 0,           // 上次观察到的输入区宽度（RO 用，和上面区分开）
+            appliedH: 0,        // 上次写进 style.height 的像素值
+            areaH: 0,
+            selfWrite: false,   // 标记"这次尺寸变化是我们自己写的"，避免 RO 再排一轮
+            skipped: 0,
+            samples: []         // __PERF__：最近 100 次测量的耗时（ms）
+        };
+
+        // 估算视觉行数：显式换行 + 每段按 charsPerLine 折算的折行数。
+        // charsPerLine 是实测「内容宽度/字号」得出的，中文（全角）一个字正好 1em，估算和浏览器换行一致；
+        // 一旦出现 ASCII 半角字符或 emoji（宽度≠字号、代理对算 2 个字符），估算就不再可靠，
+        // 这时返回 -2 强制测量，宁可多测一次，也不让"文字已经换行但输入框没长高"。
+        const INPUT_LINES_UNKNOWN = -2;
+        function _estimateInputVisualLines(value) {
+            if (!value) return 1;
+            if (/[ -~]/.test(value) || /[\uD800-\uDFFF]/.test(value)) return INPUT_LINES_UNKNOWN;
+            const perLine = _inputSync.charsPerLine > 0 ? _inputSync.charsPerLine : 12;
+            const parts = value.split('\n');
+            let lines = 0;
+            for (let i = 0; i < parts.length; i++) {
+                lines += Math.max(1, Math.ceil(parts[i].length / perLine));
+            }
+            return lines;
+        }
+
+        function _flushInputHeight() {
+            _inputSync.rafId = 0;
+            const ta = DOMElements.messageInput;
+            if (!ta) return;
+            const t0 = _perf.enabled ? _perfNow() : 0;
+
+            // 读阶段：只写一次 auto，然后把要读的值一次读完，避免写-读-写交错
+            ta.style.height = 'auto';
+            const sh = ta.scrollHeight;
+            const w = ta.clientWidth;
+            if (w > 0 && _inputSync.charsPerLine <= 0) {
+                const cs = window.getComputedStyle(ta);
+                const fsPx = parseFloat(cs.fontSize) || 16;
+                const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+                _inputSync.charsPerLine = Math.max(1, Math.floor((w - padX) / fsPx));
+                _inputSync.width = w;
+            }
+
+            // 写阶段：像素高度，"正在输入"提示跟着输入区高度走
+            const targetH = Math.min(sh, 120);
+            _inputSync.selfWrite = true;
+            ta.style.height = targetH + 'px';
+            _inputSync.appliedH = targetH;
+
+            const area = document.querySelector('.input-area-wrapper');
+            const tiW = document.getElementById('typing-indicator-wrapper');
+            if (area) {
+                const areaH = area.offsetHeight;
+                _inputSync.areaH = areaH;
+                if (tiW && tiW.style.display !== 'none') tiW.style.bottom = areaH + 'px';
+            }
+
+            // 这一帧的尺寸变化是我们自己造成的，别让 RO 再补一轮
+            requestAnimationFrame(() => { _inputSync.selfWrite = false; });
+
+            if (_perf.enabled) {
+                const ms = _perfNow() - t0;
+                _inputSync.samples.push(ms);
+                if (_inputSync.samples.length > 100) _inputSync.samples.shift();
+                if (_perf.inputSync) {
+                    _perf.inputSync.push(Math.round(ms * 10) / 10);
+                    if (_perf.inputSync.length > 100) _perf.inputSync.shift();
+                }
+            }
+        }
+
         function _syncMessageInputHeight() {
-            if (!DOMElements.messageInput) return;
-            DOMElements.messageInput.style.height = 'auto';
-            DOMElements.messageInput.style.height = `${Math.min(DOMElements.messageInput.scrollHeight, 120)}px`;
+            const ta = DOMElements.messageInput;
+            if (!ta) return;
+            const lines = _estimateInputVisualLines(ta.value);
+            const unknown = lines === INPUT_LINES_UNKNOWN;
+            if (!unknown && lines === _inputSync.lastLines) {   // 行数没变：不用测量，省掉这次强制布局
+                _inputSync.skipped++;
+                return;
+            }
+            // 估算不可靠时把签名置为 NaN：下一次（包括清空/粘贴）一定会重新测量，
+            // 避免半角/emoji 文本之后残留一个旧的"行数"把该缩回的高度挡掉
+            _inputSync.lastLines = unknown ? NaN : lines;
+            if (_inputSync.rafId) return;
+            _inputSync.rafId = requestAnimationFrame(_flushInputHeight);
         }
         window._syncMessageInputHeight = _syncMessageInputHeight;
 
@@ -2638,12 +2745,33 @@ if (!isBatchMode && type === 'normal') {
             if (!inputArea) return;
             if (typeof ResizeObserver === 'undefined') {
                 window.addEventListener('resize', function() {
-                    var tiW = document.getElementById('typing-indicator-wrapper');
-                    if (tiW && tiW.style.display !== 'none') positionTypingIndicator();
+                    // 宽度变了，每行字符数失效，需要重新折算并重测一次
+                    _inputSync.charsPerLine = 0;
+                    _inputSync.width = 0;
+                    _inputSync.lastLines = -1;
+                    _syncMessageInputHeight();
                 });
                 return;
             }
-            var ro = new ResizeObserver(function() {
+            var ro = new ResizeObserver(function(entries) {
+                var entry = entries[entries.length - 1];
+                // 宽度变化（横竖屏、面板伸缩）→ 每行字符数要重新折算
+                if (entry && entry.contentRect && Math.abs(entry.contentRect.width - _inputSync.areaW) > 0.5) {
+                    _inputSync.areaW = entry.contentRect.width;
+                    _inputSync.charsPerLine = 0;
+                    _inputSync.lastLines = -1;
+                }
+                // 这次高度变化是我们自己在 _flushInputHeight 里写出来的，已经处理过，不再排一轮
+                if (_inputSync.selfWrite) {
+                    _inputSync.selfWrite = false;
+                    if (_inputSync.lastLines === -1) _syncMessageInputHeight();
+                    return;
+                }
+                // 宽度变了（行数估算失效）：重测一次高度，不再额外走一轮读写
+                if (_inputSync.lastLines === -1) {
+                    _syncMessageInputHeight();
+                    return;
+                }
                 var tiW = document.getElementById('typing-indicator-wrapper');
                 if (tiW && tiW.style.display !== 'none') positionTypingIndicator();
             });
