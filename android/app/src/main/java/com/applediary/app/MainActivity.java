@@ -135,6 +135,8 @@ public class MainActivity extends AppCompatActivity {
         }
         mainHandler.postDelayed(this::dismissCover, 8000);
         setupWebView();
+        // 启动即建好通知渠道，用户在系统设置里能稳定看到「社交通讯」「其他」
+        PushCenter.ensureChannel(this);
         // 冷启动：由通知点击拉起时，凭据就在启动 Intent 里
         enqueueNotificationClick(getIntent());
     }

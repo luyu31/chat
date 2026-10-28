@@ -25,7 +25,12 @@ import java.util.UUID;
  */
 final class PushCenter {
 
-    static final String CHANNEL_ID = "apple_messages";
+    /** 社交通讯：真实聊天消息 / 对方回复，点进去一定能定位到消息。 */
+    static final String CHANNEL_SOCIAL = "channel_social";
+    /** 其他：后台提醒、测试通知等系统杂项，不承诺聊天内容。 */
+    static final String CHANNEL_OTHER = "channel_other";
+    /** 1.6.5 及更早版本只有这一个渠道，升级后删掉，避免设置页出现重复类别。 */
+    private static final String LEGACY_CHANNEL = "apple_messages";
     static final String PREFS = "apple_push_prefs";
     static final String ACTION_CHAIN = "com.applediary.app.PUSH_CHAIN";
     /** 通知里的消息凭据：点击后由 MainActivity 转交给 JS，用来定位到具体那条消息。 */
@@ -59,14 +64,32 @@ final class PushCenter {
     static void ensureChannel(Context ctx) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager nm = manager(ctx);
-        if (nm == null || nm.getNotificationChannel(CHANNEL_ID) != null) return;
-        NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "消息提醒",
-                NotificationManager.IMPORTANCE_HIGH);
-        ch.setDescription("梦角发来新消息时提醒你");
-        ch.enableVibration(true);
-        ch.setShowBadge(true);
-        ch.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
-        nm.createNotificationChannel(ch);
+        if (nm == null) return;
+
+        // 社交通讯：聊天消息走这里，设置页里能单独开关
+        if (nm.getNotificationChannel(CHANNEL_SOCIAL) == null) {
+            NotificationChannel social = new NotificationChannel(CHANNEL_SOCIAL, "社交通讯",
+                    NotificationManager.IMPORTANCE_HIGH);
+            social.setDescription("梦角发来新消息时提醒你");
+            social.enableVibration(true);
+            social.setShowBadge(true);
+            social.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+            nm.createNotificationChannel(social);
+        }
+
+        // 其他：后台提醒、测试通知等杂项。低打扰，但不承诺聊天内容
+        if (nm.getNotificationChannel(CHANNEL_OTHER) == null) {
+            NotificationChannel other = new NotificationChannel(CHANNEL_OTHER, "其他",
+                    NotificationManager.IMPORTANCE_DEFAULT);
+            other.setDescription("后台提醒、测试与系统类杂项通知");
+            other.setShowBadge(false);
+            other.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+            nm.createNotificationChannel(other);
+        }
+
+        if (nm.getNotificationChannel(LEGACY_CHANNEL) != null) {
+            nm.deleteNotificationChannel(LEGACY_CHANNEL);
+        }
     }
 
     static boolean enabled(Context ctx) {
@@ -77,22 +100,28 @@ final class PushCenter {
         }
     }
 
-    /** 发一条会话式通知；同一 ID 覆盖更新，通知栏里始终只占一条。 */
+    /** 杂项提醒（测试通知等）：走「其他」渠道，不承诺聊天内容。 */
     static void post(Context ctx, String title, String body, long when) {
-        post(ctx, title, body, when, "", "");
+        post(ctx, title, body, when, "", "", CHANNEL_OTHER);
     }
 
     /**
-     * 带消息凭据的通知：sessionId/messageId 会写进点击 Intent，
+     * 带消息凭据的聊天通知：sessionId/messageId 会写进点击 Intent，
      * 用户点通知拉起 App 后能直接定位到这条消息，而不是"打开上次的会话碰运气"。
-     * 后台闹钟链没有真实消息时，两个值传空即可。
      */
     static void post(Context ctx, String title, String body, long when,
                      String sessionId, String messageId) {
+        post(ctx, title, body, when, sessionId, messageId, CHANNEL_SOCIAL);
+    }
+
+    static void post(Context ctx, String title, String body, long when,
+                     String sessionId, String messageId, String channelId) {
         ensureChannel(ctx);
         if (!enabled(ctx)) return;
+        String channel = channelId == null || channelId.isEmpty() ? CHANNEL_OTHER : channelId;
+        boolean social = CHANNEL_SOCIAL.equals(channel);
         try {
-            int count = bumpCount(ctx);
+            int count = social ? bumpCount(ctx) : 0;
             Intent intent = new Intent(ctx, MainActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             if (sessionId != null && !sessionId.isEmpty()) {
@@ -106,23 +135,28 @@ final class PushCenter {
 
             String text = body == null ? "" : body;
             Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                    ? new Notification.Builder(ctx, CHANNEL_ID)
+                    ? new Notification.Builder(ctx, channel)
                     : new Notification.Builder(ctx);
             b.setSmallIcon(R.drawable.ic_notify)
                     .setContentTitle(title == null || title.isEmpty() ? "苹果日记" : title)
                     .setContentText(text)
                     .setStyle(new Notification.BigTextStyle().bigText(text))
-                    .setSubText(count > 1 ? "共 " + count + " 条新消息" : null)
-                    .setNumber(count)
-                    .setGroup("apple_chat")
-                    .setCategory(Notification.CATEGORY_MESSAGE)
                     .setAutoCancel(true)
                     .setOnlyAlertOnce(false)
                     .setWhen(when > 0 ? when : System.currentTimeMillis())
                     .setShowWhen(true)
                     .setContentIntent(pi);
+            if (social) {
+                b.setSubText(count > 1 ? "共 " + count + " 条新消息" : null)
+                        .setNumber(count)
+                        .setGroup("apple_chat")
+                        .setCategory(Notification.CATEGORY_MESSAGE);
+            } else {
+                // 提醒类：不显示"共 N 条新消息"，免得又暗示背后有真实消息
+                b.setCategory(Notification.CATEGORY_REMINDER);
+            }
             NotificationManager nm = manager(ctx);
-            if (nm != null) nm.notify(NOTIFY_ID, b.build());
+            if (nm != null) nm.notify(social ? NOTIFY_ID : NOTIFY_ID + 1, b.build());
         } catch (Exception ignored) {
         }
     }
