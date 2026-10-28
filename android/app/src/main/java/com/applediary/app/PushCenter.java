@@ -117,7 +117,8 @@ final class PushCenter {
     static synchronized void clearNotifications(Context ctx) {
         try {
             NotificationManager nm = manager(ctx);
-            if (nm != null) nm.cancelAll();
+            // 只清自己的消息通知：cancelAll 会把通话前台服务的常驻通知一起清掉
+            if (nm != null) nm.cancel(NOTIFY_ID);
         } catch (Exception ignored) {
         }
         resetCount(ctx);

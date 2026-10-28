@@ -586,9 +586,14 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         webView.evaluateJavascript(
-                "(function(){try{return !!(window.__appleHandleBack && window.__appleHandleBack());}catch(e){return false;}})()",
+                "(function(){try{if(!window.__appleHandleBack)return false;return window.__appleHandleBack();}catch(e){return false;}})()",
                 value -> {
                     if ("true".equals(value)) return;
+                    // 通话已最小化时按返回：退到桌面（只 onPause，不销毁 WebView），通话继续
+                    if ("\"background\"".equals(value)) {
+                        moveTaskToBack(true);
+                        return;
+                    }
                     if (webView.canGoBack()) {
                         webView.goBack();
                     } else {
@@ -1028,6 +1033,23 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception e) {
                 toast("无法打开系统设置");
             }
+        }
+
+        // ---- 通话前台服务（方案 A）：后台保持通话 ----
+
+        @JavascriptInterface
+        public void startCallService(String name, long startTs) {
+            CallForegroundService.start(MainActivity.this, name, startTs);
+        }
+
+        @JavascriptInterface
+        public void updateCallService(long startTs) {
+            CallForegroundService.update(MainActivity.this, startTs);
+        }
+
+        @JavascriptInterface
+        public void stopCallService() {
+            CallForegroundService.stop(MainActivity.this);
         }
 
         @JavascriptInterface
