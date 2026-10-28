@@ -1375,7 +1375,8 @@
             transition: border-color 0.5s ease;
         }
         .message-input {
-            flex: 1;
+            flex: 1 1 0;
+            min-width: 0;
             border: 1px solid transparent;
             border-radius: 28px;
             padding: 12px 18px;
@@ -1389,9 +1390,13 @@
             font-weight: 500;
             font-family: var(--font-family);
             font-size: inherit;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            overflow-x: hidden;
+            text-overflow: clip;
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }
         .message-input:focus {
             border-color: var(--accent-color);
@@ -1411,6 +1416,7 @@
             display: flex;
             gap: 8px;
             position: relative;
+            flex-shrink: 0;
         }
         .input-btn {
             border: none;
@@ -11176,13 +11182,15 @@ body.bottom-collapse-mode #collapse-expand-btn {
     display: none !important;
 }
 
-/* 鏉堟挸鍙嗗鍡楀帒鐠佺ǹ顦跨悰灞炬▔缁€鐚寸礄閺堚偓婢讹拷 3 鐞涘矉绱濈搾鍛毉濠婃艾濮╅敍锟�
-   閸橈拷 CSS 瀵搫鍩� nowrap + hidden + ellipsis 闁夸焦鍨氶崡鏇☆攽閿涘矁绻栭柌宀冾洬閻╂牕娲� textarea 姒涙ǹ顓荤悰灞艰礋 */
+/* 输入框多行自适应：保留换行、超过 3 行内部滚动，绝不撑破输入区。
+   max-height 必须与 core.js 里 _flushInputHeight 的取值保持一致（统一 120px），
+   否则 JS 写入的 height 会大于 CSS 上限，在部分 WebView 上表现为文字画到框外。 */
 .message-input {
     white-space: pre-wrap !important;
     overflow-y: auto !important;
+    overflow-x: hidden !important;
     text-overflow: clip !important;
-    max-height: 96px !important;   /* 缁撅拷 3 鐞涳拷 */
+    max-height: 120px !important;
     line-height: 1.4 !important;
 }
 

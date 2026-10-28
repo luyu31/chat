@@ -3023,6 +3023,7 @@ const addMessage = (message) => {
             areaW: 0,           // 上次观察到的输入区宽度（RO 用，和上面区分开）
             appliedH: 0,        // 上次写进 style.height 的像素值
             areaH: 0,
+            maxH: 0,            // CSS 生效的 max-height（懒读一次），JS 写入不得超过它
             selfWrite: false,   // 标记"这次尺寸变化是我们自己写的"，避免 RO 再排一轮
             skipped: 0,
             samples: []         // __PERF__：最近 100 次测量的耗时（ms）
@@ -3063,8 +3064,14 @@ const addMessage = (message) => {
                 _inputSync.width = w;
             }
 
-            // 写阶段：像素高度，"正在输入"提示跟着输入区高度走
-            const targetH = Math.min(sh, 120);
+            // 写阶段：像素高度，"正在输入"提示跟着输入区高度走。
+            // 上限以 CSS 的 max-height 为准（只读一次并缓存）：写死 120 而 CSS 是别的值时，
+            // 内联 height 会大于样式上限，部分 WebView 上文字会画到输入框外面。
+            if (!_inputSync.maxH) {
+                const mh = parseFloat(window.getComputedStyle(ta).maxHeight);
+                _inputSync.maxH = (isFinite(mh) && mh > 0) ? mh : 120;
+            }
+            const targetH = Math.min(sh, _inputSync.maxH);
             _inputSync.selfWrite = true;
             ta.style.height = targetH + 'px';
             _inputSync.appliedH = targetH;
