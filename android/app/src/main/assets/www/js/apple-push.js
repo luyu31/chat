@@ -13,16 +13,9 @@
     if (typeof native.pushStartChain !== 'function') return;
     window.__APPLE_PUSH__ = true;
 
-    var TEXTS = [
-        '在忙吗？刚刚突然想到你了。',
-        '今天也要好好吃饭呀。',
-        '我这边天色暗下来了，你那边呢？',
-        '记得喝水，别一直盯着屏幕。',
-        '有点想你了，忙完回来说一声。',
-        '今天过得怎么样？想听你讲讲。',
-        '路过一棵苹果树，想起我们的约定了。',
-        '别熬夜啦，早点休息，我在。'
-    ];
+    // 通知只提示"收到了新消息"，不再使用写死的聊天句子；
+    // 真正的消息由原来的随机回复（simulateReply）产生。
+    var NOTIFY_BODY = '在后台收到了新消息';
 
     var GAPS = [5, 15, 30, 60];
     var HOURS = [6, 24, 168, 0];
@@ -82,7 +75,7 @@
         try {
             native.pushStartChain(JSON.stringify({
                 title: partnerName(),
-                texts: TEXTS,
+                texts: [NOTIFY_BODY],
                 gap: gap,
                 hours: hoursValue()
             }));
@@ -99,33 +92,13 @@
         consuming = true;
         var list = [];
         try { list = JSON.parse(native.pushTakePending() || '[]'); } catch (e) { list = []; }
-        if (!list.length || typeof addMessage !== 'function') {
-            consuming = false;
-            return;
-        }
-        list.sort(function (a, b) { return (a.time || 0) - (b.time || 0); });
-        var added = 0;
-        var name = partnerName();
-        list.forEach(function (p) {
-            var body = String(p.body || '').trim();
-            if (!body) return;
-            try {
-                addMessage({
-                    id: (p.time || Date.now()) + added,
-                    sender: name,
-                    text: body,
-                    timestamp: new Date(p.time || Date.now()),
-                    status: 'received',
-                    favorited: false,
-                    note: null,
-                    type: 'normal'
-                });
-                added++;
-            } catch (e) {}
-        });
         consuming = false;
-        if (added && typeof saveData === 'function') {
-            try { saveData(); } catch (e) {}
+        if (!list.length) return;
+        // 后台提醒不再往聊天里塞写死的句子：回到前台由原来的随机回复补一条
+        if (typeof window.simulateReply === 'function') {
+            setTimeout(function () {
+                try { window.simulateReply(); } catch (e) {}
+            }, 900);
         }
     }
 
@@ -182,7 +155,7 @@
             + (enabled ? '通知权限正常' : '系统通知被关闭') + '</h4>'
             + '<p>' + (enabled
                 ? '退到后台后每 ' + gapLabel(gap) + ' 提醒一次，持续 ' + hoursLabel(hv) + '；'
-                    + '锁屏、清理后台、重启手机都会继续。回到 App 会自动补进聊天记录。'
+                    + '锁屏、清理后台、重启手机都会继续。回到 App 后会收到一条随机消息。'
                 : '没拿到通知权限，通知栏不会显示。先去系统设置里允许「苹果日记」发通知。') + '</p>'
             + (enabled ? '' : '<button class="apple-sync-btn red" id="apple-push-perm" style="margin-top:10px">'
                 + '<span class="ico"><i class="fas fa-bell-slash"></i></span>'
