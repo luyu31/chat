@@ -2341,13 +2341,6 @@ const addMessage = (message) => {
                     if (typeof showNotification === 'function') showNotification('✦ 强制触发对方拍一拍', 'info', 1800);
                     return;
                 }
-                if (cmd === '/测试搞怪' || cmd === '/testthrow') {
-                    DOMElements.messageInput.value = '';
-                    _syncMessageInputHeight();
-                    if (window.ThrowEgg && typeof window.ThrowEgg.partnerThrow === 'function') window.ThrowEgg.partnerThrow();
-                    if (typeof showNotification === 'function') showNotification('✦ 强制触发对方搞怪', 'info', 1800);
-                    return;
-                }
                 if (cmd === '/测试状态更新' || cmd === '/teststatus') {
                     DOMElements.messageInput.value = '';
                     _syncMessageInputHeight();
@@ -2639,18 +2632,13 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                      throttledSaveData();
                 }
             }
-            // ── 对方拍一拍 和 梦角搞怪：两套判定各掷各的骰子（各 3%），互不排斥，
-            //    有可能同一次同时出现；只要其中任何一个触发了，这次就不再走普通回复 ──
+            // ── 对方拍一拍：3% 概率触发；触发了这次就不再走普通回复 ──
             const _doPoke = Math.random() < 0.03;
-            const _doThrow = Math.random() < 0.03 && window.ThrowEgg && typeof window.ThrowEgg.partnerThrow === 'function';
             if (_doPoke) {
                 // 调用提取的通用函数（同时供 /测试拍一拍 指令使用）
                 if (typeof window._triggerPartnerPoke === 'function') window._triggerPartnerPoke();
+                return;
             }
-            if (_doThrow) {
-                window.ThrowEgg.partnerThrow();
-            }
-            if (_doPoke || _doThrow) return;
 
             // ── 梦角主动发红包：跟上面拍一拍是完全独立的两套判定，互不影响——
             // 不 return，不影响这次正常回复照常生成；异步调用，不 await，不拖慢/阻塞回复流程，

@@ -1,5 +1,5 @@
 /* ============================================================
-   更多菜单（输入区 "+" 弹出的网格菜单）v2
+   更多菜单（输入区 "..." 弹出的网格菜单）v3
    独立文件，不动 styles.css 原有内容。
    ============================================================ */
 
@@ -9,17 +9,17 @@
     display: none !important;
 }
 
-/* "+" 和 "发送" 共用同一个位置，默认只显示"+" */
-#send-btn {
-    display: none;
-}
-
+/* "..." 按钮跟输入区其它功能按钮同款浅灰圆形 */
 #more-menu-btn {
-    background-color: var(--toolbar-btn-bg, var(--message-received-bg));
-    color: var(--toolbar-btn-color, var(--text-secondary));
+    background-color: #ececec;
+    color: #8b8b8b;
+}
+html[data-theme="dark"] #more-menu-btn {
+    background-color: #2c2c2c;
+    color: #b5b5b5;
 }
 #more-menu-btn:hover {
-    color: var(--text-primary);
+    color: #5a5a5a;
 }
 #more-menu-btn.active {
     background: var(--accent-color) !important;

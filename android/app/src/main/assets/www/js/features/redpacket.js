@@ -1563,11 +1563,6 @@
         setInterval(checkRedPacketStatus, 30000);
         _updateExpiryReminder();
 
-        // 把"更多菜单"里的红包坑位从占位升级成真实功能，不用改 more-menu.js
-        if (window.MoreMenu && typeof window.MoreMenu.registerItem === 'function') {
-            window.MoreMenu.registerItem('redpacket', { ready: true, action: openComposeModal });
-        }
-
         var headerIcon = document.getElementById('rp-compose-header-icon');
         if (headerIcon) headerIcon.innerHTML = _ICON_SVG;
         var amountInput = document.getElementById('rp-compose-amount');
