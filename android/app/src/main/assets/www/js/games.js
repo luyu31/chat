@@ -2337,10 +2337,11 @@ function initComboMenu() {
         return words;
     }
 
-    function mergeFreq(a, b) {
-        var o = Object.assign({}, a);
-        Object.keys(b).forEach(function(k) { o[k] = (o[k] || 0) + b[k]; });
-        return o;
+    // 原地累加词频。旧实现每条消息都 Object.assign 复制整张词表，
+    // 复杂度 O(消息数 × 词数)：几千条聊天记录就会让词云卡住十几秒，看起来像"点不进去"
+    function addFreq(target, src) {
+        for (var k in src) target[k] = (target[k] || 0) + src[k];
+        return target;
     }
 
     function topWords(freq, n) {
@@ -2503,9 +2504,9 @@ function initComboMenu() {
         var myMsgs      = messages.filter(function(m) { return m.sender === 'user' && m.text && m.type !== 'system' && m.type !== 'call-event'; });
 
         var pFreq = {}, mFreq = {};
-        partnerMsgs.forEach(function(m) { pFreq = mergeFreq(pFreq, tokenize(m.text)); });
-        myMsgs.forEach(function(m)      { mFreq = mergeFreq(mFreq, tokenize(m.text)); });
-        var aFreq = mergeFreq(pFreq, mFreq);
+        partnerMsgs.forEach(function(m) { addFreq(pFreq, tokenize(m.text)); });
+        myMsgs.forEach(function(m)      { addFreq(mFreq, tokenize(m.text)); });
+        var aFreq = addFreq(addFreq({}, pFreq), mFreq);
 
         var pTop = topWords(pFreq, 60);
         var mTop = topWords(mFreq, 60);
@@ -2580,7 +2581,7 @@ function initComboMenu() {
                 + '</div>'
                 + '<div class="wc-summary"></div>'
                 + '<div class="wc-canvas-wrap">'
-                +   '<canvas id="wc-canvas" width="'+(cw*dpr)+'" height="'+(ch*dpr)+'" style="width:'+cw+'px;height:'+ch+'px;display:block;"></canvas>'
+                +   '<canvas id="wc-canvas" width="'+(cw*dpr)+'" height="'+(ch*dpr)+'" style="display:block;"></canvas>'
                 + '</div>'
                 + '<div class="wc-rank-section">'
                 +   '<div class="wc-rank-title"><i class="fas fa-bars"></i> 高频词 Top 10</div>'
