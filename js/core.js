@@ -2153,11 +2153,13 @@ window._backToLatestMessages = function() {
     if (typeof window._updateNewMsgIndicator === 'function') window._updateNewMsgIndicator();
 };
 
-// "回到最新消息"悬浮按钮的显示/隐藏——判断标准跟自动滚动是同一套：只要没追上底部就显示
-window._updateBackToLatestBtn = function() {
+// "回到最新消息"悬浮按钮的显示/隐藏——判断标准跟自动滚动是同一套：只要没追上底部就显示。
+// caughtUpOverride 用于调用方已经判断过贴底状态时直接复用，避免同一帧里重复读高度
+window._updateBackToLatestBtn = function(caughtUpOverride) {
     const btn = document.getElementById('back-to-latest-btn');
     if (!btn) return;
-    btn.style.display = _isCaughtUpToLatest() ? 'none' : 'flex';
+    const caughtUp = (typeof caughtUpOverride === 'boolean') ? caughtUpOverride : _isCaughtUpToLatest();
+    btn.style.display = caughtUp ? 'none' : 'flex';
 };
 
 // "有N条新消息"提示——文案套在同一个按钮上，不额外加控件
@@ -2651,7 +2653,8 @@ const addMessage = (message) => {
         }
         newMsgCountWhileBrowsing++;
         if (typeof window._updateNewMsgIndicator === 'function') window._updateNewMsgIndicator();
-        if (typeof window._updateBackToLatestBtn === 'function') window._updateBackToLatestBtn();
+        // 这里本来就已经确定"没停在底部"，把结果传进去，省掉悬浮按钮再读一次高度
+        if (typeof window._updateBackToLatestBtn === 'function') window._updateBackToLatestBtn(false);
         throttledSaveData();
         if (message.type === 'normal' && typeof window._onPartnerMessage === 'function') {
             try { window._onPartnerMessage(message); } catch (e) { console.warn('[onPartnerMessage]', e); }
