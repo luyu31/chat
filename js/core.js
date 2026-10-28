@@ -1237,12 +1237,10 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
                            icon === 'fa-circle-xmark';
         const colorClass = isRejected ? 'call-event-pill--rejected' : 'call-event-pill--ended';
         const detail = msg.callDetail ? `<span class="call-event-detail">${msg.callDetail}</span>` : '';
-        // 通话记录标注发生时间，跟随设置里的时间格式
+        // 通话记录标注发生时间（本地时间 YYYY-MM-DD HH:mm:ss）
         const _ts = new Date(msg.timestamp);
-        const _tf = (typeof settings !== 'undefined' && settings.timeFormat) || 'HH:mm';
-        const _timeStr = _tf.indexOf('AM/PM') > -1
-            ? _ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-            : _ts.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const _pad = n => String(n).padStart(2, '0');
+        const _timeStr = `${_ts.getFullYear()}-${_pad(_ts.getMonth() + 1)}-${_pad(_ts.getDate())} ${_pad(_ts.getHours())}:${_pad(_ts.getMinutes())}:${_pad(_ts.getSeconds())}`;
         const timeHTML = `<span class="call-event-time">${_timeStr}</span>`;
         callEvDiv.innerHTML = `<div class="call-event-pill ${colorClass}"><i class="fas ${icon} call-event-icon"></i><span class="call-event-label">${msg.text.replace(/ · .*/, '')}</span>${detail}${timeHTML}<button class="call-event-delete" title="删除" onclick="(function(btn){const id=btn.closest('[data-id]').dataset.id;const idx=messages.findIndex(m=>String(m.id)===String(id));if(idx>-1){messages.splice(idx,1);renderMessages();throttledSaveData();}})(this)"><i class="fas fa-times"></i></button></div>`;
         fragment.appendChild(callEvDiv);
