@@ -572,7 +572,7 @@ window.handleNotifToggle = function(checkbox) {
             localStorage.setItem('notifEnabled', '1');
             if (allowed) {
                 if (statusEl) statusEl.textContent = '✅ 已开启 — 退到后台也会收到系统通知';
-                try { bridge.pushTest('苹果日记', '通知已开启，后台也会提醒你啦'); } catch(e) {}
+                try { bridge.pushTest('苹果日记', '通知已开启，后台也会提醒你啦', '', ''); } catch(e) {}
             } else {
                 if (statusEl) statusEl.textContent = '⚠️ 请在本机系统设置里允许「苹果日记」发送通知';
                 try { bridge.openAppSettings(); } catch(e) {}

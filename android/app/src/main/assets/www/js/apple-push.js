@@ -14,8 +14,9 @@
     if (typeof native.pushStartChain !== 'function') return;
     window.__APPLE_PUSH__ = true;
 
-    // 后台提醒只是"提醒"，不写死聊天内容；真正的消息由前台的聊天链路产生
-    var NOTIFY_BODY = '收到一条新消息';
+    // 后台提醒只是"提醒"，不承诺聊天内容；后台 JS 休眠时并不会真的有新消息。
+    // 标题已经是对方名字，正文只负责把用户叫回来。
+    var NOTIFY_BODY = '点开看看，我在这里等你';
     // 需要切换会话时，先把跳转目标存本地，reload 之后再消费
     var JUMP_KEY = 'appleNotifyJumpTarget';
 
@@ -302,7 +303,7 @@
             + (enabled ? '通知权限正常' : '系统通知被关闭') + '</h4>'
             + '<p>' + (enabled
                 ? '退到后台后每 ' + gapLabel(gap) + ' 提醒一次，持续 ' + hoursLabel(hv) + '；'
-                    + '锁屏、清理后台、重启手机都会继续。回到 App 后会收到一条随机消息。'
+                    + '锁屏、清理后台、重启手机都会继续。回到 App 只会回到聊天界面，不会凭空生成消息。'
                 : '没拿到通知权限，通知栏不会显示。先去系统设置里允许「苹果日记」发通知。') + '</p>'
             + (enabled ? '' : '<button class="apple-sync-btn red" id="apple-push-perm" style="margin-top:10px">'
                 + '<span class="ico"><i class="fas fa-bell-slash"></i></span>'
@@ -349,8 +350,28 @@
         var test = body.querySelector('#apple-push-test');
         if (test) test.addEventListener('click', function () {
             try {
-                native.pushTest(partnerName(), '这是一条测试提醒，看到我就说明推送通了。');
-                toast('已发送，下拉通知栏看看', 'success');
+                // 测试通知也走真实凭据：带上当前会话 + 最近一条对方消息，
+                // 点通知应该直接定位到那条消息（没有消息时就只打开聊天）
+                var targetId = '';
+                try {
+                    if (typeof messages !== 'undefined' && Array.isArray(messages) && messages.length) {
+                        for (var i = messages.length - 1; i >= 0; i--) {
+                            if (messages[i] && messages[i].sender !== 'user') {
+                                targetId = String(messages[i].id);
+                                break;
+                            }
+                        }
+                        if (!targetId) targetId = String(messages[messages.length - 1].id);
+                    }
+                } catch (e) {}
+                native.pushTest(
+                    partnerName(),
+                    targetId ? '这是一条测试提醒，点我应该会跳到最近一条消息。'
+                             : '这是一条测试提醒，看到我就说明推送通了。',
+                    currentSessionId(),
+                    targetId
+                );
+                toast(targetId ? '已发送，点通知试试跳转' : '已发送，下拉通知栏看看', 'success');
             } catch (e) {}
         });
         var bat = body.querySelector('#apple-push-battery');

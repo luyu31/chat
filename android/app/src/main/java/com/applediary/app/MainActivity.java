@@ -1588,8 +1588,10 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @JavascriptInterface
-        public void pushTest(String title, String body) {
-            PushCenter.post(MainActivity.this, title, body, System.currentTimeMillis());
+        public void pushTest(String title, String body, String sessionId, String messageId) {
+            // 测试通知也带凭据，方便在真机上验证"点击通知 → 定位到消息"整条链路；
+            // 不写 pending：测试不是真实消息，不需要回前台补全。
+            PushCenter.post(MainActivity.this, title, body, System.currentTimeMillis(), sessionId, messageId);
         }
 
         @JavascriptInterface
