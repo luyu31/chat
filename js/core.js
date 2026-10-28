@@ -786,8 +786,82 @@ window.deleteAnniversaryItem = function(id) {
 };
 
 const _BACKUP_PREFIX = 'BACKUP_V1_';
-function _backupCriticalData() {
+
+// ── 阶段 2 保存层：单飞合并 + 兜底备份节流 + 可选计时 ──────────
+// 只改"什么时候写、写几次"，不碰 key 名称、数据结构、会话隔离；
+// chatMessages / 贴纸 / 头像仍然每次全量写入，不做"内容没变就跳过"的判断。
+
+// 可选性能计时：默认关闭。关闭时每个记录点只多一次布尔判断，不做计时或日志
+const _perf = {
+    enabled: false,
+    saves: [],      // 最近 20 次 saveData 的耗时
+    backups: [],    // 最近 20 次兜底备份的耗时与字节数
+    skippedBackups: 0
+};
+try {
+    _perf.enabled = localStorage.getItem('PERF_ENABLED') === '1';
+} catch (e) {}
+
+window.__PERF__ = {
+    get enabled() { return _perf.enabled; },
+    enable() {
+        _perf.enabled = true;
+        try { localStorage.setItem('PERF_ENABLED', '1'); } catch (e) {}
+        console.log('[perf] 计时已开启');
+    },
+    disable() {
+        _perf.enabled = false;
+        try { localStorage.removeItem('PERF_ENABLED'); } catch (e) {}
+        console.log('[perf] 计时已关闭');
+    },
+    reset() {
+        _perf.saves.length = 0;
+        _perf.backups.length = 0;
+        _perf.skippedBackups = 0;
+    },
+    // "连续 20 条消息"的观察窗口：最近 20 次 saveData 的累计耗时
+    get last20TotalMs() {
+        const last = _perf.saves.slice(-20);
+        return Math.round(last.reduce((sum, r) => sum + r.ms, 0) * 10) / 10;
+    }
+};
+
+function _perfNow() {
+    return (window.performance && performance.now) ? performance.now() : Date.now();
+}
+
+// 备份前按内容估算体积（只读字符串长度，不拼接）：
+// 大图消息可以提前截断，避免"先 stringify 整个大对象 → 发现超限 → 再 stringify 一次"
+function _estimateMessagesBytes(list) {
+    let bytes = 0;
+    for (let i = 0; i < list.length; i++) {
+        const m = list[i];
+        if (!m) continue;
+        bytes += 120;
+        if (m.text) bytes += m.text.length;
+        if (m.image) bytes += m.image.length;
+        if (m.note) bytes += m.note.length;
+    }
+    return bytes;
+}
+
+// 同步 localStorage 兜底备份：普通调用最短 8 秒一次。
+// 消息本身已经异步写进 IndexedDB，兜底只防"进程被杀/闪退"，
+// 没必要每发一条消息就把整段 messages JSON.stringify 一次（大图时是几 MB）。
+// 退出/切后台/挂断路径必须立即落盘，所以默认 force = true；
+// saveData 结尾显式传 false，其余调用点保持"立即备份"。
+const BACKUP_MIN_INTERVAL = 8000;
+let _lastBackupAt = 0;
+
+function _backupCriticalData(force = true) {
     if (window._skipBackup) return;
+    const now = Date.now();
+    if (!force && now - _lastBackupAt < BACKUP_MIN_INTERVAL) {
+        _perf.skippedBackups++;
+        return;
+    }
+    _lastBackupAt = now;
+    const _t0 = _perf.enabled ? _perfNow() : 0;
     try {
         const backupPayload = {
             ts: Date.now(),
@@ -798,8 +872,7 @@ function _backupCriticalData() {
         };
 
         let payloadToStore = backupPayload;
-        const msgSizeEstimate = messages.length * 500; 
-        if (msgSizeEstimate > 3 * 1024 * 1024) {
+        if (_estimateMessagesBytes(messages) > 3 * 1024 * 1024) {
             payloadToStore = {
                 ...backupPayload,
                 messages: messages.slice(-200),
@@ -809,18 +882,23 @@ function _backupCriticalData() {
 
         const json = JSON.stringify(payloadToStore);
 
+        let storedJson = json;
         if (json.length > 4.5 * 1024 * 1024) {
             const smallerPayload = {
                 ...payloadToStore,
                 messages: messages.slice(-50),
                 _truncated: true
             };
-            const smallerJson = JSON.stringify(smallerPayload);
-            localStorage.setItem(_BACKUP_PREFIX + 'critical', smallerJson);
-        } else {
-            localStorage.setItem(_BACKUP_PREFIX + 'critical', json);
+            storedJson = JSON.stringify(smallerPayload);
         }
+        localStorage.setItem(_BACKUP_PREFIX + 'critical', storedJson);
         localStorage.setItem(_BACKUP_PREFIX + 'timestamp', String(Date.now()));
+        if (_perf.enabled) {
+            const ms = Math.round((_perfNow() - _t0) * 10) / 10;
+            _perf.backups.push({ ms, bytes: storedJson.length });
+            if (_perf.backups.length > 20) _perf.backups.shift();
+            console.log(`[perf] backup ${ms}ms / ${(storedJson.length / 1024).toFixed(0)}KB`);
+        }
     } catch (e) {
         console.warn('localStorage 备份写入失败（可能存储已满）:', e);
     }
@@ -836,64 +914,101 @@ function _tryRecoverFromBackup() {
     }
 }
 
+let _saveInFlight = null;
+let _saveQueued = false;
+
 const saveData = async () => {
     if (!SESSION_ID) {
         console.warn('[saveData] SESSION_ID 尚未初始化，跳过保存以防数据写入临时 key');
         return;
     }
 
-    const promises = [
-        { key: 'chatSettings',           val: () => localforage.setItem(getStorageKey('chatSettings'), settings) },
-        { key: 'customReplies',          val: () => localforage.setItem(getStorageKey('customReplies'), customReplies) },
-        { key: 'customReplyGroups',      val: () => localforage.setItem(getStorageKey('customReplyGroups'), window.customReplyGroups || []) },
-        { key: 'customPokeGroups',        val: () => localforage.setItem(getStorageKey('customPokeGroups'), window.customPokeGroups || []) },
-        { key: 'customStatusGroups',      val: () => localforage.setItem(getStorageKey('customStatusGroups'), window.customStatusGroups || []) },
-        { key: 'customEmojis',           val: () => localforage.setItem(getStorageKey('customEmojis'), customEmojis) },
-        { key: 'anniversaries',          val: () => localforage.setItem(getStorageKey('anniversaries'), anniversaries) },
-        { key: 'customPokes',            val: () => localforage.setItem(getStorageKey('customPokes'), customPokes) },
-        { key: 'customStatuses',         val: () => localforage.setItem(getStorageKey('customStatuses'), customStatuses) },
-        { key: 'customMottos',           val: () => localforage.setItem(getStorageKey('customMottos'), customMottos) },
-        { key: 'customIntros',           val: () => localforage.setItem(getStorageKey('customIntros'), customIntros) },
-        { key: 'customPeriodCare',       val: () => localforage.setItem(getStorageKey('customPeriodCare'), customPeriodCare) },
-        { key: 'stickerLibrary',         val: () => localforage.setItem(getStorageKey('stickerLibrary'), stickerLibrary) },
-        { key: 'myStickerLibrary',       val: () => localforage.setItem(getStorageKey('myStickerLibrary'), myStickerLibrary) },
-        { key: 'myStickerGroups',        val: () => localforage.setItem(getStorageKey('myStickerGroups'), window.myStickerGroups || []) },
-        { key: 'customThemes',           val: () => localforage.setItem(`${APP_PREFIX}customThemes`, customThemes) },
-        { key: 'themeSchemes',           val: () => localforage.setItem(`${APP_PREFIX}themeSchemes`, themeSchemes) },
-        { key: 'chatMessages',           val: () => localforage.setItem(getStorageKey('chatMessages'), messages) },
-    ];
-
-    // 头像从内存缓存读（不从 DOM 读，DOM 的 img.src 不可靠：可能是 blob URL、绝对路径或空字符串）
-    const partnerAvatarSrc = window._avatarCache && window._avatarCache.partner || null;
-    const myAvatarSrc = window._avatarCache && window._avatarCache.me || null;
-
-    if (partnerAvatarSrc) {
-        promises.push({ key: 'partnerAvatar', val: () => localforage.setItem(getStorageKey('partnerAvatar'), partnerAvatarSrc) });
-    }
-    // 注意：头像不做 removeItem —— 用户没改头像时 _avatarCache 可能是 null，不能误删
-
-    if (myAvatarSrc) {
-        promises.push({ key: 'myAvatar', val: () => localforage.setItem(getStorageKey('myAvatar'), myAvatarSrc) });
+    // 同一时刻只跑一轮写入；期间再有保存请求就合并成"跑完再补一次"，
+    // 避免连续发消息 / 拖动滑块时多轮全量写入互相叠加
+    if (_saveInFlight) {
+        _saveQueued = true;
+        return _saveInFlight;
     }
 
-    const results = await Promise.allSettled(promises.map(p => {
-        try { return p.val(); }
-        catch(e) { return Promise.reject(e); }
-    }));
+    _saveInFlight = (async () => {
+        const _t0 = _perf.enabled ? _perfNow() : 0;
 
-    const failed = [];
-    results.forEach((r, i) => {
-        if (r.status === 'rejected') {
-            failed.push(promises[i].key);
-            console.error(`[saveData] 保存失败: ${promises[i].key}`, r.reason);
+        const promises = [
+            { key: 'chatSettings',           val: () => localforage.setItem(getStorageKey('chatSettings'), settings) },
+            { key: 'customReplies',          val: () => localforage.setItem(getStorageKey('customReplies'), customReplies) },
+            { key: 'customReplyGroups',      val: () => localforage.setItem(getStorageKey('customReplyGroups'), window.customReplyGroups || []) },
+            { key: 'customPokeGroups',        val: () => localforage.setItem(getStorageKey('customPokeGroups'), window.customPokeGroups || []) },
+            { key: 'customStatusGroups',      val: () => localforage.setItem(getStorageKey('customStatusGroups'), window.customStatusGroups || []) },
+            { key: 'customEmojis',           val: () => localforage.setItem(getStorageKey('customEmojis'), customEmojis) },
+            { key: 'anniversaries',          val: () => localforage.setItem(getStorageKey('anniversaries'), anniversaries) },
+            { key: 'customPokes',            val: () => localforage.setItem(getStorageKey('customPokes'), customPokes) },
+            { key: 'customStatuses',         val: () => localforage.setItem(getStorageKey('customStatuses'), customStatuses) },
+            { key: 'customMottos',           val: () => localforage.setItem(getStorageKey('customMottos'), customMottos) },
+            { key: 'customIntros',           val: () => localforage.setItem(getStorageKey('customIntros'), customIntros) },
+            { key: 'customPeriodCare',       val: () => localforage.setItem(getStorageKey('customPeriodCare'), customPeriodCare) },
+            { key: 'stickerLibrary',         val: () => localforage.setItem(getStorageKey('stickerLibrary'), stickerLibrary) },
+            { key: 'myStickerLibrary',       val: () => localforage.setItem(getStorageKey('myStickerLibrary'), myStickerLibrary) },
+            { key: 'myStickerGroups',        val: () => localforage.setItem(getStorageKey('myStickerGroups'), window.myStickerGroups || []) },
+            { key: 'customThemes',           val: () => localforage.setItem(`${APP_PREFIX}customThemes`, customThemes) },
+            { key: 'themeSchemes',           val: () => localforage.setItem(`${APP_PREFIX}themeSchemes`, themeSchemes) },
+            { key: 'chatMessages',           val: () => localforage.setItem(getStorageKey('chatMessages'), messages) },
+        ];
+
+        // 头像从内存缓存读（不从 DOM 读，DOM 的 img.src 不可靠：可能是 blob URL、绝对路径或空字符串）
+        const partnerAvatarSrc = window._avatarCache && window._avatarCache.partner || null;
+        const myAvatarSrc = window._avatarCache && window._avatarCache.me || null;
+
+        if (partnerAvatarSrc) {
+            promises.push({ key: 'partnerAvatar', val: () => localforage.setItem(getStorageKey('partnerAvatar'), partnerAvatarSrc) });
         }
-    });
+        // 注意：头像不做 removeItem —— 用户没改头像时 _avatarCache 可能是 null，不能误删
 
-    if (failed.length > 0) {
-        console.warn(`[saveData] ${failed.length} 项写入失败，已触发 localStorage 降级备份`, failed);
+        if (myAvatarSrc) {
+            promises.push({ key: 'myAvatar', val: () => localforage.setItem(getStorageKey('myAvatar'), myAvatarSrc) });
+        }
+
+        const results = await Promise.allSettled(promises.map(p => {
+            try { return p.val(); }
+            catch(e) { return Promise.reject(e); }
+        }));
+
+        const failed = [];
+        results.forEach((r, i) => {
+            if (r.status === 'rejected') {
+                failed.push(promises[i].key);
+                console.error(`[saveData] 保存失败: ${promises[i].key}`, r.reason);
+            }
+        });
+
+        if (failed.length > 0) {
+            console.warn(`[saveData] ${failed.length} 项写入失败，已触发 localStorage 降级备份`, failed);
+        }
+
+        if (_perf.enabled) {
+            const ms = Math.round((_perfNow() - _t0) * 10) / 10;
+            _perf.saves.push({ ms });
+            if (_perf.saves.length > 20) _perf.saves.shift();
+            const last = _perf.saves.slice(-20);
+            const total = Math.round(last.reduce((sum, r) => sum + r.ms, 0) * 10) / 10;
+            console.log(`[perf] saveData ${ms}ms | 最近 ${last.length} 次累计 ${total}ms`);
+        }
+
+        // 非强制：距上次同步兜底备份不足 8 秒就跳过（退出/切后台路径仍会强制立即备份）
+        _backupCriticalData(false);
+    })();
+
+    try {
+        return await _saveInFlight;
+    } finally {
+        _saveInFlight = null;
+        if (_saveQueued) {
+            _saveQueued = false;
+            setTimeout(() => {
+                const p = saveData();
+                if (p && typeof p.catch === 'function') p.catch(e => console.warn('[saveData] 尾随保存失败:', e));
+            }, 0);
+        }
     }
-
-    _backupCriticalData();
 };
 
         function initializeRandomUI() {

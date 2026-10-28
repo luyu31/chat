@@ -88,12 +88,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateLoader('连接成功，欢迎回来。', '100%');
         setTimeout(hideWelcomeScreen, 3500);
 
+        // 退出/切后台的三条路径（隐藏、pagehide、beforeunload）可能连着触发，
+        // 兜底备份只做一次，避免同一份数据被 stringify + 写入 localStorage 三遍
+        let _exitBackupFlushed = false;
+        const flushExitBackupOnce = () => {
+            if (_exitBackupFlushed) return;
+            _exitBackupFlushed = true;
+            try { _backupCriticalData(true); } catch (e) { console.warn('[退出备份] 失败:', e); }
+        };
+
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') {
                 try {
                     if (typeof saveTimeout !== 'undefined') clearTimeout(saveTimeout);
                 } catch (e) {}
-                try { _backupCriticalData(); } catch (e) { console.warn('[visibilitychange] 紧急备份失败:', e); }
+                flushExitBackupOnce();
                 try {
                     const p = saveData();
                     if (p && typeof p.catch === 'function') {
@@ -103,6 +112,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     console.error('[visibilitychange] 保存失败:', e);
                 }
             } else if (document.visibilityState === 'visible') {
+                _exitBackupFlushed = false;
                 try {
                     const backup = typeof _tryRecoverFromBackup === 'function' ? _tryRecoverFromBackup() : null;
                     if (backup && Array.isArray(backup.messages) && backup.messages.length > 0 && Array.isArray(messages) && backup.messages.length > messages.length) {
@@ -127,11 +137,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         window.addEventListener('pagehide', () => {
-            try { _backupCriticalData(); } catch (e) {}
+            flushExitBackupOnce();
         });
 
         window.addEventListener('beforeunload', () => {
-            try { _backupCriticalData(); } catch (e) {}
+            flushExitBackupOnce();
         });
 
         setInterval(() => {
