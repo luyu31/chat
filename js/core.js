@@ -52,9 +52,8 @@ window._registerPartnerMessageListener = window._registerPartnerMessageListener 
             newMsgCountWhileBrowsing = 0;
             if (typeof window._updateBackToLatestBtn === 'function') window._updateBackToLatestBtn();
 
-            // 立即清除 localStorage 备份，防止 _tryRecoverFromBackup 在 IndexedDB 写入前恢复旧消息
-            try { localStorage.removeItem('BACKUP_V1_critical'); } catch(e) {}
-            try { localStorage.removeItem('BACKUP_V1_timestamp'); } catch(e) {}
+            // 立即清除本会话的 localStorage 备份，防止 _tryRecoverFromBackup 在 IndexedDB 写入前恢复旧消息
+            try { _clearLocalBackup(); } catch(e) {}
 
             // 直接写入 IndexedDB（跳过 500ms 防抖），确保刷新后不恢复
             localforage.setItem(getStorageKey('chatMessages'), []).catch(() => {});
@@ -528,7 +527,8 @@ const loadData = async () => {
             const backup = _tryRecoverFromBackup();
             if (backup && Array.isArray(backup.messages) && backup.messages.length > 0) {
                 const timeSince = Math.round((Date.now() - backup.ts) / 60000);
-                console.warn(`[loadData] 主存储无消息，正在从备份恢复（备份时间：${timeSince} 分钟前）`);
+                console.warn(`[loadData] 主存储无消息，正在从本会话备份恢复（备份时间：${timeSince} 分钟前，${backup.messages.length} 条）`);
+                _savePreRecoverySnapshot(); // 先留现场，再覆盖
                 messages = backup.messages.map(m => ({
                     ...m, timestamp: new Date(m.timestamp)
                 }));
@@ -538,7 +538,7 @@ const loadData = async () => {
                 }
                 setTimeout(() => saveData(), 1000);
                 showNotification(
-                    `已从备份恢复 ${messages.length} 条消息${backup._truncated ? '（备份为最近200条）' : ''}`,
+                    `已从备份恢复 ${messages.length} 条文字消息（图片未纳入备份）`,
                     'warning', 6000
                 );
             } else {
@@ -785,8 +785,6 @@ window.deleteAnniversaryItem = function(id) {
     }
 };
 
-const _BACKUP_PREFIX = 'BACKUP_V1_';
-
 // ── 阶段 2 保存层：单飞合并 + 兜底备份节流 + 可选计时 ──────────
 // 只改"什么时候写、写几次"，不碰 key 名称、数据结构、会话隔离；
 // chatMessages / 贴纸 / 头像仍然每次全量写入，不做"内容没变就跳过"的判断。
@@ -800,7 +798,8 @@ const _perf = {
     scrollFrames: [], // 最近 100 次滚动帧的处理耗时（ms）
     scrollEvents: 0,  // 收到的原始 scroll 事件数（用来对比合并前后的触发次数）
     foreground: [],   // 最近 20 次"切回前台后 3 秒内"的主线程长任务汇总
-    skippedBackups: 0
+    skippedBackups: 0,
+    backupFailures: 0 // 兜底备份写入失败次数（配额满/隐私模式），用来验证"不再静默失败"
 };
 try {
     _perf.enabled = localStorage.getItem('PERF_ENABLED') === '1';
@@ -826,6 +825,7 @@ window.__PERF__ = {
         _perf.scrollEvents = 0;
         _perf.foreground.length = 0;
         _perf.skippedBackups = 0;
+        _perf.backupFailures = 0;
     },
     // 输入框高度测量的布局耗时统计（配合 console 里 __PERF__.enable() 使用）
     get inputStats() {
@@ -875,6 +875,22 @@ window.__PERF__ = {
         _perf.scrollFrames.push(ms);
         if (_perf.scrollFrames.length > 100) _perf.scrollFrames.shift();
     },
+    // 兜底备份统计：bytes 是实际写入 localStorage 的字符数（V2 目标 ≤64K 字符）
+    get backupStats() {
+        const list = _perf.backups.slice();
+        const bytes = list.map(b => b.bytes).sort((a, b) => a - b);
+        const times = list.map(b => b.ms).sort((a, b) => a - b);
+        const sum = times.reduce((s, v) => s + v, 0);
+        return {
+            count: list.length,
+            lastBytes: list.length ? list[list.length - 1].bytes : 0,
+            maxBytes: bytes.length ? bytes[bytes.length - 1] : 0,
+            avgMs: times.length ? Math.round(sum / times.length * 100) / 100 : 0,
+            p95Ms: times.length ? times[Math.min(times.length - 1, Math.floor(times.length * 0.95))] : 0,
+            skipped: _perf.skippedBackups,
+            failures: _perf.backupFailures
+        };
+    },
     // "连续 20 条消息"的观察窗口：最近 20 次 saveData 的累计耗时
     get last20TotalMs() {
         const last = _perf.saves.slice(-20);
@@ -912,89 +928,280 @@ document.addEventListener('visibilitychange', function () {
     if (!document.hidden) _startForegroundWatch();
 });
 
-// 备份前按内容估算体积（只读字符串长度，不拼接）：
-// 大图消息可以提前截断，避免"先 stringify 整个大对象 → 发现超限 → 再 stringify 一次"
-function _estimateMessagesBytes(list) {
-    let bytes = 0;
-    for (let i = 0; i < list.length; i++) {
-        const m = list[i];
-        if (!m) continue;
-        bytes += 120;
-        if (m.text) bytes += m.text.length;
-        if (m.image) bytes += m.image.length;
-        if (m.note) bytes += m.note.length;
+// ── 兜底备份 V2：只存"最近 N 条纯文字 + 少量关键设置"──────────────
+// 为什么不再整段镜像 messages：图片是 base64，一次同步 stringify 就是几 MB，
+// 而 localStorage 配额通常只有几 MB。超了 setItem 直接抛异常，结果是
+// "旧备份还在、新备份没写进来"，比没有备份更容易误导。
+// 现在只保一段文本尾巴（目标 ≤64KB），能救回最近几条消息，也不会撑爆配额。
+const BACKUP_V2_PREFIX = 'BACKUP_V2_';
+const BACKUP_TEXT_LIMIT = 120;          // 备份的消息条数上限
+const BACKUP_TEXT_MIN = 10;             // 缩量后至少保留的条数（再少就没有救急意义了）
+const BACKUP_MAX_BYTES = 64 * 1024;     // UTF-16 保守估算（字符数 × 2）
+const BACKUP_MIN_INTERVAL = 8000;       // 非强制调用最短间隔
+const BACKUP_LEGACY_KEY = 'BACKUP_V1_critical';
+const BACKUP_LEGACY_TS_KEY = 'BACKUP_V1_timestamp';
+
+// 恢复时跟着消息一起回来的设置：只挑小的标量，不含自定义 CSS / 音频 data URL
+const BACKUP_SETTINGS_KEYS = [
+    'partnerName', 'myName', 'myStatus', 'partnerStatus',
+    'colorTheme', 'isDarkMode', 'fontSize', 'messageFontFamily',
+    'messageFontWeight', 'messageLineHeight', 'bubbleStyle', 'timeFormat',
+    'showPartnerNameInChat', 'soundEnabled', 'typingIndicatorEnabled',
+    'readReceiptsEnabled', 'replyEnabled', 'musicPlayerEnabled',
+    'replyDelayMin', 'replyDelayMax', 'autoSendEnabled', 'autoSendInterval',
+    'inChatAvatarEnabled', 'inChatAvatarSize', 'inChatAvatarPosition', 'alwaysShowAvatar',
+    'myAvatarFrame', 'partnerAvatarFrame', 'myAvatarShape', 'partnerAvatarShape',
+    'allowReadNoReply', 'readNoReplyChance', 'combineReplyCards', 'combineReplyMaxCards'
+];
+
+let _lastBackupAt = 0;
+let _backupIdleHandle = 0;
+let _backupIdleIsIdle = false;
+
+function _jsonBytes(str) { return str.length * 2; }
+
+function _backupKeyFor(sid) { return BACKUP_V2_PREFIX + sid + '_critical'; }
+function _backupKey() { return SESSION_ID ? _backupKeyFor(SESSION_ID) : ''; }
+function _preRecoveryKey(sid) { return BACKUP_V2_PREFIX + sid + '_pre_recovery'; }
+
+function _pickBackupSettings() {
+    const out = {};
+    if (!settings || typeof settings !== 'object') return out;
+    for (let i = 0; i < BACKUP_SETTINGS_KEYS.length; i++) {
+        const k = BACKUP_SETTINGS_KEYS[i];
+        const v = settings[k];
+        if (v === undefined || v === null) continue;
+        if (typeof v === 'string' && v.length > 256) continue; // 自定义样式/URL 不进备份
+        out[k] = v;
     }
-    return bytes;
+    try {
+        const colors = settings.customThemeColors;
+        if (colors && typeof colors === 'object' && JSON.stringify(colors).length <= 2048) {
+            out.customThemeColors = colors;
+        }
+    } catch (e) {}
+    return out;
 }
 
-// 同步 localStorage 兜底备份：普通调用最短 8 秒一次。
-// 消息本身已经异步写进 IndexedDB，兜底只防"进程被杀/闪退"，
-// 没必要每发一条消息就把整段 messages JSON.stringify 一次（大图时是几 MB）。
-// 退出/切后台/挂断路径必须立即落盘，所以默认 force = true；
-// saveData 结尾显式传 false，其余调用点保持"立即备份"。
-const BACKUP_MIN_INTERVAL = 8000;
-let _lastBackupAt = 0;
+// 备份里的消息只留"能看懂内容"的字段；图片一律剥离成标记，
+// 避免 base64 撑大备份，也避免恢复出来的占位数据覆盖真实图片。
+function _pickBackupMessages(limit, textCap) {
+    const out = [];
+    const cap = (textCap && textCap > 0) ? textCap : 2000;
+    const total = messages.length;
+    const from = Math.max(0, total - limit);
+    for (let i = from; i < total; i++) {
+        const m = messages[i];
+        if (!m) continue;
+        const item = {
+            id: m.id,
+            sender: m.sender,
+            text: typeof m.text === 'string' ? m.text : '',
+            timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+            type: m.type,
+            status: m.status,
+            isSticker: m.isSticker ? 1 : undefined,
+            // 引用只留"谁说了什么"，引用的图片/语音可能也是 base64，一律不带
+            replyTo: m.replyTo ? {
+                id: m.replyTo.id,
+                sender: m.replyTo.sender,
+                text: typeof m.replyTo.text === 'string' ? m.replyTo.text.slice(0, 200) : ''
+            } : undefined,
+            voice: (m.voice && m.voice.fakeText) ? { fakeText: String(m.voice.fakeText).slice(0, 500) } : undefined
+        };
+        if (m.image) item._imgOmitted = 1;
+        if (m.note) item.note = String(m.note).slice(0, 1000);
+        if (typeof item.text === 'string' && item.text.length > cap) item.text = item.text.slice(0, cap) + '…';
+        for (const k in item) { if (item[k] === undefined) delete item[k]; }
+        out.push(item);
+    }
+    return out;
+}
 
+function _buildBackupPayload(limit, minimal, textCap) {
+    return {
+        v: 2,
+        ts: Date.now(),
+        sessionId: SESSION_ID,
+        messages: _pickBackupMessages(limit, textCap),
+        settings: minimal ? {} : _pickBackupSettings(),
+        anniversaries: (minimal || !Array.isArray(anniversaries)) ? [] : anniversaries.slice(-100)
+    };
+}
+
+function _buildBackupJson() {
+    let limit = BACKUP_TEXT_LIMIT;
+    let payload = _buildBackupPayload(limit, false, 0);
+    let json = JSON.stringify(payload);
+    // 超限就从"最老的"开始丢，尽量保住最近的消息，而不是一刀切清空
+    let guard = 0;
+    while (_jsonBytes(json) > BACKUP_MAX_BYTES && limit > BACKUP_TEXT_MIN && guard++ < 20) {
+        limit = Math.max(BACKUP_TEXT_MIN, Math.floor(limit / 2));
+        payload = _buildBackupPayload(limit, false, 0);
+        payload._truncated = true;
+        json = JSON.stringify(payload);
+    }
+    // 极端情况：最近 10 条单条就超长，才退到"截短每条文字"
+    if (_jsonBytes(json) > BACKUP_MAX_BYTES) {
+        payload = _buildBackupPayload(BACKUP_TEXT_MIN, false, 200);
+        payload._truncated = true;
+        json = JSON.stringify(payload);
+    }
+    return { json: json, count: payload.messages.length };
+}
+
+function _clearLegacyBackupKeys() {
+    try { localStorage.removeItem(BACKUP_LEGACY_KEY); } catch (e) {}
+    try { localStorage.removeItem(BACKUP_LEGACY_TS_KEY); } catch (e) {}
+}
+
+function _writeBackupNow() {
+    if (window._skipBackup || !SESSION_ID) return;
+    const _t0 = _perf.enabled ? _perfNow() : 0;
+    try {
+        const built = _buildBackupJson();
+        localStorage.setItem(_backupKey(), built.json);
+        _lastBackupAt = Date.now();
+        _clearLegacyBackupKeys(); // 旧版全量镜像已无用，尽早释放配额
+        if (_perf.enabled) {
+            const ms = Math.round((_perfNow() - _t0) * 10) / 10;
+            _perf.backups.push({ ms, bytes: built.json.length, count: built.count });
+            if (_perf.backups.length > 20) _perf.backups.shift();
+            console.log(`[perf] backup ${ms}ms / ${(built.json.length / 1024).toFixed(0)}K chars / ${built.count} msgs`);
+        }
+    } catch (e) {
+        // 配额满/隐私模式：先用更小的 payload 再试一次；仍失败就保留上一份并留痕，等下一轮重试
+        _perf.backupFailures++;
+        try {
+            const tiny = JSON.stringify(_buildBackupPayload(20, true));
+            localStorage.setItem(_backupKey(), tiny);
+            _lastBackupAt = Date.now();
+            console.warn('[备份] 完整备份失败，已降级写入最近 20 条文字:', e);
+        } catch (e2) {
+            console.warn('[备份] localStorage 写入失败，保留上一份备份:', e);
+        }
+    }
+}
+
+function _cancelIdleBackup() {
+    if (!_backupIdleHandle) return;
+    try {
+        if (_backupIdleIsIdle && typeof cancelIdleCallback === 'function') cancelIdleCallback(_backupIdleHandle);
+        else clearTimeout(_backupIdleHandle);
+    } catch (e) {}
+    _backupIdleHandle = 0;
+}
+
+// force = true：退出/切后台/挂断路径，必须同步立即落盘
+// force = false：saveData 结尾调用，放到空闲时段写，且最短 8 秒一次
 function _backupCriticalData(force = true) {
-    if (window._skipBackup) return;
-    const now = Date.now();
-    if (!force && now - _lastBackupAt < BACKUP_MIN_INTERVAL) {
+    if (window._skipBackup || !SESSION_ID) return;
+    if (force) {
+        _cancelIdleBackup();
+        _writeBackupNow();
+        return;
+    }
+    if (Date.now() - _lastBackupAt < BACKUP_MIN_INTERVAL) {
         _perf.skippedBackups++;
         return;
     }
-    _lastBackupAt = now;
-    const _t0 = _perf.enabled ? _perfNow() : 0;
-    try {
-        const backupPayload = {
-            ts: Date.now(),
-            messages: messages,
-            settings: settings,
-            sessionId: SESSION_ID,
-            anniversaries: anniversaries
-        };
-
-        let payloadToStore = backupPayload;
-        if (_estimateMessagesBytes(messages) > 3 * 1024 * 1024) {
-            payloadToStore = {
-                ...backupPayload,
-                messages: messages.slice(-200),
-                _truncated: true
-            };
-        }
-
-        const json = JSON.stringify(payloadToStore);
-
-        let storedJson = json;
-        if (json.length > 4.5 * 1024 * 1024) {
-            const smallerPayload = {
-                ...payloadToStore,
-                messages: messages.slice(-50),
-                _truncated: true
-            };
-            storedJson = JSON.stringify(smallerPayload);
-        }
-        localStorage.setItem(_BACKUP_PREFIX + 'critical', storedJson);
-        localStorage.setItem(_BACKUP_PREFIX + 'timestamp', String(Date.now()));
-        if (_perf.enabled) {
-            const ms = Math.round((_perfNow() - _t0) * 10) / 10;
-            _perf.backups.push({ ms, bytes: storedJson.length });
-            if (_perf.backups.length > 20) _perf.backups.shift();
-            console.log(`[perf] backup ${ms}ms / ${(storedJson.length / 1024).toFixed(0)}KB`);
-        }
-    } catch (e) {
-        console.warn('localStorage 备份写入失败（可能存储已满）:', e);
+    if (_backupIdleHandle) return;
+    const run = function () { _backupIdleHandle = 0; _writeBackupNow(); };
+    if (typeof requestIdleCallback === 'function') {
+        _backupIdleIsIdle = true;
+        _backupIdleHandle = requestIdleCallback(run, { timeout: 2000 });
+    } else {
+        _backupIdleIsIdle = false;
+        _backupIdleHandle = setTimeout(run, 200);
     }
 }
 
-function _tryRecoverFromBackup() {
+function _parseBackupRaw(raw) {
     try {
-        const raw = localStorage.getItem(_BACKUP_PREFIX + 'critical');
-        if (!raw) return null;
-        return JSON.parse(raw);
+        const obj = JSON.parse(raw);
+        if (!obj || typeof obj !== 'object') return null;
+        if (!Array.isArray(obj.messages)) return null;
+        // 会话隔离：没有归属信息、或归属不是当前会话，一律不拿来恢复
+        if (!obj.sessionId || String(obj.sessionId) !== String(SESSION_ID)) return null;
+        return obj;
     } catch (e) {
         return null;
     }
 }
+
+// 只用于"主存储为空/读取失败"的冷启动恢复，调用方必须先确认 IndexedDB 里确实没有消息
+function _tryRecoverFromBackup() {
+    if (!SESSION_ID) return null;
+    try {
+        const own = localStorage.getItem(_backupKey());
+        if (own) {
+            const p = _parseBackupRaw(own);
+            if (p) return p;
+        }
+    } catch (e) {}
+    // 老版本的全量镜像：只在首轮升级时读一次，读成功后会被新备份覆盖并删除
+    try {
+        const legacy = localStorage.getItem(BACKUP_LEGACY_KEY);
+        if (legacy) {
+            const p = _parseBackupRaw(legacy);
+            if (p) return p;
+        }
+    } catch (e) {}
+    return null;
+}
+
+function _peekLocalBackup() {
+    const p = _tryRecoverFromBackup();
+    if (!p) return null;
+    return {
+        ts: p.ts || 0,
+        count: p.messages.length,
+        truncated: !!p._truncated || p.messages.some(m => m && m._imgOmitted)
+    };
+}
+
+// 恢复前先把"现场"留一份，避免恢复动作本身把当前状态冲掉
+function _savePreRecoverySnapshot() {
+    if (!SESSION_ID) return;
+    try {
+        localStorage.setItem(_preRecoveryKey(SESSION_ID), JSON.stringify({
+            ts: Date.now(),
+            sessionId: SESSION_ID,
+            messageCount: messages.length,
+            settings: _pickBackupSettings(),
+            messages: _pickBackupMessages(20)
+        }));
+    } catch (e) {}
+}
+
+// 只清当前会话的兜底备份（清空当前会话消息时用）
+function _clearLocalBackup() {
+    if (SESSION_ID) {
+        try { localStorage.removeItem(_backupKey()); } catch (e) {}
+        try { localStorage.removeItem(_preRecoveryKey(SESSION_ID)); } catch (e) {}
+    }
+    _clearLegacyBackupKeys();
+}
+
+// 清掉所有会话的兜底备份（云端整体恢复 / 全量重置时用）
+function _clearAllLocalBackups() {
+    try {
+        const toRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            if (k.indexOf(BACKUP_V2_PREFIX) === 0 || k === BACKUP_LEGACY_KEY || k === BACKUP_LEGACY_TS_KEY) {
+                toRemove.push(k);
+            }
+        }
+        for (let j = 0; j < toRemove.length; j++) localStorage.removeItem(toRemove[j]);
+    } catch (e) {}
+}
+
+window._clearLocalBackup = _clearLocalBackup;
+window._clearAllLocalBackups = _clearAllLocalBackups;
+window._peekLocalBackup = _peekLocalBackup;
+window._backupCriticalData = _backupCriticalData;
 
 let _saveInFlight = null;
 let _saveQueued = false;

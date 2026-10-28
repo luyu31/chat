@@ -370,8 +370,7 @@
             // 修复：直接赋值 let messages（window.messages 赋值不影响 let 绑定）
             messages = [];
             displayedMessageCount = typeof HISTORY_BATCH_SIZE !== 'undefined' ? HISTORY_BATCH_SIZE : 20;
-            try { localStorage.removeItem('BACKUP_V1_critical'); } catch(e) {}
-            try { localStorage.removeItem('BACKUP_V1_timestamp'); } catch(e) {}
+            try { if (typeof _clearLocalBackup === 'function') _clearLocalBackup(); } catch(e) {}
             if (window.localforage && typeof getStorageKey === 'function') {
                 localforage.setItem(getStorageKey('chatMessages'), []).catch(function() {});
             }
