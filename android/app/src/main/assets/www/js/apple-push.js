@@ -15,7 +15,7 @@
 
     // 通知只提示"收到了新消息"，不再使用写死的聊天句子；
     // 真正的消息由原来的随机回复（simulateReply）产生。
-    var NOTIFY_BODY = '在后台收到了新消息';
+    var NOTIFY_BODY = '保持后台连接，持续接收消息';
 
     var GAPS = [5, 15, 30, 60];
     var HOURS = [6, 24, 168, 0];
