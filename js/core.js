@@ -836,6 +836,10 @@ window.__PERF__ = {
         _perf.renderLayoutReads = 0;
         _perf.renderFull = 0;
         _perf.renderAppend = 0;
+        _bootTimeline.dcl = null;
+        _bootTimeline.fcp = null;
+        _bootTimeline.splashGone = null;
+        _bootTimeline.firstMessage = null;
     },
     // 输入框高度测量的布局耗时统计（配合 console 里 __PERF__.enable() 使用）
     get inputStats() {
@@ -944,8 +948,85 @@ window.__PERF__ = {
             if (_perfNow() - start < (durationMs || 1000)) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
+    },
+    // 启动时间线：全部相对 navigationStart，单位 ms
+    get bootTimeline() {
+        const nav = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+        return {
+            dcl: _bootTimeline.dcl,
+            fcp: _bootTimeline.fcp,
+            splashGone: _bootTimeline.splashGone,
+            firstMessage: _bootTimeline.firstMessage,
+            domInteractive: (nav && nav.domInteractive) ? Math.round(nav.domInteractive) : null,
+            load: (nav && nav.loadEventEnd) ? Math.round(nav.loadEventEnd) : null
+        };
     }
 };
+
+// 启动时间线探针：记录 DCL / 首绘 / 开屏遮罩移除 / 首条消息进入 DOM 的时刻。
+// 只在启动阶段挂一次监听，之后不再产生开销；数据通过 __PERF__.bootTimeline 读取
+const _bootTimeline = { dcl: null, fcp: null, splashGone: null, firstMessage: null };
+(function () {
+    try {
+        document.addEventListener('DOMContentLoaded', () => {
+            _bootTimeline.dcl = Math.round(_perfNow());
+        }, { once: true });
+
+        try {
+            new PerformanceObserver(list => {
+                list.getEntries().forEach(e => {
+                    if (e.name === 'first-contentful-paint' && _bootTimeline.fcp === null) {
+                        _bootTimeline.fcp = Math.round(e.startTime);
+                    }
+                });
+            }).observe({ type: 'paint', buffered: true });
+        } catch (e) {}
+
+        const isSplashGone = (splash) => {
+            if (!document.documentElement.contains(splash)) return true;
+            if (splash.classList.contains('splash-fade-out')) return true;
+            return getComputedStyle(splash).display === 'none';
+        };
+        const markSplashGone = () => {
+            if (_bootTimeline.splashGone === null) _bootTimeline.splashGone = Math.round(_perfNow());
+        };
+        const watchSplash = () => {
+            const splash = document.getElementById('splash-declaration');
+            if (!splash) { markSplashGone(); return; }
+            if (isSplashGone(splash)) { markSplashGone(); return; }
+            const check = () => {
+                if (isSplashGone(splash)) {
+                    markSplashGone();
+                    attrObs.disconnect();
+                    removedObs.disconnect();
+                }
+            };
+            const attrObs = new MutationObserver(check);
+            attrObs.observe(splash, { attributes: true, attributeFilter: ['class', 'style'] });
+            const removedObs = new MutationObserver(check);
+            removedObs.observe(document.documentElement, { childList: true, subtree: true });
+        };
+        const watchFirstMessage = () => {
+            const container = document.getElementById('chat-container');
+            if (!container) return;
+            if (container.querySelector('.message-wrapper')) {
+                _bootTimeline.firstMessage = Math.round(_perfNow());
+                return;
+            }
+            const obs = new MutationObserver(() => {
+                if (container.querySelector('.message-wrapper')) {
+                    _bootTimeline.firstMessage = Math.round(_perfNow());
+                    obs.disconnect();
+                }
+            });
+            obs.observe(container, { childList: true, subtree: true });
+        };
+
+        watchSplash();
+        document.addEventListener('DOMContentLoaded', watchFirstMessage, { once: true });
+    } catch (e) {}
+})();
+
 
 function _perfNow() {
     return (window.performance && performance.now) ? performance.now() : Date.now();

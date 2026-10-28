@@ -10,14 +10,13 @@
 
     <title>苹果日记</title>
     <link rel="stylesheet" href="js/vendor/fonts/noto-serif-sc/noto-serif-sc.css">
-    <link rel="stylesheet" href="js/vendor/fontawesome/css/all.min.css">
-    <link rel="stylesheet" href="js/vendor/tabler/tabler-icons.min.css">
+    <link rel="stylesheet" href="js/vendor/fontawesome/css/subset.min.css">
     <link rel="icon" type="image/png" sizes="192x192" href="apple-icon-192.png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <meta name="apple-mobile-web-app-title" content="苹果日记">
 
-    <script src="js/vendor/localforage.min.js"></script>
-    <script src="js/vendor/jszip.min.js"></script>
+    <script defer src="js/vendor/localforage.min.js"></script>
+    <script defer src="js/vendor/jszip.min.js"></script>
 
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/companion.css">
@@ -254,7 +253,12 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                 <button id="companion-btn" class="action-btn" title="陪伴"><i class="fas fa-hand-holding-heart"></i></button>
                 <button id="daily-greeting-btn" class="action-btn" title="今日公告" onclick="reopenDailyGreeting()"><i class="fas fa-newspaper" style="font-size:16px;"></i></button>
                 <button id="moments-header-btn" class="action-btn" title="情侣空间" onclick="openMomentsWithTransition()" style="position:relative;">
-                    <i class="ti ti-home-heart" style="font-size:19px;"></i>
+                    <svg width="19" height="19" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;pointer-events:none;">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                        <path d="M21 12l-9 -9l-9 9h2v7a2 2 0 0 0 2 2h6"></path>
+                        <path d="M9 21v-6a2 2 0 0 1 2 -2h2c.39 0 .754 .112 1.061 .304"></path>
+                        <path d="M19 21.5l2.518 -2.58a1.74 1.74 0 0 0 0 -2.413a1.627 1.627 0 0 0 -2.346 0l-.168 .172l-.168 -.172a1.627 1.627 0 0 0 -2.346 0a1.74 1.74 0 0 0 0 2.412l2.51 2.59z"></path>
+                    </svg>
                     <span id="moments-header-badge" style="display:none;position:absolute;top:3px;right:3px;width:7px;height:7px;background:var(--accent-color);border-radius:50%;border:1.5px solid var(--primary-bg);pointer-events:none;"></span>
                 </button>
                 <button id="settings-btn" class="action-btn" title="设置" style="position:relative;">
@@ -3710,51 +3714,51 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
 </div>
 
     <!-- == 核心层 == -->
-    <script src="js/config.js"></script>
-    <script src="js/utils.js"></script>
-    <script src="js/backup-engine.js"></script>
-    <script src="js/state.js"></script>
-    <script src="js/core.js"></script>
+    <script defer src="js/config.js"></script>
+    <script defer src="js/utils.js"></script>
+    <script defer src="js/backup-engine.js"></script>
+    <script defer src="js/state.js"></script>
+    <script defer src="js/core.js"></script>
 
     <!-- == 功能模块 == -->
-    <script src="js/features/mood.js"></script>
-    <script src="js/features/envelope.js"></script>
-    <script src="js/features/moments.js"></script>
-    <script src="js/features/album.js"></script>
-    <script src="js/features/reply-library.js"></script>
-    <script src="js/features/theme-editor.js"></script>
-    <script src="js/features/group-chat.js"></script>
-    <script src="js/features/call.js"></script>
-    <script src="js/features/summer-theme.js"></script>
+    <script defer src="js/features/mood.js"></script>
+    <script defer src="js/features/envelope.js"></script>
+    <script defer src="js/features/moments.js"></script>
+    <script defer src="js/features/album.js"></script>
+    <script defer src="js/features/reply-library.js"></script>
+    <script defer src="js/features/theme-editor.js"></script>
+    <script defer src="js/features/group-chat.js"></script>
+    <script defer src="js/features/call.js"></script>
+    <script defer src="js/features/summer-theme.js"></script>
 
     <!-- == 合并模块 == -->
-    <script src="js/games.js"></script> 
-    <script src="js/features.js"></script> 
-    <script src="js/data.js"></script>
-    <script src="js/onboarding.js"></script> 
-    <script src="js/features/anniversary.js"></script>
-    <script src="js/features/period.js"></script>
-    <script src="js/listeners.js"></script>
-    <script src="js/listeners-step2.js"></script>
-    <script src="js/listeners-voice.js"></script>
-    <script src="js/listeners-sticker.js"></script>
-    <script src="js/features/companion.js"></script>
-    <script src="js/features/companion-diary.js"></script>
-    <script src="js/features/voice-tts.js"></script>
-    <script src="js/cloud-sync.js"></script>
-    <script src="js/cloud-sync-engine.js"></script>
-    <script src="js/cloud-media.js"></script>
-    <script src="js/cloud-media-migration.js"></script>
-    <script src="js/cloud-sync-ui.js"></script>
-    <script src="js/app.js"></script>
-    <script src="js/features/cinema.js"></script>
-    <script src="js/features/global-msg-banner.js"></script>
-    <script src="js/features/survey.js"></script>
-    <script src="js/features/more-menu.js"></script>
-    <script src="js/vendor/gsap.min.js"></script>
-    <script src="js/features/redpacket.js"></script>
-    <script src="js/apple-bridge.js"></script>
-    <script src="js/apple-push.js"></script>
+    <script defer src="js/games.js"></script> 
+    <script defer src="js/features.js"></script> 
+    <script defer src="js/data.js"></script>
+    <script defer src="js/onboarding.js"></script> 
+    <script defer src="js/features/anniversary.js"></script>
+    <script defer src="js/features/period.js"></script>
+    <script defer src="js/listeners.js"></script>
+    <script defer src="js/listeners-step2.js"></script>
+    <script defer src="js/listeners-voice.js"></script>
+    <script defer src="js/listeners-sticker.js"></script>
+    <script defer src="js/features/companion.js"></script>
+    <script defer src="js/features/companion-diary.js"></script>
+    <script defer src="js/features/voice-tts.js"></script>
+    <script defer src="js/cloud-sync.js"></script>
+    <script defer src="js/cloud-sync-engine.js"></script>
+    <script defer src="js/cloud-media.js"></script>
+    <script defer src="js/cloud-media-migration.js"></script>
+    <script defer src="js/cloud-sync-ui.js"></script>
+    <script defer src="js/app.js"></script>
+    <script defer src="js/features/cinema.js"></script>
+    <script defer src="js/features/global-msg-banner.js"></script>
+    <script defer src="js/features/survey.js"></script>
+    <script defer src="js/features/more-menu.js"></script>
+    <script defer src="js/vendor/gsap.min.js"></script>
+    <script defer src="js/features/redpacket.js"></script>
+    <script defer src="js/apple-bridge.js"></script>
+    <script defer src="js/apple-push.js"></script>
 <!-- 相册图片详情（全屏） -->
 <div id="al-view-detail" style="display:none;position:fixed;inset:0;z-index:6000;background:#000;flex-direction:column;">
     <div class="al-detail-topbar">
