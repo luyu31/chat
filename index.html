@@ -19,16 +19,17 @@
     <script defer src="js/vendor/jszip.min.js"></script>
 
     <link rel="stylesheet" href="css/styles.css">
-    <link rel="stylesheet" href="css/companion.css">
-    <link rel="stylesheet" href="css/cinema.css">
-    <link rel="stylesheet" href="css/period.css">
     <link rel="stylesheet" href="css/music-local.css">
     <link rel="stylesheet" href="css/my-sticker-groups.css">
     <link rel="stylesheet" href="css/global-msg-banner.css">
-    <link rel="stylesheet" href="css/survey.css">
     <link rel="stylesheet" href="css/more-menu.css">
-    <link rel="stylesheet" href="css/redpacket.css">
     <link rel="stylesheet" href="css/summer-theme.css" id="summer-skin-css" disabled>
+
+    <style id="deferred-css-critical">
+        /* companion.css 延迟注入期间，陪伴页必须先保持隐藏且不占位；
+           其余四个（cinema/survey/period/redpacket）作用在默认 display:none 的弹层上，无需临界样式 */
+        #companion-page { position: fixed; inset: 0; opacity: 0; pointer-events: none; }
+    </style>
 
     <style id="css-live-preview-style"></style>
     <style>

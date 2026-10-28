@@ -607,6 +607,7 @@ function _updateBigAvatars(){
 // ─── 主入口 ───
 window.openCoupleSpace=window.openMomentsModal=function(scrollToPostId){
     const page=document.getElementById('couple-space-page');if(!page)return;
+    if(typeof loadCssOnce==='function')loadCssOnce('css/cinema.css');
     page.style.display='flex';
     requestAnimationFrame(()=>requestAnimationFrame(()=>{
         // 页面动画前先把 header 放好（此时整页还在 translateY(100%) 不可见）

@@ -1557,6 +1557,7 @@
 
     function openCompanionPage(opts) {
         opts = opts || {};
+        if (typeof loadCssOnce === 'function') loadCssOnce('css/companion.css');
         const cfg = MODES[currentMode];
         const page = $('companion-page');
 

@@ -982,26 +982,28 @@ const _bootTimeline = { dcl: null, fcp: null, splashGone: null, firstMessage: nu
             }).observe({ type: 'paint', buffered: true });
         } catch (e) {}
 
+        const isSplashGone = (splash) => {
+            if (!document.documentElement.contains(splash)) return true;
+            if (splash.classList.contains('splash-fade-out')) return true;
+            return getComputedStyle(splash).display === 'none';
+        };
         const markSplashGone = () => {
             if (_bootTimeline.splashGone === null) _bootTimeline.splashGone = Math.round(_perfNow());
         };
         const watchSplash = () => {
             const splash = document.getElementById('splash-declaration');
             if (!splash) { markSplashGone(); return; }
-            if (splash.classList.contains('splash-fade-out')) { markSplashGone(); return; }
-            const attrObs = new MutationObserver(() => {
-                if (splash.classList.contains('splash-fade-out')) {
+            if (isSplashGone(splash)) { markSplashGone(); return; }
+            const check = () => {
+                if (isSplashGone(splash)) {
                     markSplashGone();
                     attrObs.disconnect();
-                }
-            });
-            attrObs.observe(splash, { attributes: true, attributeFilter: ['class'] });
-            const removedObs = new MutationObserver(() => {
-                if (!document.documentElement.contains(splash)) {
-                    markSplashGone();
                     removedObs.disconnect();
                 }
-            });
+            };
+            const attrObs = new MutationObserver(check);
+            attrObs.observe(splash, { attributes: true, attributeFilter: ['class', 'style'] });
+            const removedObs = new MutationObserver(check);
             removedObs.observe(document.documentElement, { childList: true, subtree: true });
         };
         const watchFirstMessage = () => {
@@ -1024,6 +1026,39 @@ const _bootTimeline = { dcl: null, fcp: null, splashGone: null, firstMessage: nu
         document.addEventListener('DOMContentLoaded', watchFirstMessage, { once: true });
     } catch (e) {}
 })();
+// 非首屏功能样式：首屏不加载，首次需要时再注入。
+// 这样可以减掉首屏的 CSS 解析与样式匹配成本，同时保持功能样式完整
+const _deferredCssLoaded = Object.create(null);
+// 弹层 id → 该弹层专属的样式文件（打开前先注入，避免样式闪烁）
+const _deferredCssByModal = {
+    'period-modal': 'css/period.css',
+    'stats-modal': 'css/period.css',
+    'survey-modal': 'css/survey.css',
+    'redpacket-compose-modal': 'css/redpacket.css',
+    'redpacket-view-modal': 'css/redpacket.css',
+    'redpacket-history-modal': 'css/redpacket.css'
+};
+function loadCssOnce(href) {
+    if (_deferredCssLoaded[href]) return _deferredCssLoaded[href];
+    _deferredCssLoaded[href] = new Promise(resolve => {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        link.onload = () => resolve(true);
+        link.onerror = () => resolve(false);
+        document.head.appendChild(link);
+    });
+    return _deferredCssLoaded[href];
+}
+window.loadCssOnce = loadCssOnce;
+
+document.addEventListener('DOMContentLoaded', () => {
+    const warm = () => {
+        ['css/cinema.css', 'css/companion.css', 'css/redpacket.css', 'css/survey.css', 'css/period.css'].forEach(loadCssOnce);
+    };
+    if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 1200 });
+    else setTimeout(warm, 300);
+}, { once: true });
 
 
 function _perfNow() {
@@ -3581,6 +3616,8 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
         }
 
 function showModal(modalElement, focusElement = null) {
+            const _deferredCss = modalElement && _deferredCssByModal[modalElement.id];
+            if (_deferredCss) loadCssOnce(_deferredCss);
             if (modalElement._hideTimeout) {
                 clearTimeout(modalElement._hideTimeout);
                 modalElement._hideTimeout = null;
