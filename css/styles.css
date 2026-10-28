@@ -639,8 +639,11 @@
             border-bottom: 1px solid var(--border-color);
             background-color: var(--header-bg);
             opacity: 0.82;
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            /* 顶栏随滚动常驻：强制独立合成层，避免滚动时主线程重绘 */
+            transform: translateZ(0);
+            will-change: transform;
             box-shadow: 0 1px 0 rgba(0,0,0,0.06);
             z-index: 10;
             flex-shrink: 0;
@@ -1126,9 +1129,7 @@
             /* 閸楀﹪鈧繑妲戝В娑氬箵閻犲啫绨抽敍宀冣偓灞肩瑝閺勵垰鐤勮箛鍐閸фせ鈧柡鈧梻鏁ら幋閿嬪床娴滃棗顥嗙痪鍝ヨ閼冲本娅欓弮鏈电瑝娴兼碍妯夊妤€绶㈢粣浣稿帎閿涳拷
                color-mix 閻╁瓨甯撮崷銊у箛閺堝娈� --secondary-bg 娑撳﹤浠涢柅蹇旀鎼达附璐╅崥鍫礉濞村懓澹�/濞ｈ精澹婂Ο鈥崇础閸掑洦宕查弮鍫曨杹閼硅弓绱伴懛顏勫З鐠虹喓娼冮幑顫礉
                娑撳秶鏁ゆ０婵嗩樆缂佸瓨濮㈡稉鈧總锟� rgb 閸掑棝鍣洪崣姗€鍣� */
-            background-color: color-mix(in srgb, var(--secondary-bg) 62%, transparent);
-            backdrop-filter: blur(6px);
-            -webkit-backdrop-filter: blur(6px);
+            background-color: color-mix(in srgb, var(--secondary-bg) 82%, transparent);
             border-radius: 999px;
             box-shadow: var(--shadow);
             z-index: 1;
@@ -1143,8 +1144,8 @@
             padding: 0;
             border-radius: 50%;
             font-size: 15px;
-            /* 鍦嗗舰 emoji 搴曟洿閫忔槑涓€鐐癸紙鍘熸潵鏄� 62%锛� */
-            background-color: color-mix(in srgb, var(--secondary-bg) 35%, transparent);
+            /* 圆形 emoji 底改成 78% 纯色（原来 35% + blur）：小标签数量多，避免滚动时逐个重合成 */
+            background-color: color-mix(in srgb, var(--secondary-bg) 78%, transparent);
         }
         /* 閻愮懓鍤悜顓炲隘濮ｆ棁鍊濋惇鑲╂箙閸掓壆娈戦懗璺烘抄閼煎啫娲块崘宥呫亣娑撯偓閸﹀牞绱欏鈧径鏍ㄥ⒖6px閿涘绱濇潻娆愮壉閹靛瀵氶悙鍦畱閺冭泛鈧瑥鎳℃稉顓犲芳閺囨挳鐝敍锟�
            娑撳秴顔愰弰鎾虫礈娑撳搫妯婃稉鈧悙鍦仯鐏忚鲸绱￠悙鐟板煂娑撳娼伴惃鍕毜濞夆槄绱欑拠顓㈢叾閺夛拷/缁俱垹瀵�/閸ュ墽澧�/鐞涖劍鍎忛崠鍜冪礆娑擄拷 */
@@ -2846,7 +2847,7 @@
         }
         .empty-state p {
             font-size: 16px;
-            font-weight: 500;
+            font-weight: 600;
         }
 
         #typing-indicator-wrapper {
@@ -3429,6 +3430,12 @@
             filter: blur(40px) brightness(2);
             pointer-events: none;
         }
+        /* 淡出后到真正 display:none 之间还有 800ms，整页 20+ 个 infinite 动画没必要继续跑 */
+        .welcome-animation.hidden *,
+        .welcome-animation.hidden::before,
+        .welcome-animation.hidden::after {
+            animation-play-state: paused !important;
+        }
 
         .welcome-bg-gradient {
             position: absolute; inset: 0;
@@ -3456,16 +3463,19 @@
         }
         .welcome-animation::after {
             content: '';
-            position: absolute; inset: 0; z-index: 1; pointer-events: none;
+            /* 多扩一圈 48px（正好一个网格周期），这样改成 transform 平移后边缘不会露底 */
+            position: absolute; inset: -48px; z-index: 1; pointer-events: none;
             background-image:
                 linear-gradient(rgba(var(--accent-color-rgb),0.03) 1px, transparent 1px),
                 linear-gradient(90deg, rgba(var(--accent-color-rgb),0.03) 1px, transparent 1px);
             background-size: 48px 48px;
             animation: gridDrift 30s linear infinite;
+            will-change: transform;
         }
+        /* 原来用 background-position 平移，整屏每帧都要重绘；改成 transform 后走合成器 */
         @keyframes gridDrift {
-            0% { background-position: 0 0; }
-            100% { background-position: 48px 48px; }
+            0% { transform: translate3d(0, 0, 0); }
+            100% { transform: translate3d(48px, 48px, 0); }
         }
 
         .welcome-particles {
@@ -4045,7 +4055,7 @@
     font-size: 12px;
     color: var(--text-secondary);
     margin-bottom: 10px;
-    font-weight: 500;
+    font-weight: 600;
     display: flex;
     align-items: center;
     gap: 5px;
@@ -4312,7 +4322,7 @@
             margin: 20px 0;
             color: var(--text-secondary);
             font-size: 12px;
-            font-weight: 500;
+            font-weight: 600;
         }
         .date-divider::before, .date-divider::after {
             content: "";
@@ -7121,7 +7131,11 @@
             border-top-color: var(--accent-color);
             border-radius: 50%;
             animation: history-spin 0.8s linear infinite;
+            animation-play-state: paused; /* 装载器默认 opacity:0 隐藏，先停转，只有 .visible 时才跑 */
             box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .history-loader.visible .history-spinner {
+            animation-play-state: running;
         }
 
         @keyframes history-spin {
@@ -9817,8 +9831,8 @@
         }
 
         .header {
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
         html[data-theme="light"] .header {
             background-color: rgba(255,255,255,0.92);
@@ -10660,8 +10674,8 @@
         html[data-theme="dark"] { --header-bg-rgb: 30,30,30; }
         .header {
             background: rgba(var(--header-bg-rgb), 0.72) !important;
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             box-shadow: 0 1px 0 rgba(0,0,0,0.04) !important;
         }
 
@@ -11451,7 +11465,7 @@ body #user-sticker-picker .empty-sticker-tip {
 }
 .cd-month-display {
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--text-primary);
     cursor: pointer;
     padding: 5px 10px;

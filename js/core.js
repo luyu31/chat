@@ -802,6 +802,8 @@ const _perf = {
     backupFailures: 0, // 兜底备份写入失败次数（配额满/隐私模式），用来验证"不再静默失败"
     renderMs: [],       // 最近 20 次"追加一条消息"的 DOM 构建耗时
     renderFrames: [],   // 帧探针采集到的 rAF 间隔（ms）
+    renderDropped: 0,   // 帧探针里间隔 > 20ms 的帧数（掉帧计数）
+    modalOpens: [],     // 最近 20 次"弹窗从显示到首帧回调"的耗时（ms）
     renderLayoutReads: 0, // 渲染路径内累计的强制同步布局读取次数（scrollHeight/scrollTop）
     renderFull: 0,      // 全量重建次数
     renderAppend: 0     // 单条追加次数
@@ -833,6 +835,8 @@ window.__PERF__ = {
         _perf.backupFailures = 0;
         _perf.renderMs.length = 0;
         _perf.renderFrames.length = 0;
+        _perf.renderDropped = 0;
+        _perf.modalOpens.length = 0;
         _perf.renderLayoutReads = 0;
         _perf.renderFull = 0;
         _perf.renderAppend = 0;
@@ -928,8 +932,29 @@ window.__PERF__ = {
             lastAppendMs: ms.length ? ms[ms.length - 1] : 0,
             frames: frames.length,
             frameP95: fSorted.length ? fSorted[Math.min(fSorted.length - 1, Math.floor(fSorted.length * 0.95))] : 0,
-            frameMax: fSorted.length ? fSorted[fSorted.length - 1] : 0
+            frameMax: fSorted.length ? fSorted[fSorted.length - 1] : 0,
+            dropped: _perf.renderDropped,
+            droppedRate: frames.length ? Math.round(_perf.renderDropped / frames.length * 1000) / 10 : 0
         };
+    },
+    // 弹窗打开耗时：showModal 调用 → 内容真正进入首帧回调的时间
+    get modalStats() {
+        const list = _perf.modalOpens.slice();
+        if (!list.length) return { count: 0, avg: 0, max: 0, last: 0 };
+        const sorted = list.slice().sort((a, b) => a - b);
+        const sum = list.reduce((s, v) => s + v, 0);
+        return {
+            count: list.length,
+            avg: Math.round(sum / list.length * 100) / 100,
+            max: sorted[sorted.length - 1],
+            p95: sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))],
+            last: list[list.length - 1]
+        };
+    },
+    recordModalOpen(ms) {
+        if (!_perf.enabled) return;
+        _perf.modalOpens.push(Math.round(ms * 100) / 100);
+        if (_perf.modalOpens.length > 20) _perf.modalOpens.shift();
     },
     bumpRenderLayout(n) {
         _perf.renderLayoutReads += (n || 1);
@@ -941,7 +966,10 @@ window.__PERF__ = {
         let last = 0;
         const tick = (ts) => {
             if (last) {
-                _perf.renderFrames.push(Math.round((ts - last) * 100) / 100);
+                const gap = Math.round((ts - last) * 100) / 100;
+                _perf.renderFrames.push(gap);
+                // 20ms 以上按掉帧计（60fps 单帧 16.7ms，留一点抖动余量）
+                if (gap > 20) _perf.renderDropped++;
                 if (_perf.renderFrames.length > 200) _perf.renderFrames.shift();
             }
             last = ts;
@@ -1941,6 +1969,15 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     const messageDiv = document.createElement('div');
     if (isRedPacket) {
         messageDiv.className = `message message-${msg.sender === 'user' ? 'sent' : 'received'} message-redpacket-bubble-wrap`;
+        // 红包样式是延迟注入的：节点进 DOM 前先主动确保样式已就位。
+        // 若这次是首次加载（promise 还没 resolve），先把节点藏起来，样式到位后再显示，
+        // 避免聊天流里出现"无样式红包气泡"的闪烁；已加载时只走一次微任务，不影响首帧。
+        if (typeof window.loadCssOnce === 'function') {
+            messageDiv.style.visibility = 'hidden';
+            window.loadCssOnce('css/redpacket.css').then(function () {
+                messageDiv.style.visibility = '';
+            });
+        }
     } else if (isImageOnly) {
         messageDiv.className = `message message-${msg.sender === 'user' ? 'sent' : 'received'} message-image-bubble-none`;
     } else {
@@ -3616,6 +3653,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
         }
 
 function showModal(modalElement, focusElement = null) {
+            const _openT0 = _perfNow();
             const _deferredCss = modalElement && _deferredCssByModal[modalElement.id];
             if (_deferredCss) loadCssOnce(_deferredCss);
             if (modalElement._hideTimeout) {
@@ -3632,6 +3670,7 @@ function showModal(modalElement, focusElement = null) {
                 if (focusElement) {
                     setTimeout(() => focusElement.focus(), 100);
                 }
+                if (window.__PERF__) window.__PERF__.recordModalOpen(_perfNow() - _openT0);
             });
         }
 
