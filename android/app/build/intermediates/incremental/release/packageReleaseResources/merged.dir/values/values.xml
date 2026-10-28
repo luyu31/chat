@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="http://schemas.android.com/tools">
+    <color name="apple_green">#7EC85E</color>
+    <color name="apple_red">#E84A4A</color>
+    <color name="cream">#FFF6E8</color>
+    <color name="cream_dark">#1B1714</color>
+    <color name="ic_launcher_background">#FFF3E0</color>
+    <color name="ink">#5A3A2E</color>
+    <color name="ink_dark">#FFF1E0</color>
+    <color name="theme_blue">#3C5C93</color>
+    <color name="theme_orange">#EE7B2F</color>
+    <string name="app_name">苹果日记</string>
+    <string name="cover_subtitle">一颗大红苹果 · 一颗小青苹果</string>
+    <style name="Theme.AppleDiary" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowBackground">@color/cream</item>
+        <item name="android:statusBarColor">@color/cream</item>
+        <item name="android:navigationBarColor">@color/cream</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar" ns1:targetApi="27">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorAccent">@color/theme_orange</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+    </style>
+</resources>

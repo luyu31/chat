@@ -71,7 +71,9 @@ window._albumSyncMomentsPost = async function(postId, images, videoSrc, videoCov
     let changed = false;
     if (images && images.length) {
         images.forEach(src => {
-            if (!src || src.indexOf('oss://') !== 0) return; // 只同步 OSS 引用
+            // 云端 oss:// 和本地 base64 都要同步（没配置云存储时图片直接存在手机里），
+            // 只跳过只在本次会话有效的 blob 地址
+            if (!src || src.indexOf('blob:') === 0) return;
             albumData.photos.push({ id:_alUid('p'), albumId:_SYS_MOMENTS_ID, src,
                 date:_alToday(), timestamp:Date.now(), isFavorite:false, deletedAt:null,
                 sourcePostId:postId, isVideo:false, videoSrc:null });
@@ -139,35 +141,6 @@ function _alFmtDate(d) {
         ? `${dt.getMonth()+1}月${dt.getDate()}日`
         : `${dt.getFullYear()}年${dt.getMonth()+1}月${dt.getDate()}日`;
 }
-
-// ─── OSS 未连接缺省页 ───
-function _alRenderNoOss() {
-    const wrap = document.getElementById('al-list-grid'); if (!wrap) return;
-    wrap.innerHTML = `
-        <div class="al-no-oss">
-            <div class="al-no-oss-icon"><i class="fas fa-images"></i></div>
-            <div class="al-no-oss-title">相册需要云端存储</div>
-            <div class="al-no-oss-desc">
-                作为一个网页，我其实扛不住太多照片——图片堆多了浏览器就容易撑不住，轻则变卡，重则直接崩掉，之前存的东西也会跟着没了。所以相册需要借助云端来帮忙保管，配置好了就能用啦。不配置也只是相册功能用不了，其他功能都可以正常使用。
-            </div>
-            <div class="al-no-oss-path">
-                <i class="fas fa-route"></i> 配置路径：右上角 ⚙️ 设置 → 数据管理 → 阿里云 OSS
-            </div>
-            <button class="al-no-oss-btn" onclick="window._alGoOssConfig()">去配置</button>
-        </div>`;
-    _alShowView('list');
-}
-window._alGoOssConfig = function() {
-    // 先关闭情侣空间，再打开设置→数据管理
-    if (typeof closeCoupleSpace === 'function') closeCoupleSpace();
-    setTimeout(() => {
-        const settingsModal = document.getElementById('settings-modal');
-        if (settingsModal && typeof showModal === 'function') {
-            showModal(settingsModal);
-            setTimeout(() => { document.getElementById('data-settings')?.click(); }, 350);
-        }
-    }, 300);
-};
 
 // ─── 渲染：相册列表 ───
 function _alRenderList() {
@@ -537,15 +510,12 @@ window._alCreateAlbum = function() {
 window._alUploadToAlbum = function(albumId, input) {
     if (!albumId) return;
     const files = Array.from(input.files); if (!files.length) return;
-    Promise.all(files.map(f=>optimizeImage(f,1200,0.85))).then(async results => {
-        for (const b64 of results) {
-            let src = b64;
-            if (window.CloudSync&&window.CloudSync.isConnected()&&window.CloudMedia) {
-                try { const r=await window.CloudMedia.upload(b64,'album-img'); src=r&&r.url?r.url:b64; } catch(e){}
-            }
-            albumData.photos.push({ id:_alUid('p'), albumId, src, date:_alToday(), timestamp:Date.now(),
+    Promise.all(files.map(f=>optimizeImage(f,1200,0.85))).then(results => {
+        // 统一存在手机本地（和聊天图片一样走 localforage），不需要配置任何云存储
+        results.forEach(b64 => {
+            albumData.photos.push({ id:_alUid('p'), albumId, src:b64, date:_alToday(), timestamp:Date.now(),
                 isFavorite:false, deletedAt:null, sourcePostId:null, isVideo:false, videoSrc:null });
-        }
+        });
         saveAlbumData(); _alRenderGrid(albumId);
     });
     input.value='';
@@ -558,14 +528,6 @@ window._alOpenTrash = function() {
 // ─── 主入口 ───
 window._alInit = async function() {
     await loadAlbumData();
-    const hasOss = window.CloudSync && window.CloudSync.isConnected();
-    // 没有 OSS 时隐藏 subtab，避免用户切到回收站后再切回相册绕过检测
-    const subtabs = document.querySelector('#cs-panel-album .al-subtabs');
-    if (subtabs) subtabs.style.display = hasOss ? '' : 'none';
-    if (!hasOss) {
-        _alRenderNoOss();
-        return;
-    }
     _alRenderList();
 };
 

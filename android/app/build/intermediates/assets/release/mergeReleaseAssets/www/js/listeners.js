@@ -1659,6 +1659,17 @@ autoSendSlider.addEventListener('change', () => {
 
 
         function initNewFeatureListeners() {
+            // 红包：入口从输入区"更多"菜单挪到「高级功能」
+            const redpacketEntry = document.getElementById('redpacket-function');
+            if (redpacketEntry) {
+                redpacketEntry.addEventListener('click', () => {
+                    hideModal(DOMElements.advancedModal.modal);
+                    if (window.RedPacket && typeof window.RedPacket.openComposeModal === 'function') {
+                        window.RedPacket.openComposeModal();
+                    }
+                });
+            }
+
             const periodEntry = document.getElementById('period-function');
             if (periodEntry) {
                 periodEntry.addEventListener('click', () => {

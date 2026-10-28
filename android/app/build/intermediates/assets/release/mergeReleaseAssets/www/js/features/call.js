@@ -31,6 +31,8 @@
         connectingTimer: null,
         randomCallTimer: null,
         isPartnerCall:   false,
+        logId:           null,
+        answered:        false,
     };
 
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -527,7 +529,69 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         const img = document.querySelector('#partner-avatar img,[id*="partner-avatar"] img,.partner-avatar img');
         return img ? img.src : null;
     };
-    const getName = () => window.settings?.partnerName || document.getElementById('partner-name')?.textContent.trim() || '对方';
+    const getName = () => (typeof settings !== 'undefined' && settings.partnerName) || document.getElementById('partner-name')?.textContent.trim() || '对方';
+
+    // ─── 通话记录：聊天提示 + 结构化日志 ───────────────────────
+    // 日志同步写入 localStorage（不走异步 localforage），
+    // 这样页面卸载 / 应用被杀时也能立刻落盘，不依赖 beforeunload 里的异步操作。
+    // 键名延迟到第一次读写时再算：call.js 加载时 SESSION_ID 可能还没初始化
+    function callStorageKey(base) {
+        try {
+            return typeof getStorageKey === 'function' ? getStorageKey(base) : base;
+        } catch (e) { return (window.APP_PREFIX || 'CHAT_APP_V3_') + base; }
+    }
+
+    let callLog = null;
+    function ensureCallLog() {
+        if (callLog) return callLog;
+        try { callLog = JSON.parse(localStorage.getItem(callStorageKey('callHistory')) || '[]') || []; }
+        catch (e) { callLog = []; }
+        return callLog;
+    }
+
+    function saveCallLog() {
+        try { localStorage.setItem(callStorageKey('callHistory'), JSON.stringify(ensureCallLog())); } catch (e) {}
+    }
+
+    // 通话开始时建一条记录（ringing）
+    function beginCallLog(direction) {
+        const entry = {
+            id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+            direction: direction,          // in / out
+            remoteNumber: getName(),
+            status: 'ringing',             // ringing / answered / ended / missed / failed
+            startedAt: new Date().toISOString(),
+            endedAt: null,
+            duration: 0,
+            note: ''
+        };
+        const list = ensureCallLog();
+        list.push(entry);
+        if (list.length > 300) list.splice(0, list.length - 300);
+        saveCallLog();
+        S.logId = entry.id;
+        return entry;
+    }
+
+    // 结束时补全状态、时长和原因（拒接/未接/失败/自动挂断都会走到这里）
+    // id 可选：来电的判定是延时回调，必须显式指定它自己的记录 id，避免中途又发起新通话时写错记录
+    function finishCallLog(status, note, id) {
+        const targetId = id || S.logId;
+        const list = ensureCallLog();
+        const entry = list.find(e => e.id === targetId) || (id ? null : list[list.length - 1]);
+        if (!entry) return;
+        entry.status = status;
+        entry.endedAt = new Date().toISOString();
+        entry.duration = Math.round((S.elapsed || 0) / 1000);
+        entry.note = note || '';
+        if (!id || id === S.logId) S.logId = null;
+        saveCallLog();
+    }
+
+    // 聊天气泡（时间由消息自身的 timestamp 渲染，格式 YYYY-MM-DD HH:mm:ss）
+    function recordCall(icon, label, detail) {
+        sendCallEvent(icon, label, detail || null);
+    }
 
     function fillAv(avId) {
         const av = document.getElementById(avId), src = getAvSrc();
@@ -565,7 +629,8 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 isPartnerCall: !!S.isPartnerCall,
                 bgImage: S.bgImage || null,
                 immersive: !!S.immersive,
-                minimized: !!S.minimized
+                minimized: !!S.minimized,
+                logId: S.logId || null
             };
             localforage.setItem(getCallSessionKey(), payload).catch(() => {});
             _lastCallHeartbeatTs = Date.now();
@@ -646,14 +711,35 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         }
     }
 
-    function sendCallMsg(dur) {
-        if (dur < 2000) return;
-        sendCallEvent('fa-video', '视频通话已结束', fmt(dur));
+    function sendCallMsg(isExit) {
+        // 挂断/退出都要留记录：接通过的写时长，没接通写"未接通"并附原因
+        if (isExit) {
+            finishCallLog(S.answered ? 'ended' : 'missed', '应用退出，自动挂断');
+            recordCall('fa-video', '[通话] 应用退出，自动挂断', null);
+            return;
+        }
+        if (S.answered) {
+            const sec = Math.max(0, Math.round((S.elapsed || 0) / 1000));
+            finishCallLog('ended', '');
+            recordCall('fa-video', `[通话结束] 通话时长 ${sec}秒`, null);
+        } else {
+            const reason = S.isPartnerCall ? '未接听' : '已取消';
+            finishCallLog('missed', reason);
+            recordCall('fa-phone-slash', '[通话结束] 未接通', reason);
+        }
     }
 
     function startCall(isPartner) {
         if (!S.enabled) return;
-        S.active = true; S.startTime = null; S.elapsed = 0;
+        S.answered = false;
+        S.elapsed = 0;
+        if (!isPartner) {
+            // 我打给对方：拨出时建记录 + 聊天提示
+            beginCallLog('out');
+            recordCall('fa-video', '[通话] 呼出', getName());
+        }
+        // 来电的"[通话] 呼入"提示已经在 showIncomingCall 里记过，这里不重复
+        S.active = true; S.startTime = null;
         S.minimized = false; S.isPartnerCall = !!isPartner; S.immersive = false;
         document.getElementById('call-window')?.classList.remove('immersive');
 
@@ -691,7 +777,8 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                     getName() + ' 暂时无法接听',
                 ];
                 const lbl = rejectLabels[Math.floor(Math.random() * rejectLabels.length)];
-                sendCallEvent('fa-phone-slash', lbl, null);
+                finishCallLog('missed', lbl);
+                recordCall('fa-phone-slash', '[通话结束] 未接通', lbl);
                 if (typeof showNotification === 'function')
                     showNotification(lbl, 'info', 3000);
             }, rejectDelay);
@@ -699,6 +786,9 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             S.connectingTimer = setTimeout(() => {
                 if (!S.active) return;
                 S.startTime = Date.now();
+                S.answered = true;
+                const entry = ensureCallLog().find(e => e.id === S.logId);
+                if (entry) { entry.status = 'answered'; saveCallLog(); }
                 if (conn) conn.classList.remove('visible');
                 if (body) body.style.display = '';
                 // 通话接通：立即写入第一次心跳
@@ -708,7 +798,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         }
     }
 
-    function endCall() {
+    function endCall(isExit) {
         if (!S.active) return;
         const dur = S.elapsed;
         S.active = false; S.startTime = null;
@@ -717,6 +807,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
 
         // 清除闪退恢复用的 live session
         clearCallSession();
+        try { localStorage.setItem(callStorageKey('callEndedAt'), String(Date.now())); } catch (e) {}
 
         ['call-window','call-mini-pill','call-incoming-overlay'].forEach(id => {
             const e = document.getElementById(id);
@@ -732,10 +823,11 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
 
         localStorage.setItem(KEY_POS,  JSON.stringify(S.pos));
         localStorage.setItem(KEY_SIZE, JSON.stringify(S.size));
-        sendCallMsg(dur);
-        if (typeof showNotification === 'function' && dur > 1500)
+        sendCallMsg(!!isExit);
+        S.answered = false;
+        if (!isExit && typeof showNotification === 'function' && dur > 1500)
             showNotification(`通话结束 · ${fmt(dur)}`, 'info', 3000);
-        else if (typeof showNotification === 'function' && dur <= 1500 && dur > 0)
+        else if (!isExit && typeof showNotification === 'function' && dur <= 1500 && dur > 0)
             showNotification('通话已挂断', 'info', 2000);
     }
 
@@ -747,6 +839,10 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         fillAv('call-inc-avatar'); fillNm('call-inc-name');
         ov.classList.add('visible');
         clearTimeout(S.incomingTimer);
+
+        // 他打给我：来电时立刻建记录 + 在聊天界面留提示
+        const inLogId = beginCallLog('in').id;
+        recordCall('fa-video', '[通话] 呼入', getName());
 
         // 播放视频通话邀请音效
         try {
@@ -780,7 +876,8 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                     `${myName}暂时无法接听 ${partnerName} 的通话`,
                 ];
                 const label = rejectLabels[Math.floor(Math.random() * rejectLabels.length)];
-                sendCallEvent('fa-phone-slash', label, null);
+                finishCallLog('missed', label, inLogId);
+                recordCall('fa-phone-slash', '[通话结束] 未接通', label);
             }, rejectDelay);
         } else {
             S.incomingTimer = setTimeout(() => {
@@ -788,7 +885,9 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 ov.classList.remove('visible');
                 try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
                 const myName = (typeof settings !== 'undefined' && settings.myName) || '我';
-                sendCallEvent('fa-phone-slash', `${myName}未接听 ${getName()} 的来电`, null);
+                const label = `${myName}未接听 ${getName()} 的来电`;
+                finishCallLog('missed', label, inLogId);
+                recordCall('fa-phone-slash', '[通话结束] 未接通', label);
             }, 60000);
         }
     }
@@ -928,7 +1027,9 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             clearTimeout(S.incomingTimer);
             try { if (typeof window.stopCurrentSound === 'function') window.stopCurrentSound(); } catch(e) {}
             const myName = (typeof settings !== 'undefined' && settings.myName) || '我';
-            sendCallEvent('fa-phone-slash', `${myName}拒绝了 ${getName()} 的通话`, null);
+            const label = `${myName}拒绝了 ${getName()} 的通话`;
+            finishCallLog('missed', label);
+            recordCall('fa-phone-slash', '[通话结束] 未接通', label);
         });
         document.getElementById('call-inc-accept')?.addEventListener('click', () => {
             document.getElementById('call-incoming-overlay')?.classList.remove('visible');
@@ -937,7 +1038,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             startCall(true);
         });
 
-        document.getElementById('call-hangup-btn')?.addEventListener('click', endCall);
+        document.getElementById('call-hangup-btn')?.addEventListener('click', () => endCall());
         document.getElementById('call-mini-hangup')?.addEventListener('click', e => { e.stopPropagation(); endCall(); });
         document.getElementById('call-minimize-btn')?.addEventListener('click', minimizeWindow);
         document.getElementById('call-mini-pill')?.addEventListener('click', e => {
@@ -988,10 +1089,37 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             S.enabled ? scheduleRandomCall() : clearTimeout(S.randomCallTimer);
         });
 
+        // 退出页面/关闭应用/切到后台：通话自动挂断，并在聊天里留下记录。
+        // 换通话背景会打开系统相册，那一刻页面也会短暂隐藏，所以用一个标记把它排除掉
+        let _ignoreHideOnce = false;
+        document.getElementById('call-bg-btn')?.addEventListener('click', () => { _ignoreHideOnce = true; });
+        const hangupOnExit = () => {
+            if (!S.active) return;
+            endCall(true);
+            // 同步兜底：callHistory 已在 endCall 里同步写入 localStorage；
+            // 聊天消息这里立刻做一次同步备份（_backupCriticalData 不依赖异步存储）
+            try { if (typeof _backupCriticalData === 'function') _backupCriticalData(); } catch (e) {}
+            try { if (typeof saveData === 'function') saveData(); } catch (e) {}
+        };
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') { _ignoreHideOnce = false; return; }
+            if (_ignoreHideOnce) return;
+            hangupOnExit();
+        });
+        window.addEventListener('pagehide', hangupOnExit);
+        window.addEventListener('beforeunload', hangupOnExit);
+
         initDrag(); initPillDrag(); initResize();
     }
 
     window.callFeature = { startCall, endCall, showIncomingCall, restoreWindow, minimizeWindow, isActive: () => S.active };
+
+    // 结构化通话记录读取接口（聊天/统计类功能可直接从这里取）
+    window.CallLog = {
+        key: () => callStorageKey('callHistory'),
+        all: () => ensureCallLog().slice(),
+        clear: () => { callLog = []; saveCallLog(); }
+    };
 
     function init() {
         injectCSS();
@@ -1040,6 +1168,10 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         resumeFromSession: function(session) {
             if (!session || !S.enabled) return false;
             if (S.active) return false; // 已经在通话中，不打扰
+            // 退出/挂断过的旧 session 不再恢复
+            try {
+                if (Number(localStorage.getItem(callStorageKey('callEndedAt')) || 0) > (session.heartbeatTs || 0)) return false;
+            } catch (e) {}
             try {
                 S.active = true;
                 S.startTime = session.startTs;  // 沿用真实开始时间，时长自动接续
@@ -1048,6 +1180,16 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 S.isPartnerCall = !!session.isPartnerCall;
                 S.immersive = !!session.immersive;
                 if (session.bgImage) S.bgImage = session.bgImage;
+
+                // 恢复这次通话对应的结构化记录；找不到就补建一条，避免挂断时写错到别的记录上
+                S.answered = true;
+                S.logId = session.logId || (function () {
+                    const list = ensureCallLog();
+                    for (let i = list.length - 1; i >= 0; i--) {
+                        if (!list[i].endedAt) return list[i].id;
+                    }
+                    return beginCallLog(session.isPartnerCall ? 'in' : 'out').id;
+                })();
 
                 document.getElementById('call-window')?.classList.remove('immersive');
                 ['call-inc-avatar','call-conn-avatar','call-win-avatar','call-mini-av'].forEach(fillAv);

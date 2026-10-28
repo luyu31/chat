@@ -28,8 +28,8 @@
     <link rel="stylesheet" href="css/global-msg-banner.css">
     <link rel="stylesheet" href="css/survey.css">
     <link rel="stylesheet" href="css/more-menu.css">
-    <link rel="stylesheet" href="css/throw-egg.css">
     <link rel="stylesheet" href="css/redpacket.css">
+    <link rel="stylesheet" href="css/summer-theme.css" id="summer-skin-css" disabled>
 
     <style id="css-live-preview-style"></style>
     <style>
@@ -414,28 +414,26 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
         </div>
         <div class="input-area">
     <button id="collapse-expand-btn" title="展开更多" style="display:none;width:36px;height:36px;border:none;border-radius:50%;cursor:pointer;background:rgba(var(--accent-color-rgb),0.12);color:var(--accent-color);font-size:14px;transition:all 0.25s;flex-shrink:0;align-items:center;justify-content:center;" onclick="window.toggleCollapsedExtras && window.toggleCollapsedExtras()"><i class="fas fa-chevron-up"></i></button>
-    <!-- 视频通话/图片/批量发送：功能已经挪进"更多"菜单，这三个按钮留在DOM里只是因为其它JS文件
-         直接引用了它们的元素（DOMElements.attachmentBtn / .batchBtn 等，没有做空值判断），
-         删掉元素会报错，所以只用 input-btn-relocated 类隐藏，不删除。
-         "视频通话"和"让梦角主动说话"这两个位置对调了：视频通话现在显示在输入区主行里，
-         "让梦角主动说话"挪进"更多"菜单（对应下面 continue-btn 加了 input-btn-relocated） -->
-    <button class="attachment-btn input-btn input-btn-relocated" id="attachment-btn" title="发送图片"><i class="fas fa-image"></i></button>
-
-    <button class="continue-btn input-btn input-btn-relocated" id="continue-btn" title="让对方继续说"><i class="fas fa-ellipsis-h"></i></button>
-
+    <!-- 输入区排布（从左到右）：视频通话 / 图片 / 表情 / 输入框 / 更多 / 批量发送 / 发送。
+         "让梦角主动说话"(continue-btn) 已挪进"更多"菜单，元素保留（其它JS直接引用了它，
+         没做空值判断），只用 input-btn-relocated 类隐藏 -->
     <button class="videocall-btn input-btn" id="videocall-btn" title="视频通话"><i class="fas fa-video"></i></button>
 
-    <textarea class="message-input" id="message-input" placeholder="" rows="1"></textarea>
+    <button class="attachment-btn input-btn" id="attachment-btn" title="发送图片"><i class="fas fa-image"></i></button>
 
     <button class="combo-btn input-btn" id="combo-btn" title="表情 & 拍一拍">
         <i class="fas fa-laugh-beam"></i>
     </button>
 
+    <button class="continue-btn input-btn input-btn-relocated" id="continue-btn" title="让对方继续说"><i class="fas fa-ellipsis-h"></i></button>
+
+    <textarea class="message-input" id="message-input" placeholder="" rows="1"></textarea>
+
     <div class="input-buttons">
-    <button class="batch-btn input-btn input-btn-relocated" id="batch-btn" title="批量发送模式"><i class="fas fa-layer-group"></i></button>
     <button class="more-menu-btn input-btn" id="more-menu-btn" title="更多">
-        <i class="fas fa-plus"></i>
+        <i class="fas fa-ellipsis-h"></i>
     </button>
+    <button class="batch-btn input-btn" id="batch-btn" title="批量发送模式"><i class="fas fa-layer-group"></i></button>
     <button class="send-btn input-btn" id="send-btn" title="发送消息"><i class="fas fa-paper-plane"></i></button>
         
         <div class="sticker-picker-popover" id="user-sticker-picker">
@@ -1164,7 +1162,6 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                     <div>
                         <div class="cs-settings-label">保存 ta 发的图片</div>
                         <div class="cs-settings-desc">开启后ta发的贴纸将存入相册</div>
-                        <div class="cs-settings-desc" id="cs-save-img-oss-hint" style="display:none;color:#e0a030;margin-top:4px;">未配置云端存储，相册功能不可用</div>
                     </div>
                     <label class="cs-toggle-label">
                         <input type="checkbox" id="cs-save-img-toggle">
@@ -1516,6 +1513,38 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                         <button class="theme-color-btn" id="theme-ocean" data-theme="ocean" title="深蓝"></button>
                     </div>
                 </div>
+            </div>
+        </div>
+        <div class="settings-section" id="summer-theme-section">
+            <div class="settings-section-title"><i class="fas fa-sun"></i>夏日白昼</div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#F5F8F2;border:1px solid #C8D4C2;border-radius:12px;margin-bottom:10px;">
+                <div style="display:flex;gap:5px;flex-shrink:0;">
+                    <span style="width:12px;height:12px;border-radius:50%;background:#4E8C3A;box-shadow:0 0 0 2px #fff;"></span>
+                    <span style="width:12px;height:12px;border-radius:50%;background:#C9503A;box-shadow:0 0 0 2px #fff;"></span>
+                </div>
+                <span style="font-size:11px;color:#4F5E4C;">青苹果 · 红苹果</span>
+            </div>
+            <div class="setting-pill-row" id="summer-theme-row" style="border-radius:12px;">
+                <span class="setting-pill-icon" style="color:#4E8C3A;background:rgba(78,140,58,.12);">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="#4E8C3A"><path fill-rule="evenodd" d="M12 7c-2.8-1.8-6.6-.3-7.4 3.1-.8 3.4 1.2 7 3.6 9.1 1.1 1 2.5 1.3 3.8.7 1.3.6 2.7.3 3.8-.7 2.4-2.1 4.4-5.7 3.6-9.1C18.6 6.7 14.8 5.2 12 7Zm5.2 1.6a1.4 1.4 0 1 0 .01 0Z"/><path d="M11.5 6.5C10.3 4 8.3 2.7 5.7 2.6c-.1 2.6 1 4.5 3.4 5.2.9.3 1.8.1 2.4-.1Z"/></svg>
+                </span>
+                <span class="setting-pill-label">夏日白昼
+                    <span style="display:block;font-size:11px;color:var(--text-secondary);font-weight:400;">可选主题，默认关闭，关闭后完全还原</span>
+                </span>
+                <label class="notif-toggle-switch" style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;">
+                    <input type="checkbox" id="summer-theme-toggle" style="opacity:0;width:0;height:0;">
+                    <span class="notif-toggle-slider"></span>
+                </label>
+            </div>
+            <div class="setting-pill-row" id="summer-dark-row" style="display:none;border-radius:12px;">
+                <span class="setting-pill-icon"><i class="fas fa-moon"></i></span>
+                <span class="setting-pill-label">深色模式
+                    <span style="display:block;font-size:11px;color:var(--text-secondary);font-weight:400;">仅夏日白昼开启时可用</span>
+                </span>
+                <label class="notif-toggle-switch" style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;">
+                    <input type="checkbox" id="summer-dark-toggle" style="opacity:0;width:0;height:0;">
+                    <span class="notif-toggle-slider"></span>
+                </label>
             </div>
         </div>
         <div class="settings-section" id="theme-schemes-section">
@@ -2462,6 +2491,9 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
                     </div>
                     <div class="settings-item" id="music-player-toggle">
                         <i class="fas fa-music"></i><span>悬浮音乐播放器</span>
+                    </div>
+                    <div class="settings-item" id="redpacket-function">
+                        <i class="fas fa-gift"></i><span>红包</span>
                     </div>
                     <div class="settings-item" id="period-function">
                         <i class="fas fa-tint"></i><span>经期记录</span>
@@ -3693,6 +3725,7 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
     <script src="js/features/theme-editor.js"></script>
     <script src="js/features/group-chat.js"></script>
     <script src="js/features/call.js"></script>
+    <script src="js/features/summer-theme.js"></script>
 
     <!-- == 合并模块 == -->
     <script src="js/games.js"></script> 
@@ -3719,7 +3752,6 @@ html[data-theme="dark"] #cs-transition-overlay{background:radial-gradient(circle
     <script src="js/features/survey.js"></script>
     <script src="js/features/more-menu.js"></script>
     <script src="js/vendor/gsap.min.js"></script>
-    <script src="js/features/throw-egg.js"></script>
     <script src="js/features/redpacket.js"></script>
     <script src="js/apple-bridge.js"></script>
     <script src="js/apple-push.js"></script>
