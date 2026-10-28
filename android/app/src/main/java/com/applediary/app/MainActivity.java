@@ -995,7 +995,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getVersion() {
-            return "1.4.0";
+            return "1.4.1";
         }
 
         @JavascriptInterface
