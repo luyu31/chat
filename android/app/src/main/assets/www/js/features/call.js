@@ -1118,7 +1118,11 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             try { if (typeof saveData === 'function') saveData(); } catch (e) {}
         };
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && S.active) tick();
+            if (document.visibilityState === 'visible' && S.active) {
+                tick();
+                // 后台期间若跨过了「接通」节点，回来补一次同步，避免通知栏停在“正在呼叫”
+                syncNativeCall('update');
+            }
         });
         window.addEventListener('pagehide', hangupOnExit);
         window.addEventListener('beforeunload', hangupOnExit);
