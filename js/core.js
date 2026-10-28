@@ -799,7 +799,12 @@ const _perf = {
     scrollEvents: 0,  // 收到的原始 scroll 事件数（用来对比合并前后的触发次数）
     foreground: [],   // 最近 20 次"切回前台后 3 秒内"的主线程长任务汇总
     skippedBackups: 0,
-    backupFailures: 0 // 兜底备份写入失败次数（配额满/隐私模式），用来验证"不再静默失败"
+    backupFailures: 0, // 兜底备份写入失败次数（配额满/隐私模式），用来验证"不再静默失败"
+    renderMs: [],       // 最近 20 次"追加一条消息"的 DOM 构建耗时
+    renderFrames: [],   // 帧探针采集到的 rAF 间隔（ms）
+    renderLayoutReads: 0, // 渲染路径内累计的强制同步布局读取次数（scrollHeight/scrollTop）
+    renderFull: 0,      // 全量重建次数
+    renderAppend: 0     // 单条追加次数
 };
 try {
     _perf.enabled = localStorage.getItem('PERF_ENABLED') === '1';
@@ -826,6 +831,11 @@ window.__PERF__ = {
         _perf.foreground.length = 0;
         _perf.skippedBackups = 0;
         _perf.backupFailures = 0;
+        _perf.renderMs.length = 0;
+        _perf.renderFrames.length = 0;
+        _perf.renderLayoutReads = 0;
+        _perf.renderFull = 0;
+        _perf.renderAppend = 0;
     },
     // 输入框高度测量的布局耗时统计（配合 console 里 __PERF__.enable() 使用）
     get inputStats() {
@@ -895,6 +905,45 @@ window.__PERF__ = {
     get last20TotalMs() {
         const last = _perf.saves.slice(-20);
         return Math.round(last.reduce((sum, r) => sum + r.ms, 0) * 10) / 10;
+    },
+    // 消息列表渲染统计：layoutReads 是渲染路径里主动读 scrollHeight/scrollTop 的次数，
+    // 每次这类读取都会强制浏览器同步布局，所以它直接对应"强制同步布局次数"
+    get renderStats() {
+        const ms = _perf.renderMs.slice();
+        const frames = _perf.renderFrames.slice();
+        const msSorted = ms.slice().sort((a, b) => a - b);
+        const fSorted = frames.slice().sort((a, b) => a - b);
+        const sum = ms.reduce((s, v) => s + v, 0);
+        return {
+            full: _perf.renderFull,
+            append: _perf.renderAppend,
+            layoutReads: _perf.renderLayoutReads,
+            appendCount: ms.length,
+            avgAppendMs: ms.length ? Math.round(sum / ms.length * 100) / 100 : 0,
+            maxAppendMs: msSorted.length ? msSorted[msSorted.length - 1] : 0,
+            lastAppendMs: ms.length ? ms[ms.length - 1] : 0,
+            frames: frames.length,
+            frameP95: fSorted.length ? fSorted[Math.min(fSorted.length - 1, Math.floor(fSorted.length * 0.95))] : 0,
+            frameMax: fSorted.length ? fSorted[fSorted.length - 1] : 0
+        };
+    },
+    bumpRenderLayout(n) {
+        _perf.renderLayoutReads += (n || 1);
+    },
+    // 帧探针：连续发送/接收时用，采 durationMs 内的 rAF 间隔，用完自动停
+    beginFrameProbe(durationMs) {
+        if (!_perf.enabled) return;
+        const start = _perfNow();
+        let last = 0;
+        const tick = (ts) => {
+            if (last) {
+                _perf.renderFrames.push(Math.round((ts - last) * 100) / 100);
+                if (_perf.renderFrames.length > 200) _perf.renderFrames.shift();
+            }
+            last = ts;
+            if (_perfNow() - start < (durationMs || 1000)) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
     }
 };
 
@@ -1899,6 +1948,26 @@ function _updateReadReceiptsDOM() {
     });
 }
 
+// 滚到底部但不读 scrollHeight：直接把 scrollTop 设成超大值，由浏览器自己夹到最大值。
+// behavior:'instant' 是为了绕开 CSS 的 scroll-behavior:smooth——否则赋值会被当成一次平滑滚动，
+// 发完消息要滑好几百毫秒才到底（实测能差 4000 多 px）。
+function _scrollToBottomInstant(container) {
+    if (!container) return;
+    if (typeof container.scrollTo === 'function') {
+        container.scrollTo({ top: 1e9, behavior: 'instant' });
+    } else {
+        container.scrollTop = 1e9;
+    }
+}
+
+// 记录"追加一条消息"的 DOM 构建耗时，供 __PERF__.renderStats 读取
+function _recordAppendCost(t0) {
+    _perf.renderAppend++;
+    if (!_perf.enabled) return;
+    _perf.renderMs.push(Math.round((_perfNow() - t0) * 100) / 100);
+    if (_perf.renderMs.length > 20) _perf.renderMs.shift();
+}
+
 function renderMessages(preserveScroll = false) {
     const container = DOMElements.chatContainer;
     const totalMessages = messages.length;
@@ -1927,10 +1996,14 @@ function renderMessages(preserveScroll = false) {
 
     DOMElements.emptyState.style.display = totalMessages === 0 ? 'flex' : 'none';
 
-    const oldScrollHeight = container.scrollHeight;
-    const oldScrollTop = container.scrollTop;
-    
-    container.innerHTML = '';
+    // 只有"必须保持当前位置"的整表重建（换主题/换字体/导入/切窗口）才需要读高度；
+    // 发消息走 addMessage 的追加路径，不会进这里，也就不会有这两次强制同步布局。
+    let oldScrollHeight = 0, oldScrollTop = 0;
+    if (preserveScroll) {
+        _perf.renderLayoutReads += 2;
+        oldScrollHeight = container.scrollHeight;
+        oldScrollTop = container.scrollTop;
+    }
 
     const fragment = new DocumentFragment();
     
@@ -1946,17 +2019,18 @@ function renderMessages(preserveScroll = false) {
         fragment.appendChild(msgFragment);
     });
 
-    container.appendChild(fragment);
+    // replaceChildren 一次完成"清空 + 插入"，比 innerHTML='' 再 appendChild 少一轮 DOM 变更
+    container.replaceChildren(fragment);
 
     if (preserveScroll) {
+        _perf.renderLayoutReads += 1;
         const newScrollHeight = container.scrollHeight;
         container.scrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight);
     } else if (msgViewMode !== 'window') {
-        requestAnimationFrame(() => {
-            container.scrollTop = container.scrollHeight;
-        });
+        requestAnimationFrame(() => _scrollToBottomInstant(container));
     }
     // window模式下不自动滚动到底部/顶部，滚动位置由调用方（比如跳转定位）自己处理
+    _perf.renderFull++;
     _clampReactionBadges();
 }
 
@@ -2477,8 +2551,13 @@ const addMessage = (message) => {
     const wasEmpty = messages.length === 0;
 
     const prevMsg = messages.length > 0 ? messages[messages.length - 1] : null;
-    // 追没追上底部，要在"往数组里塞新消息、改动滚动高度"之前就先判断好，不然滚动高度已经变了，判断就不准了
-    const wasCaughtUp = _isCaughtUpToLatest();
+    // 追没追上底部，要在"往数组里塞新消息、改动滚动高度"之前就先判断好，不然滚动高度已经变了，判断就不准了。
+    // 用户自己发的消息永远要滚到底，不需要这次读取——省掉一次强制同步布局。
+    let wasCaughtUp = true;
+    if (message.sender !== 'user') {
+        _perf.renderLayoutReads += 1;
+        wasCaughtUp = _isCaughtUpToLatest();
+    }
     messages.push(message);
     
     if (wasEmpty) {
@@ -2520,6 +2599,7 @@ const addMessage = (message) => {
                 const prevGroupMember = (prevMsg.sender !== 'user' && typeof getGroupMemberForMessage === 'function') ? getGroupMemberForMessage(prevMsg.id) : null;
                 lastSenderRef.current = prevGroupMember ? ('group_' + prevGroupMember.name) : prevMsg.sender;
             }
+            const _tAppend = _perfNow();
             const newMsgFragment = createMessageFragment(message, prevMsg, null, lastSenderRef);
             const spacer = container.querySelector('div[style*="flex: 1"]');
             if (spacer && spacer === container.lastElementChild) {
@@ -2527,6 +2607,7 @@ const addMessage = (message) => {
             } else {
                 container.appendChild(newMsgFragment);
             }
+            _recordAppendCost(_tAppend);
             // 修复消息重复bug：这里直接把新消息插入了DOM，displayedMessageCount 必须同步+1，
             // 否则这个计数器会跟实际显示的消息数量脱节，导致下次往上翻页时把已显示过的消息误判成"还没显示"而重复插入
             if (msgViewMode !== 'window') displayedMessageCount++;
@@ -2569,6 +2650,7 @@ const addMessage = (message) => {
         lastSenderRef.current = prevGroupMember ? ('group_' + prevGroupMember.name) : prevMsg.sender;
     }
     
+    const _tAppend = _perfNow();
     const newMsgFragment = createMessageFragment(message, prevMsg, null, lastSenderRef);
     
     const spacer = container.querySelector('div[style*="flex: 1"]');
@@ -2577,12 +2659,12 @@ const addMessage = (message) => {
     } else {
         container.appendChild(newMsgFragment);
     }
+    _recordAppendCost(_tAppend);
     // 修复消息重复bug：同上，正常追加到底部时也要同步+1，理由同前面那处注释
     if (msgViewMode !== 'window') displayedMessageCount++;
 
-    requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight;
-    });
+    // 滚到底但不读 scrollHeight（详见 _scrollToBottomInstant 的注释）
+    requestAnimationFrame(() => _scrollToBottomInstant(container));
 
     throttledSaveData();
 
