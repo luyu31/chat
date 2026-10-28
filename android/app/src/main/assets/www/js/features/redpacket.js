@@ -287,8 +287,9 @@
         if (typeof addMessage !== 'function') return;
         var receiverIsUser = (direction === 'inbox'); // inbox的接收方是用户自己；outbox的接收方是对方
         var receiverName = receiverIsUser ? 'user' : (settings.partnerName || '对方');
+        var msgId = Date.now() + Math.random();
         addMessage({
-            id: Date.now() + Math.random(),
+            id: msgId,
             sender: receiverName,
             text: '',
             timestamp: new Date(), // 用生成这一刻的真实时间，不用 resolveAt 那个理论时间点
@@ -305,7 +306,7 @@
             if (typeof playSound === 'function') playSound('message');
             if (typeof window._sendPartnerNotification === 'function') {
                 var noticeText = record.status === 'received' ? '领取了你的红包' : '你的红包已过期，自动退回了';
-                window._sendPartnerNotification(receiverName, noticeText);
+                window._sendPartnerNotification(receiverName, noticeText, { messageId: msgId });
             }
         }
         // receiverIsUser（对方发的包，用户超时没点開自动过期）：安静补一条记录就行，
@@ -860,7 +861,7 @@
             if (typeof window._notifyPartnerEvent === 'function') {
                 window._notifyPartnerEvent('给你发了一个红包', _rpMsgId);
             } else if (typeof window._sendPartnerNotification === 'function') {
-                window._sendPartnerNotification(settings.partnerName || '对方', '给你发了一个红包');
+                window._sendPartnerNotification(settings.partnerName || '对方', '给你发了一个红包', { messageId: _rpMsgId });
             }
         }
         _updateExpiryReminder();

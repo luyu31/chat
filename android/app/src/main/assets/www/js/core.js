@@ -710,11 +710,17 @@ const loadData = async () => {
             }
         }, 100);
 
+        // 数据（消息/会话/设置）已就绪：通知跳转和 pending 补全从这里开始，避免对着空数组操作
+        window.__APP_DATA_LOADED__ = true;
+        try { if (typeof window.__appleDataReady === 'function') window.__appleDataReady(); } catch (e) {}
+
     } catch (e) {
         console.error("LoadData 内部致命错误:", e);
         settings = getDefaultSettings();
         messages = [];
         updateUI();
+        window.__APP_DATA_LOADED__ = true;
+        try { if (typeof window.__appleDataReady === 'function') window.__appleDataReady(); } catch (e2) {}
     }
 };
 
@@ -1489,6 +1495,15 @@ const saveData = async () => {
             }, 0);
         }
     }
+};
+
+// 发系统通知前必须先等这个 Promise：saveData 有"在途合并"逻辑，直接 await saveData()
+// 可能只等到上一轮旧快照。这里兜底再写一次 chatMessages，确保通知对应的那条消息
+// 真的已经进了 IndexedDB —— 否则点通知进来就会"查无此消息"。
+window._flushSaveData = async function () {
+    if (!SESSION_ID) throw new Error('SESSION_ID 未初始化');
+    try { await saveData(); } catch (e) { console.warn('[flushSaveData] saveData 失败', e); }
+    return localforage.setItem(getStorageKey('chatMessages'), messages);
 };
 
         function initializeRandomUI() {
@@ -3565,8 +3580,9 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         }
                     }
 
+                    const replyMsgId = Date.now() + i;
                     addMessage({
-                        id: Date.now() + i,
+                        id: replyMsgId,
                         sender: settings.partnerName || '对方',
                         text: finalText,
                         timestamp: new Date(),
@@ -3579,15 +3595,17 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         type: 'normal'
                     });
                     if (typeof window._sendPartnerNotification === 'function') {
-                        window._sendPartnerNotification(settings.partnerName || '对方', finalText);
+                        // 带上 messageId：通知会等这条消息落库完成后再发，点击才能定位到它
+                        window._sendPartnerNotification(settings.partnerName || '对方', finalText, { messageId: replyMsgId });
                     }
                     playSound('message');
 
                     if (shouldSendSticker) {
                         const randomSticker = enabledStickerPool[Math.floor(Math.random() * enabledStickerPool.length)];
                         setTimeout(() => {
+                            const stickerMsgId = Date.now() + i + 2000;
                             addMessage({
-                                id: Date.now() + i + 2000,
+                                id: stickerMsgId,
                                 sender: settings.partnerName || '对方',
                                 text: '',
                                 timestamp: new Date(),
@@ -3600,7 +3618,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                             });
                             playSound('message');
                             if (typeof window._sendPartnerNotification === 'function') {
-                                window._sendPartnerNotification(settings.partnerName || '对方', '[表情]');
+                                window._sendPartnerNotification(settings.partnerName || '对方', '[表情]', { messageId: stickerMsgId });
                             }
                         }, 400 + Math.random() * 600);
                     }

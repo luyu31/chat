@@ -96,6 +96,11 @@ public class MainActivity extends AppCompatActivity {
     private boolean coverDismissed = false;
     private long createdAt = 0;
 
+    // 通知点击的待投递队列：冷启动时 WebView 还没准备好，先把点击事件缓存起来，
+    // 等 JS 侧调用 pushClientReady() 后再通过 __appleNotifyOpen 主动推过去。
+    private final ArrayList<String> pendingNotificationClicks = new ArrayList<>();
+    private volatile boolean jsBridgeReady = false;
+
     private ValueCallback<Uri[]> pendingFileCallback;
     private String[] pendingAccept;
     private boolean pendingMultiple;
@@ -130,6 +135,62 @@ public class MainActivity extends AppCompatActivity {
         }
         mainHandler.postDelayed(this::dismissCover, 8000);
         setupWebView();
+        // 冷启动：由通知点击拉起时，凭据就在启动 Intent 里
+        enqueueNotificationClick(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        enqueueNotificationClick(intent);
+    }
+
+    /**
+     * 把通知点击的凭据放进待投递队列；如果 WebView 已经就绪，立刻交付。
+     * 通知里没有 sessionId/messageId（比如后台纯提醒）时直接忽略，不做任何跳转。
+     */
+    private void enqueueNotificationClick(Intent intent) {
+        if (intent == null) return;
+        String sessionId = intent.getStringExtra(PushCenter.EXTRA_SESSION_ID);
+        String messageId = intent.getStringExtra(PushCenter.EXTRA_MESSAGE_ID);
+        if ((sessionId == null || sessionId.isEmpty())
+                && (messageId == null || messageId.isEmpty())) {
+            return;
+        }
+        // 取完就清掉，Activity 重建时不会把同一次点击再投一遍
+        intent.removeExtra(PushCenter.EXTRA_SESSION_ID);
+        intent.removeExtra(PushCenter.EXTRA_MESSAGE_ID);
+        if (webView == null) return;
+        String payload;
+        try {
+            JSONObject obj = new JSONObject();
+            obj.put("sessionId", sessionId == null ? "" : sessionId);
+            obj.put("messageId", messageId == null ? "" : messageId);
+            payload = obj.toString();
+        } catch (Exception e) {
+            return;
+        }
+        synchronized (pendingNotificationClicks) {
+            pendingNotificationClicks.add(payload);
+        }
+        deliverNotificationClicks();
+    }
+
+    /** JS 已就绪时，把队列里的点击事件一次性推给 JS。 */
+    private void deliverNotificationClicks() {
+        if (!jsBridgeReady || webView == null) return;
+        ArrayList<String> batch;
+        synchronized (pendingNotificationClicks) {
+            if (pendingNotificationClicks.isEmpty()) return;
+            batch = new ArrayList<>(pendingNotificationClicks);
+            pendingNotificationClicks.clear();
+        }
+        for (String payload : batch) {
+            webView.evaluateJavascript(
+                    "window.__appleNotifyOpen&&window.__appleNotifyOpen(" + JSONObject.quote(payload) + ");",
+                    null);
+        }
     }
 
     @Override
@@ -149,6 +210,8 @@ public class MainActivity extends AppCompatActivity {
             webView.onResume();
             webView.evaluateJavascript(
                     "window.__applePushOnForeground&&window.__applePushOnForeground()", null);
+            // onNewIntent 可能比 WebView 恢复更早到，这里再补一次投递
+            deliverNotificationClicks();
         }
     }
 
@@ -206,11 +269,19 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                // 页面重新加载（比如切换会话）后，旧的 JS 上下文已经失效，
+                // 必须等新页面重新调用 pushClientReady()，否则点击事件会打进空气里
+                jsBridgeReady = false;
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 long elapsed = System.currentTimeMillis() - createdAt;
                 long delay = Math.max(300, 1100 - elapsed);
                 mainHandler.postDelayed(MainActivity.this::dismissCover, delay);
                 maybeAskNotification();
+                deliverNotificationClicks();
             }
         });
 
@@ -1492,13 +1563,28 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @JavascriptInterface
-        public String pushTakePending() {
-            return PushCenter.takePending(MainActivity.this);
+        public String pushPeekPending() {
+            return PushCenter.peekPending(MainActivity.this);
         }
 
         @JavascriptInterface
-        public void pushNow(String title, String body) {
-            PushCenter.post(MainActivity.this, title, body, System.currentTimeMillis());
+        public void pushAckPending(String idsJson) {
+            PushCenter.ackPending(MainActivity.this, idsJson);
+        }
+
+        @JavascriptInterface
+        public void pushNow(String title, String body, String sessionId, String messageId) {
+            long now = System.currentTimeMillis();
+            PushCenter.post(MainActivity.this, title, body, now, sessionId, messageId);
+            // 通知已经发出，但 JS 可能还没确认处理：留一条记录，回前台后按 messageId 核对，
+            // 找不到就让 JS 再 flush 一次，找到再 ack 删除，避免"读一次就删"导致的永久丢失。
+            PushCenter.savePending(MainActivity.this, title, body, now, sessionId, messageId);
+        }
+
+        @JavascriptInterface
+        public void pushClientReady() {
+            jsBridgeReady = true;
+            MainActivity.this.runOnUiThread(MainActivity.this::deliverNotificationClicks);
         }
 
         @JavascriptInterface

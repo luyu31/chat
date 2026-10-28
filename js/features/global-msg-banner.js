@@ -153,7 +153,12 @@
         try {
             if (document.hidden) {
                 if (typeof window._sendPartnerNotification === 'function') {
-                    window._sendPartnerNotification((typeof settings !== 'undefined' && settings.partnerName) || '对方', text);
+                    // 带上 msgId：通知点击后直接定位到这条事件对应的消息
+                    window._sendPartnerNotification(
+                        (typeof settings !== 'undefined' && settings.partnerName) || '对方',
+                        text,
+                        msgId !== undefined && msgId !== null ? { messageId: msgId } : undefined
+                    );
                 }
                 return;
             }

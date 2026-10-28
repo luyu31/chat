@@ -13,6 +13,11 @@ import android.os.Build;
 import androidx.core.app.NotificationManagerCompat;
 
 import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * 本地消息推送：一条常驻的「会话式」通知 + 后台闹钟链。
@@ -23,6 +28,9 @@ final class PushCenter {
     static final String CHANNEL_ID = "apple_messages";
     static final String PREFS = "apple_push_prefs";
     static final String ACTION_CHAIN = "com.applediary.app.PUSH_CHAIN";
+    /** 通知里的消息凭据：点击后由 MainActivity 转交给 JS，用来定位到具体那条消息。 */
+    static final String EXTRA_SESSION_ID = "com.applediary.app.extra.SESSION_ID";
+    static final String EXTRA_MESSAGE_ID = "com.applediary.app.extra.MESSAGE_ID";
 
     private static final int NOTIFY_ID = 4100;
     private static final int REQ_CHAIN = 2400;
@@ -71,12 +79,28 @@ final class PushCenter {
 
     /** 发一条会话式通知；同一 ID 覆盖更新，通知栏里始终只占一条。 */
     static void post(Context ctx, String title, String body, long when) {
+        post(ctx, title, body, when, "", "");
+    }
+
+    /**
+     * 带消息凭据的通知：sessionId/messageId 会写进点击 Intent，
+     * 用户点通知拉起 App 后能直接定位到这条消息，而不是"打开上次的会话碰运气"。
+     * 后台闹钟链没有真实消息时，两个值传空即可。
+     */
+    static void post(Context ctx, String title, String body, long when,
+                     String sessionId, String messageId) {
         ensureChannel(ctx);
         if (!enabled(ctx)) return;
         try {
             int count = bumpCount(ctx);
             Intent intent = new Intent(ctx, MainActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            if (sessionId != null && !sessionId.isEmpty()) {
+                intent.putExtra(EXTRA_SESSION_ID, sessionId);
+            }
+            if (messageId != null && !messageId.isEmpty()) {
+                intent.putExtra(EXTRA_MESSAGE_ID, messageId);
+            }
             PendingIntent pi = PendingIntent.getActivity(ctx, 0, intent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
@@ -124,7 +148,13 @@ final class PushCenter {
         resetCount(ctx);
     }
 
-    static synchronized void savePending(Context ctx, String title, String body, long when) {
+    /**
+     * 记一条"已发出、但 JS 还没确认处理完"的通知。
+     * id 由原生生成，JS 处理完之后用 ackPending(ids) 精确删除；
+     * 读取（peekPending）不删除，避免读到了但处理失败时永久丢失。
+     */
+    static synchronized void savePending(Context ctx, String title, String body, long when,
+                                         String sessionId, String messageId) {
         try {
             SharedPreferences sp = prefs(ctx);
             JSONArray arr = new JSONArray();
@@ -135,28 +165,67 @@ final class PushCenter {
                 } catch (Exception ignored) {
                 }
             }
-            org.json.JSONObject obj = new org.json.JSONObject();
+            JSONObject obj = new JSONObject();
+            obj.put("id", UUID.randomUUID().toString());
             obj.put("title", title == null ? "" : title);
             obj.put("body", body == null ? "" : body);
             obj.put("time", when > 0 ? when : System.currentTimeMillis());
+            obj.put("sessionId", sessionId == null ? "" : sessionId);
+            obj.put("messageId", messageId == null ? "" : messageId);
             arr.put(obj);
+            // 只保留最近 7 天、最多 100 条
+            long cutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000;
             JSONArray out = new JSONArray();
-            int start = Math.max(0, arr.length() - 200);
-            for (int i = start; i < arr.length(); i++) out.put(arr.get(i));
+            int start = Math.max(0, arr.length() - 100);
+            for (int i = start; i < arr.length(); i++) {
+                JSONObject item = arr.optJSONObject(i);
+                if (item != null && item.optLong("time", 0) >= cutoff) out.put(item);
+            }
             sp.edit().putString(K_PENDING, out.toString()).apply();
         } catch (Exception ignored) {
         }
     }
 
-    static synchronized String takePending(Context ctx) {
+    /** 读取待处理通知（不删除）。 */
+    static synchronized String peekPending(Context ctx) {
         try {
             SharedPreferences sp = prefs(ctx);
             String raw = sp.getString(K_PENDING, "");
-            sp.edit().remove(K_PENDING).apply();
             if (raw == null || raw.isEmpty()) return "[]";
-            return new JSONArray(raw).toString();
+            JSONArray arr = new JSONArray(raw);
+            long cutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000;
+            JSONArray out = new JSONArray();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject item = arr.optJSONObject(i);
+                if (item != null && item.optLong("time", 0) >= cutoff) out.put(item);
+            }
+            return out.toString();
         } catch (Exception e) {
             return "[]";
+        }
+    }
+
+    /** JS 确认处理完毕后，按 id 删除对应记录。 */
+    static synchronized void ackPending(Context ctx, String idsJson) {
+        if (idsJson == null || idsJson.isEmpty()) return;
+        try {
+            Set<String> ids = new HashSet<>();
+            JSONArray ack = new JSONArray(idsJson);
+            for (int i = 0; i < ack.length(); i++) {
+                String id = ack.optString(i, "");
+                if (!id.isEmpty()) ids.add(id);
+            }
+            if (ids.isEmpty()) return;
+            SharedPreferences sp = prefs(ctx);
+            JSONArray arr = new JSONArray(sp.getString(K_PENDING, "[]"));
+            JSONArray out = new JSONArray();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject item = arr.optJSONObject(i);
+                if (item == null) continue;
+                if (!ids.contains(item.optString("id", ""))) out.put(item);
+            }
+            sp.edit().putString(K_PENDING, out.toString()).apply();
+        } catch (Exception ignored) {
         }
     }
 
@@ -222,7 +291,8 @@ final class PushCenter {
             pos = (pos + 1) % texts.length();
         }
         post(ctx, title, body, now);
-        savePending(ctx, title, body, now);
+        // 后台闹钟链只是"提醒"，背后没有真实消息，因此不写 pending：
+        // 写进去会让 JS 误以为有一条待补全的消息，反而制造幽灵通知。
         sp.edit().putInt(K_POS, pos).apply();
 
         long gap = Math.max(sp.getLong(K_GAP, 15 * 60 * 1000L), MIN_GAP);

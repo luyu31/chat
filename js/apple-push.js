@@ -2,7 +2,8 @@
  * apple-push.js — 本地后台推送（类微信通知栏）
  *  - 退到后台后按设定频率持续提醒（闹钟链，最长 30 天）
  *  - 锁屏、进程被回收、手机重启后都能继续
- *  - 回到 App 自动补进聊天记录，并清掉通知
+ *  - 通知是「消息凭据」：点击后带回 sessionId / messageId，直接定位到那条消息
+ *  - 不再为了"看起来像收到消息"而随机生成一条回复（那正是幽灵通知的来源）
  * 仅在 APK 环境生效。
  */
 (function () {
@@ -13,9 +14,10 @@
     if (typeof native.pushStartChain !== 'function') return;
     window.__APPLE_PUSH__ = true;
 
-    // 通知只提示"收到了新消息"，不再使用写死的聊天句子；
-    // 真正的消息由原来的随机回复（simulateReply）产生。
-    var NOTIFY_BODY = '保持后台连接，持续接收消息';
+    // 后台提醒只是"提醒"，不写死聊天内容；真正的消息由前台的聊天链路产生
+    var NOTIFY_BODY = '收到一条新消息';
+    // 需要切换会话时，先把跳转目标存本地，reload 之后再消费
+    var JUMP_KEY = 'appleNotifyJumpTarget';
 
     var GAPS = [5, 15, 30, 60];
     var HOURS = [6, 24, 168, 0];
@@ -86,20 +88,153 @@
         try { native.pushCancelAll(); } catch (e) {}
     }
 
+    // 数据（消息/设置）加载完成前不要做跳转或补全，否则会对着空数组操作
+    function whenDataReady(fn) {
+        if (window.__APP_DATA_LOADED__) { fn(); return; }
+        var tries = 0;
+        var timer = setInterval(function () {
+            tries++;
+            if (window.__APP_DATA_LOADED__ || tries > 150) {
+                clearInterval(timer);
+                fn();
+            }
+        }, 200);
+    }
+
+    function currentSessionId() {
+        try {
+            if (typeof SESSION_ID !== 'undefined' && SESSION_ID) return String(SESSION_ID);
+        } catch (e) {}
+        return '';
+    }
+
+    function hasMessage(messageId) {
+        if (!messageId) return false;
+        try {
+            if (typeof messages === 'undefined' || !Array.isArray(messages)) return false;
+            return messages.some(function (m) { return String(m.id) === String(messageId); });
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function closeOverlays() {
+        var dyn = document.getElementById('companion-modal-dynamic');
+        if (dyn) dyn.remove();
+        document.querySelectorAll('.modal').forEach(function (m) {
+            if (getComputedStyle(m).display !== 'none') {
+                if (typeof window.hideModal === 'function') window.hideModal(m);
+                else m.style.display = 'none';
+            }
+        });
+        if (typeof window.closeCoupleSpace === 'function') window.closeCoupleSpace();
+    }
+
+    // 跳转：先关掉挡在聊天上面的页面/弹窗，再按 messageId 定位并高亮；
+    // 找不到这条消息（被删了/数据对不上）就只停在聊天底部，不弹错误。
+    function goToTarget(messageId) {
+        var companionPage = document.getElementById('companion-page');
+        var companionApi = window.companionModule;
+        if (companionPage && companionPage.classList.contains('active')
+            && companionApi && typeof companionApi.closeCompanionPage === 'function') {
+            try { companionApi.closeCompanionPage({ skipLogEvent: true }); } catch (e) {}
+        }
+        closeOverlays();
+        setTimeout(function () {
+            if (messageId && hasMessage(messageId)
+                && typeof window._jumpToMessage === 'function'
+                && window._jumpToMessage(messageId)) {
+                return;
+            }
+            if (typeof window._backToLatestMessages === 'function') window._backToLatestMessages();
+        }, 420);
+    }
+
+    function handleClickPayload(payload) {
+        var sessionId = payload && payload.sessionId ? String(payload.sessionId) : '';
+        var messageId = payload && payload.messageId ? String(payload.messageId) : '';
+        var current = currentSessionId();
+        if (sessionId && current && sessionId !== current) {
+            // 通知属于另一个会话：先记下目标，切过去（会 reload），加载完再由 consumeJumpTarget 跳
+            try {
+                localStorage.setItem(JUMP_KEY, JSON.stringify({
+                    sessionId: sessionId,
+                    messageId: messageId,
+                    ts: Date.now()
+                }));
+            } catch (e) {}
+            window.location.hash = sessionId;
+            window.location.reload();
+            return;
+        }
+        goToTarget(messageId);
+    }
+
+    // 会话切换 reload 之后，把刚才记下的跳转目标消费掉
+    function consumeJumpTarget() {
+        var raw = null;
+        try { raw = localStorage.getItem(JUMP_KEY); } catch (e) {}
+        if (!raw) return false;
+        try { localStorage.removeItem(JUMP_KEY); } catch (e) {}
+        var target = null;
+        try { target = JSON.parse(raw); } catch (e) { return false; }
+        if (!target || !target.ts || Date.now() - target.ts > 10 * 60 * 1000) return false;
+        // 会话没切成功就别乱跳
+        if (target.sessionId && currentSessionId()
+            && String(target.sessionId) !== currentSessionId()) return false;
+        goToTarget(target.messageId ? String(target.messageId) : '');
+        return true;
+    }
+
+    // 原生把"通知点击"推过来的入口（冷启动时由 MainActivity 的待投递队列补发）
+    window.__appleNotifyOpen = function (payload) {
+        var data = null;
+        try { data = typeof payload === 'string' ? JSON.parse(payload) : payload; } catch (e) { data = null; }
+        if (!data) return false;
+        whenDataReady(function () {
+            // 上一个页面可能已经写了"切会话后要跳"的记录，优先消费它
+            if (!consumeJumpTarget()) handleClickPayload(data);
+        });
+        return true;
+    };
+
+    // 待处理通知：只做"核对 + 补落库 + ack"，绝不生成新消息。
     var consuming = false;
     function consumePending() {
         if (consuming) return;
+        if (!native || typeof native.pushPeekPending !== 'function') return;
         consuming = true;
-        var list = [];
-        try { list = JSON.parse(native.pushTakePending() || '[]'); } catch (e) { list = []; }
-        consuming = false;
-        if (!list.length) return;
-        // 后台提醒不再往聊天里塞写死的句子：回到前台由原来的随机回复补一条
-        if (typeof window.simulateReply === 'function') {
-            setTimeout(function () {
-                try { window.simulateReply(); } catch (e) {}
-            }, 900);
-        }
+        whenDataReady(function () {
+            var list = [];
+            try { list = JSON.parse(native.pushPeekPending() || '[]'); } catch (e) { list = []; }
+            if (!list || !list.length) { consuming = false; return; }
+
+            var ids = [];
+            var targetId = '';
+            list.forEach(function (record) {
+                if (!record) return;
+                if (record.id) ids.push(record.id);
+                if (record.messageId) targetId = String(record.messageId);
+            });
+
+            var finish = function () {
+                // 消息不在内存里（可能真的没落库/换会话了）：给个轻提示，然后照常 ack
+                if (targetId && !hasMessage(targetId)) {
+                    toast('收到一条新消息', 'info');
+                }
+                try {
+                    if (ids.length) native.pushAckPending(JSON.stringify(ids));
+                } catch (e) {}
+                consuming = false;
+            };
+
+            // 内存里已有但可能还没写进 IndexedDB：先 flush 一次，确认后再 ack
+            if (targetId && typeof window._flushSaveData === 'function') {
+                window._flushSaveData().then(finish, finish);
+            } else {
+                finish();
+            }
+        });
     }
 
     window.__applePushOnBackground = function () {
@@ -121,9 +256,21 @@
         startBackgroundChain();
     });
 
-    setTimeout(function () {
-        if (document.visibilityState === 'visible') consumePending();
-    }, 2000);
+    // core.js 在 loadData 完成时会调用它（冷启动时 onResume 的 evaluateJavascript 可能早于页面加载，收不到）
+    window.__appleDataReady = function () {
+        consumeJumpTarget();
+        if (document.visibilityState === 'visible') window.__applePushOnForeground();
+        else consumePending();
+    };
+
+    if (window.__APP_DATA_LOADED__) {
+        setTimeout(window.__appleDataReady, 0);
+    }
+
+    // 告诉原生：JS 侧已经可以接 "__appleNotifyOpen" 了，把冷启动积压的点击推过来
+    try {
+        if (typeof native.pushClientReady === 'function') native.pushClientReady();
+    } catch (e) {}
 
     // ---------------- 设置面板 ----------------
 
