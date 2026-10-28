@@ -14098,7 +14098,10 @@ html[data-theme="dark"] .input-area > .batch-btn.active {
 /* 胶囊输入框 */
 .input-area .message-input {
     flex: 1 1 0;
-    min-width: 0;
+    /* 必须给输入框一个可读下限：一排 6 个图标 + 间距会把 390px 屏幕里的
+       输入框压到 90px 以下，中文只能一字一行，看起来像"竖排"。
+       宽度不够时把非核心按钮收进「更多」，而不是让输入框继续被压缩。 */
+    min-width: 120px;
     border: none;
     border-radius: 999px;
     background-color: #f3f2f0;
@@ -14112,4 +14115,29 @@ html[data-theme="dark"] .input-area .message-input {
 }
 html[data-theme="dark"] .input-area .message-input:focus {
     background-color: #2b2b2b;
+}
+
+/* 窄屏工具栏：视频通话、批量发送都已在「更多」菜单里有入口，
+   这里从输入行收起，保证输入框横向有可读宽度，按钮也不会被挤散。 */
+@media (max-width: 520px) {
+    .input-area {
+        gap: 6px;
+        padding: 8px 10px;
+    }
+    .input-area > #videocall-btn,
+    .input-area .input-buttons > #batch-btn {
+        display: none !important;
+    }
+    .input-area .input-btn {
+        width: 36px;
+        height: 36px;
+        font-size: 14px;
+    }
+    .input-area .input-buttons {
+        gap: 6px;
+    }
+    .input-area .message-input {
+        min-width: 120px;
+        padding: 8px 14px;
+    }
 }

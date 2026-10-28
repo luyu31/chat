@@ -42,6 +42,17 @@
             }
         },
         {
+            id: 'videocall',
+            iconClass: 'fas fa-video',
+            label: '视频通话',
+            ready: true,
+            action: function () {
+                if (window.callFeature && typeof window.callFeature.startCall === 'function') {
+                    window.callFeature.startCall(false);
+                }
+            }
+        },
+        {
             id: 'batch',
             iconClass: 'fas fa-layer-group',
             label: '批量发送',
