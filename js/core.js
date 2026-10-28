@@ -1351,6 +1351,10 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         callEvDiv.dataset.id = msg.id;
         callEvDiv.dataset.msgId = msg.id; // 让"跳转到某条消息"能定位到搞怪/通话记录
         const icon = msg.callIcon || 'fa-video';
+        // 供夏日白昼主题区分通话记录图标：呼入 / 呼出 / 结束（其它事件如观影保持原样）
+        const _isCallIcon = icon === 'fa-video' || icon === 'fa-phone-slash';
+        const _callKind = !_isCallIcon ? 'other' : (/^\[通话\]\s*(呼入|呼出)/.test(msg.text || '') ? 'start' : 'end');
+        const _callDir = _callKind === 'start' ? ((msg.text || '').indexOf('呼入') > -1 ? 'in' : 'out') : '';
         // 红色样式：通话拒绝/未接 + 陪伴拒绝/错过/取消
         const isRejected = icon === 'fa-phone-slash' ||
                            icon === 'fa-heart-crack' ||
@@ -1362,7 +1366,7 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
         const _pad = n => String(n).padStart(2, '0');
         const _timeStr = `${_ts.getFullYear()}-${_pad(_ts.getMonth() + 1)}-${_pad(_ts.getDate())} ${_pad(_ts.getHours())}:${_pad(_ts.getMinutes())}:${_pad(_ts.getSeconds())}`;
         const timeHTML = `<span class="call-event-time">${_timeStr}</span>`;
-        callEvDiv.innerHTML = `<div class="call-event-pill ${colorClass}"><i class="fas ${icon} call-event-icon"></i><span class="call-event-label">${msg.text.replace(/ · .*/, '')}</span>${detail}${timeHTML}<button class="call-event-delete" title="删除" onclick="(function(btn){const id=btn.closest('[data-id]').dataset.id;const idx=messages.findIndex(m=>String(m.id)===String(id));if(idx>-1){messages.splice(idx,1);renderMessages();throttledSaveData();}})(this)"><i class="fas fa-times"></i></button></div>`;
+        callEvDiv.innerHTML = `<div class="call-event-pill ${colorClass}" data-call-kind="${_callKind}" data-call-dir="${_callDir}"><i class="fas ${icon} call-event-icon"></i><span class="call-event-label">${msg.text.replace(/ · .*/, '')}</span>${detail}${timeHTML}<button class="call-event-delete" title="删除" onclick="(function(btn){const id=btn.closest('[data-id]').dataset.id;const idx=messages.findIndex(m=>String(m.id)===String(id));if(idx>-1){messages.splice(idx,1);renderMessages();throttledSaveData();}})(this)"><i class="fas fa-times"></i></button></div>`;
         fragment.appendChild(callEvDiv);
         lastSenderRef.current = 'system';
         return fragment;
