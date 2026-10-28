@@ -1560,7 +1560,7 @@
         await _waitForSessionId(3000);
         await _load();
         checkRedPacketStatus();
-        setInterval(checkRedPacketStatus, 30000);
+        window.createPausablePoll('redpacket', 30000, checkRedPacketStatus);
         _updateExpiryReminder();
 
         var headerIcon = document.getElementById('rp-compose-header-icon');

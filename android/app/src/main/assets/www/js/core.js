@@ -799,6 +799,7 @@ const _perf = {
     inputSync: [],  // 最近 100 次输入框高度测量的布局耗时（ms）
     scrollFrames: [], // 最近 100 次滚动帧的处理耗时（ms）
     scrollEvents: 0,  // 收到的原始 scroll 事件数（用来对比合并前后的触发次数）
+    foreground: [],   // 最近 20 次"切回前台后 3 秒内"的主线程长任务汇总
     skippedBackups: 0
 };
 try {
@@ -823,6 +824,7 @@ window.__PERF__ = {
         _perf.inputSync.length = 0;
         _perf.scrollFrames.length = 0;
         _perf.scrollEvents = 0;
+        _perf.foreground.length = 0;
         _perf.skippedBackups = 0;
     },
     // 输入框高度测量的布局耗时统计（配合 console 里 __PERF__.enable() 使用）
@@ -856,6 +858,19 @@ window.__PERF__ = {
     bumpScrollEvent() {
         _perf.scrollEvents++;
     },
+    // 切回前台后 3 秒内的主线程长任务汇总（最近的若干次）
+    get foregroundStats() {
+        const list = _perf.foreground.slice();
+        if (!list.length) return { rounds: 0, avgTotal: 0, maxTotal: 0, avgCount: 0 };
+        const avgTotal = list.reduce((s, r) => s + r.total, 0) / list.length;
+        return {
+            rounds: list.length,
+            avgTotal: Math.round(avgTotal * 10) / 10,
+            maxTotal: Math.max.apply(null, list.map(r => r.total)),
+            avgCount: Math.round(list.reduce((s, r) => s + r.count, 0) / list.length * 10) / 10,
+            last: list[list.length - 1]
+        };
+    },
     recordScrollFrame(ms) {
         _perf.scrollFrames.push(ms);
         if (_perf.scrollFrames.length > 100) _perf.scrollFrames.shift();
@@ -870,6 +885,32 @@ window.__PERF__ = {
 function _perfNow() {
     return (window.performance && performance.now) ? performance.now() : Date.now();
 }
+
+// 切回前台后 3 秒内的主线程长任务（>50ms）累计耗时：用来量化"切后台再回来"那一刻的卡顿
+let _fgObserver = null;
+function _startForegroundWatch() {
+    if (!_perf.enabled || typeof PerformanceObserver === 'undefined') return;
+    if (_fgObserver) return;
+    const start = _perfNow();
+    const durations = [];
+    try {
+        _fgObserver = new PerformanceObserver(function (list) {
+            list.getEntries().forEach(function (e) { if (e.startTime >= start) durations.push(e.duration); });
+        });
+        _fgObserver.observe({ entryTypes: ['longtask'] });
+    } catch (e) { _fgObserver = null; return; }
+    setTimeout(function () {
+        try { if (_fgObserver) _fgObserver.disconnect(); } catch (e) {}
+        _fgObserver = null;
+        let total = 0, max = 0;
+        for (let i = 0; i < durations.length; i++) { total += durations[i]; if (durations[i] > max) max = durations[i]; }
+        _perf.foreground.push({ total: Math.round(total * 10) / 10, count: durations.length, max: Math.round(max * 10) / 10 });
+        if (_perf.foreground.length > 20) _perf.foreground.shift();
+    }, 3000);
+}
+document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) _startForegroundWatch();
+});
 
 // 备份前按内容估算体积（只读字符串长度，不拼接）：
 // 大图消息可以提前截断，避免"先 stringify 整个大对象 → 发现超限 → 再 stringify 一次"

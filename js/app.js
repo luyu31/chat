@@ -59,14 +59,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             safeAwait(initMusicPlayer?.())
         ]);
 
-        setInterval(checkStatusChange, 60000);
+        // 这几个轮询都交给 createPausablePoll：切后台停表，回前台错峰恢复
+        window.createPausablePoll('status', 60000, checkStatusChange);
 
         // 动态/回信 后台定时检查——不管停在哪个页面，每隔30秒自动看一眼有没有该送达的内容了，
         // 不需要刷新页面或者重新进入情侣空间/信箱才能触发
-        setInterval(() => {
+        window.createPausablePoll('reply-moments', 30000, () => {
             try { if (typeof checkEnvelopeStatus === 'function') checkEnvelopeStatus(); } catch(e) { console.warn('[后台轮询] 回信检查失败', e); }
             try { if (typeof checkMomentsStatus === 'function') checkMomentsStatus(); } catch(e) { console.warn('[后台轮询] 动态检查失败', e); }
-        }, 30000);
+        });
 
         if (disclaimerModal) {
             const tourSeen = await safeAwait(localforage?.getItem(APP_PREFIX + 'tour_seen'), false);
@@ -144,9 +145,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             flushExitBackupOnce();
         });
 
-        setInterval(() => {
+        window.createPausablePoll('autosave', 3 * 60 * 1000, () => {
             saveData().catch(e => console.warn('[autoBackup] 定时保存失败:', e));
-        }, 3 * 60 * 1000);
+        });
 
         (() => {
             const REMIND_KEY = 'exportReminderLastShown';
