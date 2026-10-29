@@ -3686,6 +3686,8 @@ function showModal(modalElement, focusElement = null) {
                 modalElement._hideTimeout = null;
             }
             modalElement.style.display = 'flex';
+            // 有懒加载/按需渲染的弹窗可监听此事件补渲染（如字卡列表关闭后已释放 DOM）
+            try { modalElement.dispatchEvent(new CustomEvent('modal:shown')); } catch (e) {}
             requestAnimationFrame(() => {
                 const content = modalElement.querySelector('.modal-content');
                 if (content) {
@@ -3708,6 +3710,8 @@ function showModal(modalElement, focusElement = null) {
             if (modalElement._hideTimeout) clearTimeout(modalElement._hideTimeout);
             modalElement._hideTimeout = setTimeout(() => {
                 modalElement.style.display = 'none';
+                // 通知订阅者做资源释放（如字卡列表清空 DOM）
+                try { modalElement.dispatchEvent(new CustomEvent('modal:hidden')); } catch (e) {}
             }, 300);
         }
 

@@ -84,9 +84,26 @@ const ICONS = {
             display:flex;align-items:flex-start;gap:0;padding:11px 13px;
             border-radius:12px;border:1.5px solid var(--border-color);
             background:var(--secondary-bg);margin-bottom:7px;
-            transition:all 0.18s;position:relative;overflow:hidden;
+            transition:border-color 0.15s ease, background-color 0.15s ease;
+            position:relative;overflow:hidden;
         }
-        .rl-card:hover { border-color:var(--accent-color);transform:translateY(-1px);box-shadow:0 3px 12px rgba(0,0,0,0.08); }
+        /* 性能：卡片不做位移/阴影合成，只用边框色反馈 */
+        .rl-card:hover { border-color:var(--accent-color); }
+        .rl-load-sentinel {
+            padding:14px 8px 26px;text-align:center;font-size:12px;
+            color:var(--text-secondary);opacity:0.75;
+        }
+        .rl-load-sentinel.rl-done { opacity:0.45; }
+        .rl-more-btn {
+            padding:9px 18px;border:1.5px dashed var(--border-color);border-radius:12px;
+            background:transparent;color:var(--text-secondary);font-size:12px;
+            font-family:var(--font-family);cursor:pointer;
+        }
+        .rl-empty-hint {
+            padding:18px;text-align:center;font-size:12px;
+            color:var(--text-secondary);opacity:0.6;
+        }
+        #rl-top-spacer { width:100%; }
         .rl-card.rl-selected { border-color:var(--accent-color);background:rgba(var(--accent-color-rgb,180,140,100),0.08); }
         .rl-card-actions {
             display:flex;gap:3px;margin-left:auto;flex-shrink:0;padding-left:8px;
@@ -134,6 +151,8 @@ function _renderListContentOnly() {
     Array.from(list.children).forEach(child => {
         if (child !== toolbar) child.remove();
     });
+    // 局部重绘同样要丢弃旧的懒加载状态
+    _rlState = null;
 
     let itemsToRender = [];
     let renderType = 'text';
@@ -225,6 +244,8 @@ function renderReplyLibrary() {
     }
 
     list.innerHTML = '';
+    // 整表重绘前丢弃上一份懒加载状态（新状态由 _rlStart 重新建立）
+    _rlState = null;
     list.className = 'content-list-area';
 
     const activeTabConfig = currentConfig.tabs.find(t => t.id === currentSubTab);
@@ -312,10 +333,12 @@ function _renderModernToolbar() {
 
     let groupFilterHtml = '';
     if (hasGroupSupport && ctx.groups && ctx.groups.length > 0) {
+        // 先建 Set 再做统计，避免 1812 条 × 分组数 × items.includes 的 O(n²) 扫描
+        const itemSet = new Set(ctx.items);
+        const groupedSet = new Set();
+        ctx.groups.forEach(g => (g.items || []).forEach(t => { if (itemSet.has(t)) groupedSet.add(t); }));
         const allCount = ctx.items.length;
-        const ungroupedCount = ctx.items.filter(item =>
-            !ctx.groups.some(g => g.items && g.items.includes(item))
-        ).length;
+        const ungroupedCount = ctx.items.length - groupedSet.size;
         groupFilterHtml = `
             <div id="group-filter-pills" style="
                 display:flex;gap:6px;overflow-x:auto;padding:8px 15px 0;
@@ -328,7 +351,7 @@ function _renderModernToolbar() {
                     未分组 <span class="gfp-count">${ungroupedCount}</span>
                 </button>
                 ${ctx.groups.map(g => {
-                    const cnt = (g.items || []).filter(item => ctx.items.includes(item)).length;
+                    const cnt = (g.items || []).filter(item => itemSet.has(item)).length;
                     return `<button class="gfp-btn ${_activeGroupFilter === g.id ? 'gfp-active' : ''} ${g.disabled ? 'gfp-disabled' : ''}"
                         data-filter="${g.id}"
                         style="${_activeGroupFilter === g.id ? `background:${g.color}22;border-color:${g.color};color:${g.color};` : ''}">
@@ -582,7 +605,7 @@ function _renderModernToolbar() {
 
 function _renderCardViewWithGroups(list, items) {
     const ctx = _getGroupCtx();
-    const groups = ctx.groups;
+    const groups = ctx.groups || [];
     const sourceItems = ctx.items;
     const disabledSet = _getDisabledItemsSet();
     // 预建索引 Map，避免 indexOf 的 O(n²) 查找
@@ -593,75 +616,77 @@ function _renderCardViewWithGroups(list, items) {
         idx: replyIndexMap.has(text) ? replyIndexMap.get(text) : -1
     }));
 
+    // 把要渲染的内容整理成有序的「段落」列表（分组 → 未分组），
+    // 交给分批引擎按段落顺序懒加载，而不是一次性铺满 DOM。
+    const sections = [];
     if (_activeGroupFilter === null) {
         if (!groups || groups.length === 0) {
-            _renderCardList(list, itemsWithIdx, disabledSet);
-            return;
-        }
-
-        const inGroup = new Set();
-        groups.forEach(g => {
-            const groupItems = (g.items || [])
-                .map(t => ({ text: t, idx: sourceItems.indexOf(t) }))
-                .filter(x => x.idx >= 0 && items.includes(x.text));
-            groupItems.forEach(x => inGroup.add(x.idx));
-            _renderGroupBlock(list, g, groupItems, disabledSet);
-        });
-
-        const ungrouped = itemsWithIdx.filter(x => !inGroup.has(x.idx));
-        if (ungrouped.length > 0) {
-            _renderGroupBlock(list, { id: '__ungrouped', name: '未分组', color: '#868E96', disabled: false }, ungrouped, disabledSet, true);
+            sections.push({ key: 'list', group: null, items: itemsWithIdx });
+        } else {
+            const inGroup = new Set();
+            groups.forEach(g => {
+                const itemSet = new Set(g.items || []);
+                const groupItems = itemsWithIdx.filter(x => x.idx >= 0 && itemSet.has(x.text));
+                groupItems.forEach(x => inGroup.add(x.idx));
+                sections.push({ key: g.id, group: g, isUngrouped: false, items: groupItems });
+            });
+            const ungrouped = itemsWithIdx.filter(x => !inGroup.has(x.idx));
+            if (ungrouped.length > 0) {
+                sections.push({ key: '__ungrouped', group: { id: '__ungrouped', name: '未分组', color: '#868E96', disabled: false }, isUngrouped: true, items: ungrouped });
+            }
         }
     } else if (_activeGroupFilter === 'ungrouped') {
         const inGroup = new Set();
         if (groups) groups.forEach(g => (g.items || []).forEach(t => {
-            const i = sourceItems.indexOf(t);
-            if (i >= 0) inGroup.add(i);
+            const i = replyIndexMap.get(t);
+            if (i !== undefined) inGroup.add(i);
         }));
         const ungrouped = itemsWithIdx.filter(x => !inGroup.has(x.idx));
-        if (ungrouped.length === 0) {
-            list.innerHTML = renderEmptyState('所有内容均已分组');
-        } else {
-            _renderCardList(list, ungrouped, disabledSet);
-        }
+        if (ungrouped.length === 0) { list.innerHTML = renderEmptyState('所有内容均已分组'); return; }
+        sections.push({ key: 'list', group: null, items: ungrouped });
     } else {
         const g = groups.find(g => g.id === _activeGroupFilter);
         if (!g) { list.innerHTML = renderEmptyState('分组不存在'); return; }
-        const filtered = itemsWithIdx.filter(x => (g.items || []).includes(x.text));
-        if (filtered.length === 0) {
-            list.innerHTML = renderEmptyState('此分组暂无内容');
-        } else {
-            _renderCardList(list, filtered, disabledSet);
-        }
+        const gset = new Set(g.items || []);
+        const filtered = itemsWithIdx.filter(x => gset.has(x.text));
+        if (filtered.length === 0) { list.innerHTML = renderEmptyState('此分组暂无内容'); return; }
+        sections.push({ key: 'list', group: null, items: filtered });
     }
+
+    _rlStart(list, sections, disabledSet);
 }
 
-function _renderGroupBlock(list, group, groupItems, disabledSet, isUngrouped = false) {
-    const section = document.createElement('div');
-    section.className = 'rl-group-block';
+// 创建分组段落（表头 + 空内容器），由分批引擎往里追加卡片。
+// 不再在创建时一次性渲染该组所有卡片。
+function _createGroupSection(group, items, isUngrouped = false) {
+    const wrap = document.createElement('div');
+    wrap.className = 'rl-group-block';
+    wrap._rlItems = items || [];
+    const totalCount = wrap._rlItems.length;
     const isCollapsed = group._collapsed || false;
     const isDisabled = group.disabled;
     const colorDot = group.color || '#868E96';
 
-    section.innerHTML = `
+    wrap.innerHTML = `
         <div class="rl-group-header${isCollapsed ? ' collapsed' : ''}" id="grp-hdr-${group.id}" style="${isDisabled ? 'opacity:0.5;' : ''}">
             <div class="rl-group-tag" id="grp-tag-${group.id}" title="${isDisabled ? '点击启用此分组' : '点击屏蔽此分组'}">
                 <span style="width:8px;height:8px;border-radius:50%;background:${colorDot};flex-shrink:0;"></span>
                 <span style="font-size:12px;font-weight:700;color:${colorDot};">${group.name}</span>
                 ${isDisabled ? `<span title="已屏蔽" style="color:${colorDot};">${ICONS.eyeOff}</span>` : ''}
             </div>
-            <span style="font-size:11px;color:var(--text-secondary);">${groupItems.length} 条</span>
-            ${_batchModeActive && groupItems.length > 0 ? (() => {
-                const allSel = groupItems.every(x => _batchSelectedIndices.has(x.idx));
-                const someSel = !allSel && groupItems.some(x => _batchSelectedIndices.has(x.idx));
+            <span class="rl-group-count" style="font-size:11px;color:var(--text-secondary);">${totalCount} 条</span>
+            ${_batchModeActive && totalCount > 0 ? (() => {
+                const items = wrap._rlItems || [];
+                const allSel = items.length > 0 && items.every(x => _batchSelectedIndices.has(x.idx));
+                const someSel = !allSel && items.some(x => _batchSelectedIndices.has(x.idx));
                 return `<button class="grp-select-all-btn" data-gid="${group.id}" title="${allSel ? '取消本组全选' : '全选本组'}" style="
                     margin-left:auto;flex-shrink:0;padding:3px 9px;border-radius:20px;cursor:pointer;
                     font-size:11px;font-weight:700;font-family:var(--font-family);
-                    transition:all 0.15s;
+                    transition:none;
                     border:1.5px solid ${allSel ? 'var(--accent-color)' : someSel ? colorDot : 'var(--border-color)'};
                     background:${allSel ? 'var(--accent-color)' : someSel ? colorDot + '22' : 'var(--primary-bg)'};
                     color:${allSel ? '#fff' : someSel ? colorDot : 'var(--text-secondary)'};
-                ">${allSel ? '✓ 全选' : someSel ? `已选${groupItems.filter(x=>_batchSelectedIndices.has(x.idx)).length}` : '全选'}</button>`;
+                ">${allSel ? '✓ 全选' : someSel ? `已选${items.filter(x=>_batchSelectedIndices.has(x.idx)).length}` : '全选'}</button>`;
             })() : `<div style="flex:1;"></div>`}
             ${!isUngrouped ? `
             <button class="grp-edit-btn" title="编辑分组" style="
@@ -676,35 +701,20 @@ function _renderGroupBlock(list, group, groupItems, disabledSet, isUngrouped = f
         <div class="rl-group-body" id="grp-body-${group.id}" style="display:${isCollapsed ? 'none' : 'block'};">
         </div>
     `;
-    list.appendChild(section);
 
-    const body = section.querySelector(`#grp-body-${group.id}`);
-    if (groupItems.length === 0) {
-        body.innerHTML = `<div style="padding:18px;text-align:center;font-size:12px;color:var(--text-secondary);opacity:0.6;">此分组暂无内容</div>`;
-    } else {
-        _renderCardList(body, groupItems, disabledSet);
-    }
+    const body = wrap.querySelector(`#grp-body-${group.id}`);
+    const header = wrap.querySelector(`#grp-hdr-${group.id}`);
 
-    section.querySelector('.grp-select-all-btn')?.addEventListener('click', e => {
-        e.stopPropagation();
-        const allSel = groupItems.every(x => _batchSelectedIndices.has(x.idx));
-        if (allSel) {
-            groupItems.forEach(x => _batchSelectedIndices.delete(x.idx));
-        } else {
-            groupItems.forEach(x => _batchSelectedIndices.add(x.idx));
-        }
-        renderReplyLibrary();
-    });
-
-    section.querySelector(`#grp-hdr-${group.id}`).addEventListener('click', e => {
+    header.addEventListener('click', e => {
         if (e.target.closest('.grp-edit-btn') || e.target.closest(`#grp-tag-${group.id}`) || e.target.closest('.grp-select-all-btn')) return;
         group._collapsed = !group._collapsed;
         body.style.display = group._collapsed ? 'none' : 'block';
-        section.querySelector('.grp-chevron').style.transform = group._collapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
-        section.querySelector('.rl-group-header').classList.toggle('collapsed', !!group._collapsed);
+        wrap.querySelector('.grp-chevron').style.transform = group._collapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+        header.classList.toggle('collapsed', !!group._collapsed);
+        if (!group._collapsed) _rlOnGroupExpand(group);
     });
 
-    const tag = section.querySelector(`#grp-tag-${group.id}`);
+    const tag = wrap.querySelector(`#grp-tag-${group.id}`);
     if (tag && !isUngrouped) {
         tag.addEventListener('click', e => {
             e.stopPropagation();
@@ -715,52 +725,415 @@ function _renderGroupBlock(list, group, groupItems, disabledSet, isUngrouped = f
         });
     }
 
-    section.querySelector('.grp-edit-btn')?.addEventListener('click', e => {
-        e.stopPropagation();
-        _showGroupEditor(group, _getGroupCtx());
-    });
-}
-
-const _CARD_PAGE_SIZE = 80; // 每次最多渲染 80 张，超过时追加"显示更多"
-
-function _renderCardList(container, itemsWithIdx, disabledSet) {
-    const total = itemsWithIdx.length;
-    const toRender = itemsWithIdx.slice(0, _CARD_PAGE_SIZE);
-    const remaining = total - toRender.length;
-
-    const frag = document.createDocumentFragment();
-    toRender.forEach(({ text, idx }) => {
-        frag.appendChild(_createCard(text, idx, disabledSet));
-    });
-
-    if (remaining > 0) {
-        const btn = document.createElement('button');
-        btn.style.cssText = 'width:100%;padding:10px;margin-top:4px;border:1.5px dashed var(--border-color);border-radius:12px;background:transparent;color:var(--text-secondary);font-size:12px;cursor:pointer;font-family:var(--font-family);';
-        btn.textContent = `显示剩余 ${remaining} 条`;
-        btn.onclick = () => {
-            btn.remove();
-            const moreFrag = document.createDocumentFragment();
-            itemsWithIdx.slice(_CARD_PAGE_SIZE).forEach(({ text, idx }) => {
-                moreFrag.appendChild(_createCard(text, idx, disabledSet));
-            });
-            container.appendChild(moreFrag);
-        };
-        frag.appendChild(btn);
+    const editBtn = wrap.querySelector('.grp-edit-btn');
+    if (editBtn) {
+        editBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            _showGroupEditor(group, _getGroupCtx());
+        });
     }
 
-    container.appendChild(frag);
+    const selAllBtn = wrap.querySelector('.grp-select-all-btn');
+    if (selAllBtn) {
+        selAllBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            const items = wrap._rlItems || [];
+            const allSel = items.length > 0 && items.every(x => _batchSelectedIndices.has(x.idx));
+            if (allSel) items.forEach(x => _batchSelectedIndices.delete(x.idx));
+            else items.forEach(x => _batchSelectedIndices.add(x.idx));
+            renderReplyLibrary();
+        });
+    }
+
+    return { wrap, body };
 }
 
-function _createCard(item, index, disabledSet) {
-    const div = document.createElement('div');
-    div.className = 'rl-card';
+// ─── 分批懒加载引擎 ─────────────────────────────────────────────────
+// 首批 50 条；滑到底部自动追加 50；DOM 中最多保留 300 张卡，超出时从顶部
+// 回收 100 张，并在顶部放等高占位（滚动条不跳动）；滑回顶部时自动恢复。
+const _RL_BATCH = 50;
+const _RL_CAP = 300;
+const _RL_RECLAIM = 100;
+let _rlState = null;
+let _rlScrollRaf = 0;
+let _rlAutoLoadTimer = 0;
+
+function _rlTotal(sections) {
+    return sections.reduce((n, s) => n + s.items.length, 0);
+}
+
+// 还未进 DOM 的条数（折叠分组里的不计入，展开时才补）
+function _rlRemaining() {
+    const st = _rlState;
+    if (!st) return 0;
+    return Math.max(0, _rlTotal(st.sections) - st.rendered - st.skipped);
+}
+
+function _rlStart(list, sections, disabledSet) {
+    const groupMap = new Map();
+    sections.forEach(sec => {
+        if (sec.group && !sec.isUngrouped) {
+            (sec.group.items || []).forEach(t => { if (!groupMap.has(t)) groupMap.set(t, sec.group); });
+        }
+        sec.dom = null;
+        sec.rendered = 0;
+        sec.emptyShown = false;
+        sec.skipped = false;
+    });
+    _rlState = {
+        list, sections, disabledSet, groupMap,
+        si: 0, rendered: 0, skipped: 0, live: 0,
+        sentinel: null, spacer: null, spacerH: 0,
+        reclaimed: []
+    };
+    list.scrollTop = 0;
+    if (_rlAutoLoadTimer) { clearTimeout(_rlAutoLoadTimer); _rlAutoLoadTimer = 0; }
+    _rlEnsureSentinel();
+    _rlLoad(_RL_BATCH);
+    _rlAutoFill();
+}
+
+function _rlEnsureSentinel() {
+    const st = _rlState;
+    if (!st || st.sentinel) return;
+    const el = document.createElement('div');
+    el.id = 'rl-load-sentinel';
+    el.className = 'rl-load-sentinel';
+    st.sentinel = el;
+    st.list.appendChild(el);
+    _rlUpdateSentinel();
+}
+
+function _rlUpdateSentinel() {
+    const st = _rlState;
+    if (!st || !st.sentinel) return;
+    const total = _rlTotal(st.sections);
+    const rest = _rlRemaining();
+    if (rest <= 0) {
+        st.sentinel.innerHTML = st.skipped > 0
+            ? `<span>已加载 ${st.rendered} 条，另有 ${st.skipped} 条在折叠分组中</span>`
+            : `<span>已全部加载（${total} 条）</span>`;
+        st.sentinel.classList.add('rl-done');
+    } else {
+        st.sentinel.innerHTML = `<button class="rl-more-btn" type="button">继续加载 · 还剩 ${rest} 条</button>`;
+        st.sentinel.classList.remove('rl-done');
+    }
+}
+
+function _rlSectionDom(sec) {
+    const st = _rlState;
+    if (sec.dom) return sec.dom;
+    if (!sec.group) {
+        // 平铺模式：卡片直接挂在列表容器上
+        sec.dom = { wrap: null, body: st.list, bodyId: 'list' };
+    } else {
+        const { wrap, body } = _createGroupSection(sec.group, sec.items, sec.isUngrouped);
+        st.list.insertBefore(wrap, st.sentinel);
+        sec.dom = { wrap, body, bodyId: 'grp-body-' + sec.group.id };
+    }
+    return sec.dom;
+}
+
+// 往某个段落里追加最多 n 张卡，返回实际追加数量（不触发回收，由调用方处理）
+function _rlFillSection(sec, n) {
+    const st = _rlState;
+    if (!st || !sec || sec.skipped) return 0;
+    const take = Math.min(n, sec.items.length - sec.rendered);
+    if (take <= 0) return 0;
+    const dom = _rlSectionDom(sec);
+    const parts = [];
+    for (let i = 0; i < take; i++) {
+        const it = sec.items[sec.rendered + i];
+        parts.push(_cardHtml(it.text, it.idx, st.disabledSet, dom.bodyId));
+    }
+    // 平铺：插在哨兵前；分组：插在「继续加载」按钮前，避免按钮被挤到中间
+    const beforeEl = dom.body === st.list ? st.sentinel : dom.body.querySelector('.rl-sec-more');
+    _rlInsertHtml(dom.body, parts.join(''), beforeEl);
+    sec.rendered += take;
+    st.rendered += take;
+    st.live += take;
+    return take;
+}
+
+function _rlLoad(n) {
+    const st = _rlState;
+    if (!st) return;
+    let budget = n, guard = 0;
+    while (budget > 0 && guard++ < 400) {
+        const sec = st.sections[st.si];
+        if (!sec) break;
+        const dom = _rlSectionDom(sec);
+        if (sec.items.length === 0) {
+            if (sec.group && !sec.emptyShown) {
+                sec.emptyShown = true;
+                const hint = document.createElement('div');
+                hint.className = 'rl-empty-hint';
+                hint.textContent = '此分组暂无内容';
+                dom.body.appendChild(hint);
+            }
+            st.si++;
+            continue;
+        }
+        if (sec.skipped) { st.si++; continue; }
+        // 折叠分组：只建表头不铺卡片，展开时再由 _rlOnGroupExpand 补
+        if (sec.group && !sec.isUngrouped && sec.group._collapsed) {
+            sec.skipped = true;
+            st.skipped += sec.items.length;
+            st.si++;
+            continue;
+        }
+        if (sec.rendered >= sec.items.length) { st.si++; continue; }
+        budget -= _rlFillSection(sec, budget);
+    }
+    _rlMaybeReclaim();
+    _rlUpdateSentinel();
+}
+
+function _rlMaybeReclaim() {
+    const st = _rlState;
+    if (!st || st.live <= _RL_CAP) return;
+    const cards = st.list.querySelectorAll('.rl-card');
+    const take = Math.min(_RL_RECLAIM, st.live - _RL_CAP, cards.length);
+    if (take <= 0) return;
+    const h0 = st.list.scrollHeight;
+    for (let i = 0; i < take; i++) {
+        const c = cards[i];
+        st.reclaimed.push({ bodyId: c.dataset.bodyId || 'list', text: c.dataset.item, idx: Number(c.dataset.idx) });
+        c.remove();
+    }
+    st.live -= take;
+    const diff = h0 - st.list.scrollHeight;
+    if (diff > 0) {
+        if (!st.spacer) {
+            st.spacer = document.createElement('div');
+            st.spacer.id = 'rl-top-spacer';
+            st.spacer.style.cssText = 'flex-shrink:0;';
+            st.list.insertBefore(st.spacer, st.list.firstChild);
+        }
+        st.spacerH += diff;
+        st.spacer.style.height = st.spacerH + 'px';
+    }
+}
+
+function _rlRestore(n) {
+    const st = _rlState;
+    if (!st || !st.reclaimed.length) return;
+    const take = st.reclaimed.splice(-Math.min(n, st.reclaimed.length));
+    const h0 = st.list.scrollHeight;
+    const byBody = new Map();
+    take.forEach(rec => {
+        if (!byBody.has(rec.bodyId)) byBody.set(rec.bodyId, []);
+        byBody.get(rec.bodyId).push(rec);
+    });
+    byBody.forEach((recs, bodyId) => {
+        const body = bodyId === 'list' ? st.list : document.getElementById(bodyId);
+        if (!body) return;
+        const html = recs.map(r => _cardHtml(r.text, r.idx, st.disabledSet, bodyId)).join('');
+        const anchor = body === st.list
+            ? (st.list.querySelector('.rl-card') || st.sentinel)
+            : (body.firstElementChild || body.querySelector('.rl-sec-more'));
+        _rlInsertHtml(body, html, anchor);
+        st.live += recs.length;
+    });
+    const inserted = st.list.scrollHeight - h0;
+    if (st.spacer && inserted > 0) {
+        st.spacerH = Math.max(0, st.spacerH - inserted);
+        st.spacer.style.height = st.spacerH + 'px';
+        if (st.spacerH <= 0) { st.spacer.remove(); st.spacer = null; }
+    }
+    _rlUpdateSentinel();
+}
+
+// 触底加载防抖：滚动过程中不追加 DOM，等用户停在底部 140ms 后再补一批，
+// 避免「边滑边插卡」导致的长帧
+function _rlAutoLoad() {
+    if (!_rlState) return;
+    if (_rlAutoLoadTimer) clearTimeout(_rlAutoLoadTimer);
+    _rlAutoLoadTimer = setTimeout(() => {
+        _rlAutoLoadTimer = 0;
+        const st = _rlState;
+        if (!st || !st.list) return;
+        const list = st.list;
+        if (_rlRemaining() <= 0) return;
+        if (list.scrollTop + list.clientHeight >= list.scrollHeight - 600) _rlLoad(_RL_BATCH);
+    }, 140);
+}
+
+// 首屏不足一屏时继续补，避免内容不够高导致无法滚动触发加载
+function _rlAutoFill() {
+    const st = _rlState;
+    if (!st) return;
+    const list = st.list;
+    if (!list.clientHeight) return;
+    let guard = 0;
+    while (guard++ < 20 && _rlRemaining() > 0 &&
+           list.scrollHeight - list.scrollTop <= list.clientHeight + 300) {
+        const before = st.rendered + st.skipped;
+        _rlLoad(_RL_BATCH);
+        if (st.rendered + st.skipped === before) break;
+    }
+}
+
+// 折叠分组展开：把之前 skip 掉的条目补进来（先补一批，剩下的给组内按钮）
+function _rlOnGroupExpand(group) {
+    const st = _rlState;
+    if (!st) return;
+    const sec = st.sections.find(s => s.group === group);
+    if (!sec || !sec.dom) return;
+    if (sec.skipped) {
+        sec.skipped = false;
+        st.skipped = Math.max(0, st.skipped - sec.items.length);
+    }
+    if (sec.rendered < sec.items.length) {
+        _rlFillSection(sec, _RL_BATCH);
+        _rlMaybeReclaim();
+        _rlUpdateSentinel();
+    }
+    _rlUpdateSectionMore(sec);
+}
+
+// 组内「继续加载」按钮：只在展开后仍有剩余时出现
+function _rlUpdateSectionMore(sec) {
+    if (!sec || !sec.group || !sec.dom) return;
+    const body = sec.dom.body;
+    let btn = body.querySelector('.rl-sec-more');
+    const rest = sec.items.length - sec.rendered;
+    if (rest <= 0) { if (btn) btn.remove(); return; }
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rl-more-btn rl-sec-more';
+        btn.dataset.gid = String(sec.key);
+        body.appendChild(btn);
+    }
+    btn.textContent = `继续加载本组剩余 ${rest} 条`;
+}
+
+// 滚动事件：统一用 rAF 合并，一帧最多处理一次；无监听副作用
+function _rlOnListScroll() {
+    if (_rlScrollRaf) return;
+    if (window.__PERF__) window.__PERF__.bumpScrollEvent();
+    _rlScrollRaf = requestAnimationFrame(() => {
+        _rlScrollRaf = 0;
+        const st = _rlState;
+        if (!st || !st.list) return;
+        const t0 = performance.now();
+        const list = st.list;
+        if (st.reclaimed.length && st.spacerH > 0 && list.scrollTop < st.spacerH + 300) {
+            _rlRestore(_RL_RECLAIM);
+        } else if (_rlRemaining() > 0 && st.sentinel &&
+                   list.scrollTop + list.clientHeight >= list.scrollHeight - 500) {
+            _rlAutoLoad();
+        }
+        if (window.__PERF__ && window.__PERF__.enabled) window.__PERF__.recordScrollFrame(performance.now() - t0);
+    });
+}
+
+// 事件委托：整个列表只挂一个 click，卡片不再各自绑定闭包
+function _rlOnListClick(e) {
+    const secBtn = e.target.closest('.rl-sec-more');
+    if (secBtn) {
+        const st = _rlState;
+        const sec = st && st.sections.find(s => String(s.key) === secBtn.dataset.gid);
+        if (sec) {
+            _rlFillSection(sec, _RL_BATCH);
+            _rlMaybeReclaim();
+            _rlUpdateSentinel();
+            _rlUpdateSectionMore(sec);
+        }
+        return;
+    }
+    const card = e.target.closest('.rl-card');
+    if (card) {
+        const idx = Number(card.dataset.idx);
+        const item = card.dataset.item || '';
+        const act = e.target.closest('.rl-act-btn');
+        if (act) {
+            e.stopPropagation();
+            const action = act.dataset.action;
+            if (action === 'disable') _rlToggleDisableInPlace(card, item);
+            else if (action === 'edit') editItem(idx, item);
+            else if (action === 'delete') deleteItem(idx);
+            else if (action === 'tag') _showSingleItemGroupPicker(item, _getGroupCtx());
+            return;
+        }
+        if (_batchModeActive) {
+            if (_batchSelectedIndices.has(idx)) _batchSelectedIndices.delete(idx);
+            else _batchSelectedIndices.add(idx);
+            _rlPaintSelection(card);
+        }
+        return;
+    }
+    if (e.target.closest('.rl-more-btn')) _rlLoad(_RL_BATCH);
+}
+
+function _rlPaintSelection(card) {
+    const idx = Number(card.dataset.idx);
+    const sel = _batchSelectedIndices.has(idx);
+    card.classList.toggle('rl-selected', sel);
+    const box = card.querySelector('.rl-batch-check');
+    if (box) {
+        box.style.borderColor = sel ? 'var(--accent-color)' : 'var(--border-color)';
+        box.style.background = sel ? 'var(--accent-color)' : 'transparent';
+        box.innerHTML = sel ? '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg>' : '';
+    }
+    const strong = document.querySelector('#batch-action-bar span strong');
+    if (strong) strong.textContent = _batchSelectedIndices.size;
+}
+
+function _rlToggleDisableInPlace(card, item) {
+    const set = _getDisabledItemsSet();
+    let disabled;
+    if (set.has(item)) { set.delete(item); disabled = false; showNotification('已启用', 'success'); }
+    else { set.add(item); disabled = true; showNotification('已屏蔽（不会出现在随机回复中）', 'info'); }
+    _saveDisabledItemsSet(set);
+    const textWrap = card.firstElementChild;
+    if (textWrap) {
+        textWrap.style.opacity = disabled ? '0.4' : '';
+        textWrap.style.textDecoration = disabled ? 'line-through' : '';
+    }
+    const btn = card.querySelector('.rl-act-btn[data-action="disable"]');
+    if (btn) {
+        btn.classList.toggle('active', disabled);
+        btn.title = disabled ? '启用' : '屏蔽';
+        btn.innerHTML = disabled ? ICONS.eye : ICONS.eyeOff;
+    }
+}
+
+function _rlBindInteractions(list) {
+    if (!list || list._rlBound) return;
+    list._rlBound = true;
+    list.addEventListener('click', _rlOnListClick);
+    list.addEventListener('scroll', _rlOnListScroll, { passive: true });
+}
+
+// 关闭弹窗时清空列表 DOM，释放节点与闭包
+function _rlRelease() {
+    if (_rlScrollRaf) { cancelAnimationFrame(_rlScrollRaf); _rlScrollRaf = 0; }
+    if (_rlAutoLoadTimer) { clearTimeout(_rlAutoLoadTimer); _rlAutoLoadTimer = 0; }
+    const list = document.getElementById('custom-replies-list');
+    _rlState = null;
+    if (list) {
+        list.innerHTML = '';
+        list.scrollTop = 0;
+    }
+    _batchSelectedIndices.clear();
+    _batchModeActive = false;
+}
+
+function _escAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// 生成单张卡片的 HTML 字符串。批量拼接后一次性 insertAdjacentHTML，
+// 比逐张 createElement + innerHTML 少一次解析/回调，实测追加 50 张的卡顿明显下降。
+function _cardHtml(item, index, disabledSet, bodyId) {
     const isDisabled = disabledSet && disabledSet.has(item);
     const isSelected = _batchSelectedIndices.has(index);
 
     const groupBadge = (() => {
-        const groups = _getGroupCtx().groups;
-        if (!groups) return '';
-        const g = groups.find(grp => grp.items && grp.items.includes(item));
+        // 用渲染期预建的 Map 查分组，避免每张卡都做一遍 items.includes 的线性扫描
+        const g = _rlState && _rlState.groupMap ? _rlState.groupMap.get(item) : null;
         if (!g) return '';
         return `<span style="
             display:inline-flex;align-items:center;gap:3px;
@@ -778,10 +1151,11 @@ function _createCard(item, index, disabledSet) {
         ? `<span style="font-size:13px;">${itemParts[0]}</span><span style="font-size:11px;opacity:0.6;display:block;margin-top:1px;">${itemParts[1]}</span>`
         : `<span style="font-size:13px;">${item}</span>`;
 
+    const attrs = `data-idx="${index}" data-item="${_escAttr(item)}" data-body-id="${bodyId || 'list'}"`;
+
     if (_batchModeActive) {
-        div.style.cssText = 'cursor:pointer;';
-        div.className = 'rl-card' + (isSelected ? ' rl-selected' : '');
-        div.innerHTML = `
+        // 点击由列表容器上的事件委托统一处理，不再逐卡绑定
+        return `<div class="rl-card${isSelected ? ' rl-selected' : ''}" ${attrs} style="cursor:pointer;">
             <div class="rl-batch-check" style="
                 border:1.5px solid ${isSelected ? 'var(--accent-color)' : 'var(--border-color)'};
                 background:${isSelected ? 'var(--accent-color)' : 'transparent'};
@@ -792,16 +1166,10 @@ function _createCard(item, index, disabledSet) {
                 ${displayText}
                 ${groupBadge}
             </div>
-        `;
-        div.addEventListener('click', () => {
-            if (_batchSelectedIndices.has(index)) _batchSelectedIndices.delete(index);
-            else _batchSelectedIndices.add(index);
-            renderReplyLibrary();
-        });
-        return div;
+        </div>`;
     }
 
-    div.innerHTML = `
+    return `<div class="rl-card" ${attrs}>
         <div style="flex:1;min-width:0;${isDisabled ? 'opacity:0.4;text-decoration:line-through;' : ''}">
             ${displayText}
             ${groupBadge}
@@ -820,14 +1188,14 @@ function _createCard(item, index, disabledSet) {
                 ${ICONS.trash}
             </button>
         </div>
-    `;
+    </div>`;
+}
 
-    div.querySelector('[data-action="delete"]').onclick = (e) => { e.stopPropagation(); deleteItem(index); };
-    div.querySelector('[data-action="edit"]').onclick = (e) => { e.stopPropagation(); editItem(index, item); };
-    div.querySelector('[data-action="disable"]').onclick = (e) => { e.stopPropagation(); _toggleItemDisable(item); };
-    div.querySelector('[data-action="tag"]').onclick = (e) => { e.stopPropagation(); _showSingleItemGroupPicker(item, _getGroupCtx()); };
-
-    return div;
+// 统一插入：平铺列表永远插在加载哨兵之前，分组内插在「继续加载」按钮之前
+function _rlInsertHtml(body, html, beforeEl) {
+    if (!html) return;
+    if (beforeEl && beforeEl.parentNode === body) beforeEl.insertAdjacentHTML('beforebegin', html);
+    else body.insertAdjacentHTML('beforeend', html);
 }
 
 function _renderAtmosphereList(list, items) {
@@ -2240,6 +2608,20 @@ function _showBatchAddDialog() {
 }
 
 function initReplyLibraryListeners() {
+    // 字卡列表：滚动/点击全部由容器代理，只绑一次；关闭弹窗时释放 DOM
+    const rlListEl = document.getElementById('custom-replies-list');
+    if (rlListEl) _rlBindInteractions(rlListEl);
+    const rlModalEl = document.getElementById('custom-replies-modal');
+    if (rlModalEl && !rlModalEl._rlCloseBound) {
+        rlModalEl._rlCloseBound = true;
+        rlModalEl.addEventListener('modal:hidden', _rlRelease);
+        // 关闭时 DOM 已被清空；若有别的入口直接 showModal（如收纳面板的字卡按钮），这里补渲染
+        rlModalEl.addEventListener('modal:shown', () => {
+            const list = document.getElementById('custom-replies-list');
+            if (!list || list.children.length === 0) renderReplyLibrary();
+        });
+    }
+
     const entryBtn = document.getElementById('custom-replies-function');
     if (entryBtn) {
         entryBtn.addEventListener('click', () => {
