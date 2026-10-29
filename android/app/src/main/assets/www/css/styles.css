@@ -5047,6 +5047,13 @@
         }
 
 
+        /* 性能：字卡弹窗去掉整屏毛玻璃（实测滚动掉帧主因），用更深的纯色遮罩保持观感 */
+        #custom-replies-modal {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            background-color: rgba(0, 0, 0, 0.78);
+        }
+
         #custom-replies-modal .modal-content {
             background-color: var(--primary-bg);
             display: flex;
