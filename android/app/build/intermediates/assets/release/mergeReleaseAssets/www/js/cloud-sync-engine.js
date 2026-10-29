@@ -641,8 +641,9 @@
                     if (lk) lsKeys.push(lk);
                 }
                 for (var m = 0; m < lsKeys.length; m++) {
-                    // 紧急备份 / crash recovery 数据：必须清掉，否则 app 重启会用旧数据覆盖我们刚恢复的数据
-                    if (lsKeys[m] === 'BACKUP_V1_critical' ||
+                    // 兜底备份 / crash recovery 数据：必须清掉，否则 app 重启会用旧数据覆盖我们刚恢复的数据
+                    if (lsKeys[m].indexOf('BACKUP_V2_') === 0 ||
+                        lsKeys[m] === 'BACKUP_V1_critical' ||
                         lsKeys[m] === 'BACKUP_V1_timestamp' ||
                         lsKeys[m] === '_cdRecLogs') {
                         localStorage.removeItem(lsKeys[m]);
@@ -708,8 +709,7 @@
             // 注意：visibilitychange/pagehide 可能在 reload 触发时重新写入备份，
             // 所以这里清完之后要尽快 reload，不给 app 重写的机会
             try {
-                localStorage.removeItem('BACKUP_V1_critical');
-                localStorage.removeItem('BACKUP_V1_timestamp');
+                if (typeof _clearAllLocalBackups === 'function') _clearAllLocalBackups();
                 localStorage.removeItem('_cdRecLogs');
             } catch (e) {}
 

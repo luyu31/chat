@@ -895,8 +895,7 @@
 
         // 暂停紧急备份系统，防止迁移过程中 base64 快照覆盖迁移结果
         window._skipBackup = true;
-        try { localStorage.removeItem('BACKUP_V1_critical'); } catch (e) {}
-        try { localStorage.removeItem('BACKUP_V1_timestamp'); } catch (e) {}
+        try { if (typeof _clearAllLocalBackups === 'function') _clearAllLocalBackups(); } catch (e) {}
 
         try {
             _state.total = await _countTasks(sid);
@@ -956,8 +955,7 @@
         } finally {
             _state.running = false;
             // 迁移完成后清掉备份，恢复备份系统
-            try { localStorage.removeItem('BACKUP_V1_critical'); } catch (e) {}
-            try { localStorage.removeItem('BACKUP_V1_timestamp'); } catch (e) {}
+            try { if (typeof _clearAllLocalBackups === 'function') _clearAllLocalBackups(); } catch (e) {}
             window._skipBackup = false;
             _notify();
         }

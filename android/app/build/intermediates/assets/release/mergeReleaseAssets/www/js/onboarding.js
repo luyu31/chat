@@ -343,10 +343,10 @@ const tourSteps = [
         position: 'bottom'
     },
     {
-        element: '#videocall-btn',
-        title: "📹 视频通话",
-        content: "点击这里可以发起视频通话，对方会在接通后出现在屏幕上。",
-        position: 'bottom'
+        element: '#more-menu-btn',
+        title: "📹 视频通话 / 更多",
+        content: "手机窄屏上，视频通话和批量发送收进了「更多」菜单；屏幕更宽时它们也会直接显示在输入框旁边。",
+        position: 'top'
     },
     {
         element: '#message-input',

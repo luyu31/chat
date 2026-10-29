@@ -34,20 +34,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.warn('LocalForage 未加载，将使用 localStorage 降级方案');
         }
 
-        try {
-            const emergencyBackupRaw = localStorage.getItem('BACKUP_V1_critical');
-            if (emergencyBackupRaw) {
-                const emergencyBackup = JSON.parse(emergencyBackupRaw);
-                if (emergencyBackup && Array.isArray(emergencyBackup.messages) && emergencyBackup.messages.length > 0) {
-                    console.warn('[boot] 检测到紧急备份，可用于异常恢复');
-                }
-            }
-        } catch (e) {
-            console.warn('[boot] 紧急备份检查失败:', e);
-        }
-
         updateLoader('正在建立安全连接...', '10%');
         await safeAwait(initializeSession());
+
+        // 备份是会话隔离的，必须等 SESSION_ID 就绪后再看，才可能读到"本会话"的那份
+        try {
+            const backupInfo = typeof window._peekLocalBackup === 'function' ? window._peekLocalBackup() : null;
+            if (backupInfo && backupInfo.count > 0) {
+                const mins = Math.max(0, Math.round((Date.now() - backupInfo.ts) / 60000));
+                console.warn(`[boot] 检测到本会话文字备份：${backupInfo.count} 条，${mins} 分钟前`);
+            }
+        } catch (e) {
+            console.warn('[boot] 备份检查失败:', e);
+        }
 
         updateLoader('正在读取记忆存档...', '40%');
         await safeAwait(loadData());
@@ -59,14 +58,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             safeAwait(initMusicPlayer?.())
         ]);
 
-        setInterval(checkStatusChange, 60000);
+        // 这几个轮询都交给 createPausablePoll：切后台停表，回前台错峰恢复
+        window.createPausablePoll('status', 60000, checkStatusChange);
 
         // 动态/回信 后台定时检查——不管停在哪个页面，每隔30秒自动看一眼有没有该送达的内容了，
         // 不需要刷新页面或者重新进入情侣空间/信箱才能触发
-        setInterval(() => {
+        window.createPausablePoll('reply-moments', 30000, () => {
             try { if (typeof checkEnvelopeStatus === 'function') checkEnvelopeStatus(); } catch(e) { console.warn('[后台轮询] 回信检查失败', e); }
             try { if (typeof checkMomentsStatus === 'function') checkMomentsStatus(); } catch(e) { console.warn('[后台轮询] 动态检查失败', e); }
-        }, 30000);
+        });
 
         if (disclaimerModal) {
             const tourSeen = await safeAwait(localforage?.getItem(APP_PREFIX + 'tour_seen'), false);
@@ -112,27 +112,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     console.error('[visibilitychange] 保存失败:', e);
                 }
             } else if (document.visibilityState === 'visible') {
+                // 只重置"退出备份已刷过"的标记。不再用"备份条数更多"去覆盖当前数据——
+                // 条数不是新旧信号（删消息、云端回滚都会让条数变少），恢复只允许发生在
+                // 冷启动时主存储确实为空、且备份 sessionId 与当前会话一致的情况下（见 loadData）。
                 _exitBackupFlushed = false;
-                try {
-                    const backup = typeof _tryRecoverFromBackup === 'function' ? _tryRecoverFromBackup() : null;
-                    if (backup && Array.isArray(backup.messages) && backup.messages.length > 0 && Array.isArray(messages) && backup.messages.length > messages.length) {
-                        console.warn('[visibilitychange] 检测到备份消息比当前更多，自动尝试恢复');
-                        try {
-                            messages = backup.messages.map(m => ({
-                                ...m,
-                                timestamp: new Date(m.timestamp)
-                            }));
-                            if (backup.settings) Object.assign(settings, backup.settings);
-                            if (typeof updateUI === 'function') updateUI();
-                            if (typeof throttledSaveData === 'function') throttledSaveData();
-                            showNotification('已自动恢复本地临时备份内容', 'warning', 3500);
-                        } catch (restoreErr) {
-                            console.warn('[visibilitychange] 自动恢复失败，保留当前页面内容:', restoreErr);
-                        }
-                    }
-                } catch (e) {
-                    console.warn('[visibilitychange] 恢复备份失败:', e);
-                }
             }
         });
 
@@ -144,9 +127,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             flushExitBackupOnce();
         });
 
-        setInterval(() => {
+        window.createPausablePoll('autosave', 3 * 60 * 1000, () => {
             saveData().catch(e => console.warn('[autoBackup] 定时保存失败:', e));
-        }, 3 * 60 * 1000);
+        });
 
         (() => {
             const REMIND_KEY = 'exportReminderLastShown';
@@ -178,6 +161,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const backup = typeof _tryRecoverFromBackup === 'function' ? _tryRecoverFromBackup() : null;
             if (backup && Array.isArray(backup.messages) && backup.messages.length > 0) {
+                try { if (typeof _savePreRecoverySnapshot === 'function') _savePreRecoverySnapshot(); } catch (e) {}
                 messages = backup.messages.map(m => ({
                     ...m,
                     timestamp: new Date(m.timestamp)

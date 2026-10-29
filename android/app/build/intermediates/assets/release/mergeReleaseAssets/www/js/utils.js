@@ -622,3 +622,54 @@ async function importAllData(file) {
         showNotification('导入失败：' + msg, 'error', 5000);
     }
 }
+
+// ─── 可暂停的后台轮询 ───────────────────────────────────────────
+// 页面不可见（切后台/锁屏）时停表，回到前台后错峰恢复：
+// 每个任务随机 300~1500ms + 按注册顺序递增 250ms，避免 Android 冻结 JS 之后
+// 一堆到期的 setInterval 在切回的瞬间同时砸主线程。
+// 恢复时先补跑一次，保证"该发的红包、该回的信"不会因为暂停而漏掉。
+window._appPolls = window._appPolls || [];
+window.createPausablePoll = function (name, intervalMs, fn) {
+    const poll = {
+        name: name,
+        intervalMs: intervalMs,
+        timer: 0,
+        resumeTimer: 0,
+        run() {
+            try { fn(); } catch (e) { console.warn('[轮询] ' + name + ' 执行失败', e); }
+        },
+        start(delay) {
+            this.stop();
+            const self = this;
+            if (delay > 0) {
+                this.resumeTimer = setTimeout(() => {
+                    self.resumeTimer = 0;
+                    self.run();
+                    self.timer = setInterval(() => self.run(), self.intervalMs);
+                }, delay);
+            } else {
+                this.timer = setInterval(() => self.run(), this.intervalMs);
+            }
+        },
+        stop() {
+            if (this.resumeTimer) { clearTimeout(this.resumeTimer); this.resumeTimer = 0; }
+            if (this.timer) { clearInterval(this.timer); this.timer = 0; }
+        }
+    };
+    window._appPolls.push(poll);
+    // 页面本来就是隐藏的（极少见），先不启动，等可见时统一错峰恢复
+    if (!document.hidden) poll.start(0);
+    return poll;
+};
+
+document.addEventListener('visibilitychange', function () {
+    const hidden = document.hidden;
+    const polls = window._appPolls || [];
+    for (let i = 0; i < polls.length; i++) {
+        if (hidden) {
+            polls[i].stop();
+        } else {
+            polls[i].start(300 + i * 250 + Math.random() * 400);
+        }
+    }
+});

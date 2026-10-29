@@ -1241,6 +1241,22 @@ window.toggleImmersiveMode = function(force) {
     function getRight() { return parseInt(btn.style.right) || 20; }
     function getBottom() { return parseInt(btn.style.bottom) || 100; }
     
+    // 拖动期间的 move/up 监听只在真正拖动时挂到 document 上，
+    // 平时不挂（原来常驻的 document touchmove + passive:false 会让整个文档的滚动都等主线程）
+    function attachDragListeners() {
+        document.addEventListener('mousemove', onMove, {passive: false});
+        document.addEventListener('touchmove', onMove, {passive: false});
+        document.addEventListener('mouseup', onEnd);
+        document.addEventListener('touchend', onEnd);
+        document.addEventListener('touchcancel', onEnd);
+    }
+    function detachDragListeners() {
+        document.removeEventListener('mousemove', onMove, {passive: false});
+        document.removeEventListener('touchmove', onMove, {passive: false});
+        document.removeEventListener('mouseup', onEnd);
+        document.removeEventListener('touchend', onEnd);
+        document.removeEventListener('touchcancel', onEnd);
+    }
     function onStart(e) {
         isDragging = true; hasMoved = false;
         btn.classList.add('dragging');
@@ -1249,6 +1265,7 @@ window.toggleImmersiveMode = function(force) {
         startY = touch.clientY;
         origRight = getRight();
         origBottom = getBottom();
+        attachDragListeners();
         e.preventDefault();
     }
     function onMove(e) {
@@ -1269,16 +1286,13 @@ window.toggleImmersiveMode = function(force) {
         if (!isDragging) return;
         isDragging = false;
         btn.classList.remove('dragging');
+        detachDragListeners();
         if (!hasMoved) {
             window.toggleImmersiveMode(false);
         }
     }
     btn.addEventListener('mousedown', onStart, {passive: false});
     btn.addEventListener('touchstart', onStart, {passive: false});
-    document.addEventListener('mousemove', onMove, {passive: false});
-    document.addEventListener('touchmove', onMove, {passive: false});
-    document.addEventListener('mouseup', onEnd);
-    document.addEventListener('touchend', onEnd);
     
     btn.removeAttribute('onclick');
 })();

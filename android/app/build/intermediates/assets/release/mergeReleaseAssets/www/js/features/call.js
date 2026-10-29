@@ -531,6 +531,18 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
     };
     const getName = () => (typeof settings !== 'undefined' && settings.partnerName) || document.getElementById('partner-name')?.textContent.trim() || '对方';
 
+    // 原生前台服务（方案 A）：start/update/stop 都做容错，Web 端单独跑时静默降级
+    function syncNativeCall(mode) {
+        try {
+            const b = window.AppleDiary;
+            if (!b) return;
+            if (mode === 'stop') { if (b.stopCallService) b.stopCallService(); return; }
+            const startTs = S.startTime || 0;
+            if (mode === 'update') { if (b.updateCallService) b.updateCallService(startTs); return; }
+            if (b.startCallService) b.startCallService(getName(), startTs);
+        } catch (e) {}
+    }
+
     // ─── 通话记录：聊天提示 + 结构化日志 ───────────────────────
     // 日志同步写入 localStorage（不走异步 localforage），
     // 这样页面卸载 / 应用被杀时也能立刻落盘，不依赖 beforeunload 里的异步操作。
@@ -757,12 +769,15 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         if (timerEl) timerEl.textContent = '连接中';
 
         clearTimeout(S.connectingTimer);
+        // 呼出/来电接听后立刻拉起原生前台服务，保证退到后台不挂断
+        syncNativeCall('start');
 
         if (!isPartner && Math.random() < 0.35) {
             const rejectDelay = 4000 + Math.random() * 8000;
             S.connectingTimer = setTimeout(() => {
                 if (!S.active) return;
                 S.active = false;
+                syncNativeCall('stop');
                 cancelAnimationFrame(S.timerRAF);
                 const winEl = document.getElementById('call-window');
                 if (winEl) { winEl.classList.remove('visible'); winEl.classList.remove('immersive'); }
@@ -793,6 +808,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
                 if (body) body.style.display = '';
                 // 通话接通：立即写入第一次心跳
                 writeCallSession();
+                syncNativeCall('update'); // 通知栏从“正在呼叫”切到计时
                 tick();
             }, 1400 + Math.random() * 1400);
         }
@@ -802,6 +818,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
         if (!S.active) return;
         const dur = S.elapsed;
         S.active = false; S.startTime = null;
+        syncNativeCall('stop');
         cancelAnimationFrame(S.timerRAF);
         clearTimeout(S.connectingTimer); clearTimeout(S.incomingTimer);
 
@@ -1089,10 +1106,9 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             S.enabled ? scheduleRandomCall() : clearTimeout(S.randomCallTimer);
         });
 
-        // 退出页面/关闭应用/切到后台：通话自动挂断，并在聊天里留下记录。
-        // 换通话背景会打开系统相册，那一刻页面也会短暂隐藏，所以用一个标记把它排除掉
-        let _ignoreHideOnce = false;
-        document.getElementById('call-bg-btn')?.addEventListener('click', () => { _ignoreHideOnce = true; });
+        // 切到后台不再挂断：通话由原生前台服务（含唤醒锁与常驻通知）托底。
+        // 回到前台时按真实 startTime 重算一次时长，避免后台计时器被系统节流后显示不准。
+        // 真正退出页面（pagehide/beforeunload）仍然收尾，保证通话记录落盘。
         const hangupOnExit = () => {
             if (!S.active) return;
             endCall(true);
@@ -1102,9 +1118,11 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
             try { if (typeof saveData === 'function') saveData(); } catch (e) {}
         };
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') { _ignoreHideOnce = false; return; }
-            if (_ignoreHideOnce) return;
-            hangupOnExit();
+            if (document.visibilityState === 'visible' && S.active) {
+                tick();
+                // 后台期间若跨过了「接通」节点，回来补一次同步，避免通知栏停在“正在呼叫”
+                syncNativeCall('update');
+            }
         });
         window.addEventListener('pagehide', hangupOnExit);
         window.addEventListener('beforeunload', hangupOnExit);
@@ -1207,6 +1225,7 @@ html:not([data-theme="dark"])[data-color-theme="black-white"] .message-sent{
 
                 // 重新启动 tick
                 tick();
+                syncNativeCall('update'); // 进程被杀后恢复通话：让通知栏继续计时
                 return true;
             } catch (e) {
                 console.warn('[call] resume failed', e);

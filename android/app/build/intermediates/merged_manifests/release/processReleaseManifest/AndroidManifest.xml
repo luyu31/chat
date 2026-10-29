@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.applediary.app"
-    android:versionCode="10"
-    android:versionName="1.6.3" >
+    android:versionCode="16"
+    android:versionName="1.6.9" >
 
     <uses-sdk
         android:minSdkVersion="24"
@@ -27,6 +27,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
@@ -88,6 +91,25 @@
         <receiver
             android:name="com.applediary.app.PushAlarmReceiver"
             android:exported="false" />
+
+        <!-- 通话常驻前台服务：退到后台保持通话（通知栏计时 + 唤醒锁） -->
+        <service
+            android:name="com.applediary.app.CallForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback"
+            android:stopWithTask="true" />
+
+        <!--
+             后台常驻前台服务：App 退到后台时弹一条「其他」渠道的常驻通知，
+             提升进程优先级避免被系统回收，保持连接接收新消息。
+             回到前台时由 MainActivity 主动停止。
+        -->
+        <service
+            android:name="com.applediary.app.KeepAliveForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="true" />
+
         <receiver
             android:name="com.applediary.app.BootReceiver"
             android:exported="true" >

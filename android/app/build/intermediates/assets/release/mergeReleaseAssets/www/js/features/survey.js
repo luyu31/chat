@@ -2088,7 +2088,7 @@
 
     // 每分钟检查一次到点的问卷（照抄 period.js 的轮询方式）；反向问卷的触发检查间隔是"天"级别的，
     // 不需要这么密，但挂在同一个 60秒 定时器里跑一下也没什么成本，简单点，不用另开一个定时器
-    setInterval(function () { _checkDueSurveys(); _checkAskMeTrigger(); _checkAskMeReceiveDue(); }, 60000);
+    window.createPausablePoll('survey', 60000, function () { _checkDueSurveys(); _checkAskMeTrigger(); _checkAskMeReceiveDue(); });
 
     _load().then(function () {
         _cleanTrash();

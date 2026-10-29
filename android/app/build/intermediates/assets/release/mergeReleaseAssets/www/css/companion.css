@@ -1919,3 +1919,16 @@ html[data-theme="dark"] .companion-mode-card i {
     min-width: 26px;
     text-align: center;
 }
+
+/* ── 关闭状态暂停动画 ─────────────────────────────────────────────
+   陪伴页/陪伴弹窗关闭后只是 opacity:0（不是 display:none），DOM 还在，
+   星空漂移、呼吸光、跑马灯等 infinite 动画会一直空转。关闭时统一暂停，
+   重新打开（加回 .active）自动从暂停处继续。*/
+#companion-page:not(.active) *,
+#companion-page:not(.active) *::before,
+#companion-page:not(.active) *::after,
+.companion-modal:not(.active) *,
+.companion-modal:not(.active) *::before,
+.companion-modal:not(.active) *::after {
+    animation-play-state: paused !important;
+}

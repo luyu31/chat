@@ -370,8 +370,7 @@
             // 修复：直接赋值 let messages（window.messages 赋值不影响 let 绑定）
             messages = [];
             displayedMessageCount = typeof HISTORY_BATCH_SIZE !== 'undefined' ? HISTORY_BATCH_SIZE : 20;
-            try { localStorage.removeItem('BACKUP_V1_critical'); } catch(e) {}
-            try { localStorage.removeItem('BACKUP_V1_timestamp'); } catch(e) {}
+            try { if (typeof _clearLocalBackup === 'function') _clearLocalBackup(); } catch(e) {}
             if (window.localforage && typeof getStorageKey === 'function') {
                 localforage.setItem(getStorageKey('chatMessages'), []).catch(function() {});
             }
@@ -522,12 +521,33 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-window._sendPartnerNotification = function(title, body) {
+/**
+ * 发"梦角发来消息"的系统通知。
+ * meta.messageId：通知对应的真实消息 id。带上它之后，通知会等这条消息写进
+ * IndexedDB 再发（点通知进来一定有这条消息），并且点击 Intent 会带着它用于定位。
+ */
+window._sendPartnerNotification = function(title, body, meta) {
     try {
         if (localStorage.getItem('notifEnabled') === '0') return;
         var bridge = window.AppleDiary;
         if (bridge && bridge.isNative && bridge.isNative() && typeof bridge.pushNow === 'function') {
-            bridge.pushNow(title || '苹果日记', body || '对方发来了消息');
+            var sessionId = (meta && meta.sessionId) || '';
+            if (!sessionId) {
+                try { if (typeof SESSION_ID !== 'undefined' && SESSION_ID) sessionId = String(SESSION_ID); } catch (e) {}
+            }
+            var messageId = (meta && meta.messageId !== undefined && meta.messageId !== null && meta.messageId !== '')
+                ? String(meta.messageId) : '';
+            var doPush = function() {
+                try { bridge.pushNow(title || '苹果日记', body || '对方发来了消息', sessionId, messageId); } catch (e) {}
+            };
+            if (messageId && typeof window._flushSaveData === 'function') {
+                // 先落库、后通知：落库失败就不发，宁可少一条提醒也不要幽灵通知
+                window._flushSaveData().then(doPush, function(err) {
+                    console.warn('[notify] 消息落库失败，已跳过通知', err);
+                });
+            } else {
+                doPush();
+            }
             return;
         }
         if (!('Notification' in window)) return;
@@ -552,7 +572,7 @@ window.handleNotifToggle = function(checkbox) {
             localStorage.setItem('notifEnabled', '1');
             if (allowed) {
                 if (statusEl) statusEl.textContent = '✅ 已开启 — 退到后台也会收到系统通知';
-                try { bridge.pushNow('苹果日记', '通知已开启，后台也会提醒你啦'); } catch(e) {}
+                try { bridge.pushTest('苹果日记', '通知已开启，后台也会提醒你啦', '', ''); } catch(e) {}
             } else {
                 if (statusEl) statusEl.textContent = '⚠️ 请在本机系统设置里允许「苹果日记」发送通知';
                 try { bridge.openAppSettings(); } catch(e) {}

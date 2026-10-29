@@ -3375,20 +3375,42 @@ playlist.style.top = (rect.top + (player.classList.contains('collapsed') ? 65 : 
 
         function initCoreListeners() {
 
-            DOMElements.chatContainer.addEventListener('scroll', () => {
+            // 滚动：一帧内不管来多少次 scroll 事件，只处理一次。
+            // 处理函数把"读"集中在前半段、"写/触发加载"放在后半段，避免在事件里写-读交替抖动。
+            let _chatScrollQueued = false;
+            function _handleChatScrollFrame() {
+                _chatScrollQueued = false;
                 const container = DOMElements.chatContainer;
                 if (!container) return;
+                const perf = window.__PERF__;
+                const timing = perf && perf.enabled;
+                const t0 = timing ? performance.now() : 0;
+
+                // —— 读阶段：一次读完所有需要的值 ——
+                const scrollTop = container.scrollTop;
                 const hasMoreOlder = msgViewMode === 'window' ? msgWinStart > 0 : (messages.length > displayedMessageCount);
-                if (container.scrollTop < 50 && !isLoadingHistory && hasMoreOlder) {
+                const nearTop = scrollTop < 50;
+                let distanceFromBottom = Infinity;
+                if (msgViewMode === 'window' && !isLoadingFuture && msgWinEnd < messages.length) {
+                    distanceFromBottom = container.scrollHeight - scrollTop - container.clientHeight;
+                }
+
+                // —— 判断 + 写阶段：只在这里触发加载，读已经全部结束 ——
+                if (nearTop && !isLoadingHistory && hasMoreOlder) {
                     if (typeof loadMoreHistory === 'function') loadMoreHistory();
                 }
-                if (msgViewMode === 'window' && !isLoadingFuture && msgWinEnd < messages.length) {
-                    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-                    if (distanceFromBottom < 50) {
-                        if (typeof loadMoreFuture === 'function') loadMoreFuture();
-                    }
+                if (distanceFromBottom < 50) {
+                    if (typeof loadMoreFuture === 'function') loadMoreFuture();
                 }
-            });
+
+                if (timing) perf.recordScrollFrame(performance.now() - t0);
+            }
+            DOMElements.chatContainer.addEventListener('scroll', () => {
+                if (window.__PERF__) window.__PERF__.bumpScrollEvent();
+                if (_chatScrollQueued) return;
+                _chatScrollQueued = true;
+                requestAnimationFrame(_handleChatScrollFrame);
+            }, { passive: true });
 
             DOMElements.sendBtn.addEventListener('click', () => isBatchMode ? addToBatch(): sendMessage());
             DOMElements.messageInput.addEventListener('keydown', e => {

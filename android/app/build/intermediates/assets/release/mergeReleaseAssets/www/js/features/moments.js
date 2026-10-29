@@ -4,6 +4,7 @@
 
 let momentsData = { posts: [], notifications: [] };
 let _momentsDataLoaded = false; // 只有loadMomentsData()成功跑完一次才会变true，saveMomentsData()靠这个判断能不能安全保存
+let _momentsStamp = '';         // 内存数据对应的版本戳；跟 localStorage 里的戳一致就说明不用再读 IndexedDB
 
 const _M_STORAGE_KEY  = 'momentsData';
 const _M_COOLDOWN_KEY = 'partnerLetterNextTime';
@@ -88,12 +89,37 @@ function _mCmtContent() {
     return { text: '', image: randSticker() };                         // 20% 纯贴纸
 }
 
-async function loadMomentsData() {
-    try { const s=await localforage.getItem(getStorageKey(_M_STORAGE_KEY)); if(s){momentsData=s;if(!momentsData.notifications)momentsData.notifications=[];} _momentsDataLoaded=true; } catch(e){console.warn('[Moments] load 失败',e);}
+// 版本戳存在 localStorage（同步、极便宜）：每次保存动态时换一个新戳，
+// 读取前先比一下戳，没变过就直接用内存里的数据，不再整条读 IndexedDB（动态里可能存着几 MB 的 base64 图）
+function _momentsRevKey() { try { return getStorageKey(_M_STORAGE_KEY) + '_rev'; } catch(e) { return _M_STORAGE_KEY + '_rev'; } }
+function _readMomentsRev() { try { return localStorage.getItem(_momentsRevKey()) || ''; } catch(e) { return ''; } }
+function _bumpMomentsRev() {
+    try { localStorage.setItem(_momentsRevKey(), Date.now().toString(36) + Math.random().toString(36).slice(2, 8)); } catch(e) {}
+}
+
+async function loadMomentsData(force) {
+    const rev = _readMomentsRev();
+    if (!force && _momentsDataLoaded && rev && rev === _momentsStamp) return; // 没变过，不读
+    try {
+        const s = await localforage.getItem(getStorageKey(_M_STORAGE_KEY));
+        if (s) { momentsData = s; if (!momentsData.notifications) momentsData.notifications = []; }
+        _momentsDataLoaded = true;
+        if (rev) {
+            _momentsStamp = rev;
+        } else {
+            // 老数据还没有版本戳：补一个，之后就不用每次都全量读了
+            _bumpMomentsRev();
+            _momentsStamp = _readMomentsRev();
+        }
+    } catch(e) { console.warn('[Moments] load 失败', e); }
 }
 async function saveMomentsData() {
     if (!_momentsDataLoaded) { console.warn('[Moments] 本次会话还没有确认加载成功过动态数据，为了避免覆盖历史记录，跳过这次保存'); return; }
-    try{await localforage.setItem(getStorageKey(_M_STORAGE_KEY),momentsData);}catch(e){console.warn('[Moments] save 失败',e);}
+    try {
+        await localforage.setItem(getStorageKey(_M_STORAGE_KEY), momentsData);
+        _bumpMomentsRev();
+        _momentsStamp = _readMomentsRev();
+    } catch(e) { console.warn('[Moments] save 失败', e); }
 }
 
 // ─── 通知 ───
@@ -581,6 +607,7 @@ function _updateBigAvatars(){
 // ─── 主入口 ───
 window.openCoupleSpace=window.openMomentsModal=function(scrollToPostId){
     const page=document.getElementById('couple-space-page');if(!page)return;
+    if(typeof loadCssOnce==='function')loadCssOnce('css/cinema.css');
     page.style.display='flex';
     requestAnimationFrame(()=>requestAnimationFrame(()=>{
         // 页面动画前先把 header 放好（此时整页还在 translateY(100%) 不可见）

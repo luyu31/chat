@@ -52,9 +52,8 @@ window._registerPartnerMessageListener = window._registerPartnerMessageListener 
             newMsgCountWhileBrowsing = 0;
             if (typeof window._updateBackToLatestBtn === 'function') window._updateBackToLatestBtn();
 
-            // 立即清除 localStorage 备份，防止 _tryRecoverFromBackup 在 IndexedDB 写入前恢复旧消息
-            try { localStorage.removeItem('BACKUP_V1_critical'); } catch(e) {}
-            try { localStorage.removeItem('BACKUP_V1_timestamp'); } catch(e) {}
+            // 立即清除本会话的 localStorage 备份，防止 _tryRecoverFromBackup 在 IndexedDB 写入前恢复旧消息
+            try { _clearLocalBackup(); } catch(e) {}
 
             // 直接写入 IndexedDB（跳过 500ms 防抖），确保刷新后不恢复
             localforage.setItem(getStorageKey('chatMessages'), []).catch(() => {});
@@ -528,7 +527,8 @@ const loadData = async () => {
             const backup = _tryRecoverFromBackup();
             if (backup && Array.isArray(backup.messages) && backup.messages.length > 0) {
                 const timeSince = Math.round((Date.now() - backup.ts) / 60000);
-                console.warn(`[loadData] 主存储无消息，正在从备份恢复（备份时间：${timeSince} 分钟前）`);
+                console.warn(`[loadData] 主存储无消息，正在从本会话备份恢复（备份时间：${timeSince} 分钟前，${backup.messages.length} 条）`);
+                _savePreRecoverySnapshot(); // 先留现场，再覆盖
                 messages = backup.messages.map(m => ({
                     ...m, timestamp: new Date(m.timestamp)
                 }));
@@ -538,7 +538,7 @@ const loadData = async () => {
                 }
                 setTimeout(() => saveData(), 1000);
                 showNotification(
-                    `已从备份恢复 ${messages.length} 条消息${backup._truncated ? '（备份为最近200条）' : ''}`,
+                    `已从备份恢复 ${messages.length} 条文字消息（图片未纳入备份）`,
                     'warning', 6000
                 );
             } else {
@@ -710,11 +710,17 @@ const loadData = async () => {
             }
         }, 100);
 
+        // 数据（消息/会话/设置）已就绪：通知跳转和 pending 补全从这里开始，避免对着空数组操作
+        window.__APP_DATA_LOADED__ = true;
+        try { if (typeof window.__appleDataReady === 'function') window.__appleDataReady(); } catch (e) {}
+
     } catch (e) {
         console.error("LoadData 内部致命错误:", e);
         settings = getDefaultSettings();
         messages = [];
         updateUI();
+        window.__APP_DATA_LOADED__ = true;
+        try { if (typeof window.__appleDataReady === 'function') window.__appleDataReady(); } catch (e2) {}
     }
 };
 
@@ -785,8 +791,6 @@ window.deleteAnniversaryItem = function(id) {
     }
 };
 
-const _BACKUP_PREFIX = 'BACKUP_V1_';
-
 // ── 阶段 2 保存层：单飞合并 + 兜底备份节流 + 可选计时 ──────────
 // 只改"什么时候写、写几次"，不碰 key 名称、数据结构、会话隔离；
 // chatMessages / 贴纸 / 头像仍然每次全量写入，不做"内容没变就跳过"的判断。
@@ -796,7 +800,19 @@ const _perf = {
     enabled: false,
     saves: [],      // 最近 20 次 saveData 的耗时
     backups: [],    // 最近 20 次兜底备份的耗时与字节数
-    skippedBackups: 0
+    inputSync: [],  // 最近 100 次输入框高度测量的布局耗时（ms）
+    scrollFrames: [], // 最近 100 次滚动帧的处理耗时（ms）
+    scrollEvents: 0,  // 收到的原始 scroll 事件数（用来对比合并前后的触发次数）
+    foreground: [],   // 最近 20 次"切回前台后 3 秒内"的主线程长任务汇总
+    skippedBackups: 0,
+    backupFailures: 0, // 兜底备份写入失败次数（配额满/隐私模式），用来验证"不再静默失败"
+    renderMs: [],       // 最近 20 次"追加一条消息"的 DOM 构建耗时
+    renderFrames: [],   // 帧探针采集到的 rAF 间隔（ms）
+    renderDropped: 0,   // 帧探针里间隔 > 20ms 的帧数（掉帧计数）
+    modalOpens: [],     // 最近 20 次"弹窗从显示到首帧回调"的耗时（ms）
+    renderLayoutReads: 0, // 渲染路径内累计的强制同步布局读取次数（scrollHeight/scrollTop）
+    renderFull: 0,      // 全量重建次数
+    renderAppend: 0     // 单条追加次数
 };
 try {
     _perf.enabled = localStorage.getItem('PERF_ENABLED') === '1';
@@ -817,102 +833,572 @@ window.__PERF__ = {
     reset() {
         _perf.saves.length = 0;
         _perf.backups.length = 0;
+        _perf.inputSync.length = 0;
+        _perf.scrollFrames.length = 0;
+        _perf.scrollEvents = 0;
+        _perf.foreground.length = 0;
         _perf.skippedBackups = 0;
+        _perf.backupFailures = 0;
+        _perf.renderMs.length = 0;
+        _perf.renderFrames.length = 0;
+        _perf.renderDropped = 0;
+        _perf.modalOpens.length = 0;
+        _perf.renderLayoutReads = 0;
+        _perf.renderFull = 0;
+        _perf.renderAppend = 0;
+        _bootTimeline.dcl = null;
+        _bootTimeline.fcp = null;
+        _bootTimeline.splashGone = null;
+        _bootTimeline.firstMessage = null;
+    },
+    // 输入框高度测量的布局耗时统计（配合 console 里 __PERF__.enable() 使用）
+    get inputStats() {
+        const s = _perf.inputSync.slice();
+        if (!s.length) return { count: 0, avg: 0, max: 0, skipped: 0 };
+        const arr = s.slice().sort((a, b) => a - b);
+        const sum = s.reduce((n, v) => n + v, 0);
+        return {
+            count: s.length,
+            avg: Math.round(sum / s.length * 100) / 100,
+            max: arr[arr.length - 1],
+            p95: arr[Math.min(arr.length - 1, Math.floor(arr.length * 0.95))],
+            skipped: _inputSync.skipped
+        };
+    },
+    // 滚动帧处理耗时统计：events 是原始 scroll 事件数，frames 是真正处理了几帧
+    get scrollStats() {
+        const s = _perf.scrollFrames.slice();
+        if (!s.length) return { events: _perf.scrollEvents, frames: 0, avg: 0, max: 0, p95: 0 };
+        const arr = s.slice().sort((a, b) => a - b);
+        const sum = s.reduce((n, v) => n + v, 0);
+        return {
+            events: _perf.scrollEvents,
+            frames: s.length,
+            avg: Math.round(sum / s.length * 100) / 100,
+            max: Math.round(arr[arr.length - 1] * 100) / 100,
+            p95: Math.round(arr[Math.min(arr.length - 1, Math.floor(arr.length * 0.95))] * 100) / 100
+        };
+    },
+    bumpScrollEvent() {
+        _perf.scrollEvents++;
+    },
+    // 切回前台后 3 秒内的主线程长任务汇总（最近的若干次）
+    get foregroundStats() {
+        const list = _perf.foreground.slice();
+        if (!list.length) return { rounds: 0, avgTotal: 0, maxTotal: 0, avgCount: 0 };
+        const avgTotal = list.reduce((s, r) => s + r.total, 0) / list.length;
+        return {
+            rounds: list.length,
+            avgTotal: Math.round(avgTotal * 10) / 10,
+            maxTotal: Math.max.apply(null, list.map(r => r.total)),
+            avgCount: Math.round(list.reduce((s, r) => s + r.count, 0) / list.length * 10) / 10,
+            last: list[list.length - 1]
+        };
+    },
+    recordScrollFrame(ms) {
+        _perf.scrollFrames.push(ms);
+        if (_perf.scrollFrames.length > 100) _perf.scrollFrames.shift();
+    },
+    // 兜底备份统计：bytes 是实际写入 localStorage 的字符数（V2 目标 ≤64K 字符）
+    get backupStats() {
+        const list = _perf.backups.slice();
+        const bytes = list.map(b => b.bytes).sort((a, b) => a - b);
+        const times = list.map(b => b.ms).sort((a, b) => a - b);
+        const sum = times.reduce((s, v) => s + v, 0);
+        return {
+            count: list.length,
+            lastBytes: list.length ? list[list.length - 1].bytes : 0,
+            maxBytes: bytes.length ? bytes[bytes.length - 1] : 0,
+            avgMs: times.length ? Math.round(sum / times.length * 100) / 100 : 0,
+            p95Ms: times.length ? times[Math.min(times.length - 1, Math.floor(times.length * 0.95))] : 0,
+            skipped: _perf.skippedBackups,
+            failures: _perf.backupFailures
+        };
     },
     // "连续 20 条消息"的观察窗口：最近 20 次 saveData 的累计耗时
     get last20TotalMs() {
         const last = _perf.saves.slice(-20);
         return Math.round(last.reduce((sum, r) => sum + r.ms, 0) * 10) / 10;
+    },
+    // 消息列表渲染统计：layoutReads 是渲染路径里主动读 scrollHeight/scrollTop 的次数，
+    // 每次这类读取都会强制浏览器同步布局，所以它直接对应"强制同步布局次数"
+    get renderStats() {
+        const ms = _perf.renderMs.slice();
+        const frames = _perf.renderFrames.slice();
+        const msSorted = ms.slice().sort((a, b) => a - b);
+        const fSorted = frames.slice().sort((a, b) => a - b);
+        const sum = ms.reduce((s, v) => s + v, 0);
+        return {
+            full: _perf.renderFull,
+            append: _perf.renderAppend,
+            layoutReads: _perf.renderLayoutReads,
+            appendCount: ms.length,
+            avgAppendMs: ms.length ? Math.round(sum / ms.length * 100) / 100 : 0,
+            maxAppendMs: msSorted.length ? msSorted[msSorted.length - 1] : 0,
+            lastAppendMs: ms.length ? ms[ms.length - 1] : 0,
+            frames: frames.length,
+            frameP95: fSorted.length ? fSorted[Math.min(fSorted.length - 1, Math.floor(fSorted.length * 0.95))] : 0,
+            frameMax: fSorted.length ? fSorted[fSorted.length - 1] : 0,
+            dropped: _perf.renderDropped,
+            droppedRate: frames.length ? Math.round(_perf.renderDropped / frames.length * 1000) / 10 : 0
+        };
+    },
+    // 弹窗打开耗时：showModal 调用 → 内容真正进入首帧回调的时间
+    get modalStats() {
+        const list = _perf.modalOpens.slice();
+        if (!list.length) return { count: 0, avg: 0, max: 0, last: 0 };
+        const sorted = list.slice().sort((a, b) => a - b);
+        const sum = list.reduce((s, v) => s + v, 0);
+        return {
+            count: list.length,
+            avg: Math.round(sum / list.length * 100) / 100,
+            max: sorted[sorted.length - 1],
+            p95: sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))],
+            last: list[list.length - 1]
+        };
+    },
+    recordModalOpen(ms) {
+        if (!_perf.enabled) return;
+        _perf.modalOpens.push(Math.round(ms * 100) / 100);
+        if (_perf.modalOpens.length > 20) _perf.modalOpens.shift();
+    },
+    bumpRenderLayout(n) {
+        _perf.renderLayoutReads += (n || 1);
+    },
+    // 帧探针：连续发送/接收时用，采 durationMs 内的 rAF 间隔，用完自动停
+    beginFrameProbe(durationMs) {
+        if (!_perf.enabled) return;
+        const start = _perfNow();
+        let last = 0;
+        const tick = (ts) => {
+            if (last) {
+                const gap = Math.round((ts - last) * 100) / 100;
+                _perf.renderFrames.push(gap);
+                // 20ms 以上按掉帧计（60fps 单帧 16.7ms，留一点抖动余量）
+                if (gap > 20) _perf.renderDropped++;
+                if (_perf.renderFrames.length > 200) _perf.renderFrames.shift();
+            }
+            last = ts;
+            if (_perfNow() - start < (durationMs || 1000)) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    },
+    // 启动时间线：全部相对 navigationStart，单位 ms
+    get bootTimeline() {
+        const nav = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+        return {
+            dcl: _bootTimeline.dcl,
+            fcp: _bootTimeline.fcp,
+            splashGone: _bootTimeline.splashGone,
+            firstMessage: _bootTimeline.firstMessage,
+            domInteractive: (nav && nav.domInteractive) ? Math.round(nav.domInteractive) : null,
+            load: (nav && nav.loadEventEnd) ? Math.round(nav.loadEventEnd) : null
+        };
     }
 };
+
+// 启动时间线探针：记录 DCL / 首绘 / 开屏遮罩移除 / 首条消息进入 DOM 的时刻。
+// 只在启动阶段挂一次监听，之后不再产生开销；数据通过 __PERF__.bootTimeline 读取
+const _bootTimeline = { dcl: null, fcp: null, splashGone: null, firstMessage: null };
+(function () {
+    try {
+        document.addEventListener('DOMContentLoaded', () => {
+            _bootTimeline.dcl = Math.round(_perfNow());
+        }, { once: true });
+
+        try {
+            new PerformanceObserver(list => {
+                list.getEntries().forEach(e => {
+                    if (e.name === 'first-contentful-paint' && _bootTimeline.fcp === null) {
+                        _bootTimeline.fcp = Math.round(e.startTime);
+                    }
+                });
+            }).observe({ type: 'paint', buffered: true });
+        } catch (e) {}
+
+        const isSplashGone = (splash) => {
+            if (!document.documentElement.contains(splash)) return true;
+            if (splash.classList.contains('splash-fade-out')) return true;
+            return getComputedStyle(splash).display === 'none';
+        };
+        const markSplashGone = () => {
+            if (_bootTimeline.splashGone === null) _bootTimeline.splashGone = Math.round(_perfNow());
+        };
+        const watchSplash = () => {
+            const splash = document.getElementById('splash-declaration');
+            if (!splash) { markSplashGone(); return; }
+            if (isSplashGone(splash)) { markSplashGone(); return; }
+            const check = () => {
+                if (isSplashGone(splash)) {
+                    markSplashGone();
+                    attrObs.disconnect();
+                    removedObs.disconnect();
+                }
+            };
+            const attrObs = new MutationObserver(check);
+            attrObs.observe(splash, { attributes: true, attributeFilter: ['class', 'style'] });
+            const removedObs = new MutationObserver(check);
+            removedObs.observe(document.documentElement, { childList: true, subtree: true });
+        };
+        const watchFirstMessage = () => {
+            const container = document.getElementById('chat-container');
+            if (!container) return;
+            if (container.querySelector('.message-wrapper')) {
+                _bootTimeline.firstMessage = Math.round(_perfNow());
+                return;
+            }
+            const obs = new MutationObserver(() => {
+                if (container.querySelector('.message-wrapper')) {
+                    _bootTimeline.firstMessage = Math.round(_perfNow());
+                    obs.disconnect();
+                }
+            });
+            obs.observe(container, { childList: true, subtree: true });
+        };
+
+        watchSplash();
+        document.addEventListener('DOMContentLoaded', watchFirstMessage, { once: true });
+    } catch (e) {}
+})();
+// 非首屏功能样式：首屏不加载，首次需要时再注入。
+// 这样可以减掉首屏的 CSS 解析与样式匹配成本，同时保持功能样式完整
+const _deferredCssLoaded = Object.create(null);
+// 弹层 id → 该弹层专属的样式文件（打开前先注入，避免样式闪烁）
+const _deferredCssByModal = {
+    'period-modal': 'css/period.css',
+    'stats-modal': 'css/period.css',
+    'survey-modal': 'css/survey.css',
+    'redpacket-compose-modal': 'css/redpacket.css',
+    'redpacket-view-modal': 'css/redpacket.css',
+    'redpacket-history-modal': 'css/redpacket.css'
+};
+function loadCssOnce(href) {
+    if (_deferredCssLoaded[href]) return _deferredCssLoaded[href];
+    _deferredCssLoaded[href] = new Promise(resolve => {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        link.onload = () => resolve(true);
+        link.onerror = () => resolve(false);
+        document.head.appendChild(link);
+    });
+    return _deferredCssLoaded[href];
+}
+window.loadCssOnce = loadCssOnce;
+
+document.addEventListener('DOMContentLoaded', () => {
+    const warm = () => {
+        ['css/cinema.css', 'css/companion.css', 'css/redpacket.css', 'css/survey.css', 'css/period.css'].forEach(loadCssOnce);
+    };
+    if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 1200 });
+    else setTimeout(warm, 300);
+}, { once: true });
+
 
 function _perfNow() {
     return (window.performance && performance.now) ? performance.now() : Date.now();
 }
 
-// 备份前按内容估算体积（只读字符串长度，不拼接）：
-// 大图消息可以提前截断，避免"先 stringify 整个大对象 → 发现超限 → 再 stringify 一次"
-function _estimateMessagesBytes(list) {
-    let bytes = 0;
-    for (let i = 0; i < list.length; i++) {
-        const m = list[i];
-        if (!m) continue;
-        bytes += 120;
-        if (m.text) bytes += m.text.length;
-        if (m.image) bytes += m.image.length;
-        if (m.note) bytes += m.note.length;
+// 切回前台后 3 秒内的主线程长任务（>50ms）累计耗时：用来量化"切后台再回来"那一刻的卡顿
+let _fgObserver = null;
+function _startForegroundWatch() {
+    if (!_perf.enabled || typeof PerformanceObserver === 'undefined') return;
+    if (_fgObserver) return;
+    const start = _perfNow();
+    const durations = [];
+    try {
+        _fgObserver = new PerformanceObserver(function (list) {
+            list.getEntries().forEach(function (e) { if (e.startTime >= start) durations.push(e.duration); });
+        });
+        _fgObserver.observe({ entryTypes: ['longtask'] });
+    } catch (e) { _fgObserver = null; return; }
+    setTimeout(function () {
+        try { if (_fgObserver) _fgObserver.disconnect(); } catch (e) {}
+        _fgObserver = null;
+        let total = 0, max = 0;
+        for (let i = 0; i < durations.length; i++) { total += durations[i]; if (durations[i] > max) max = durations[i]; }
+        _perf.foreground.push({ total: Math.round(total * 10) / 10, count: durations.length, max: Math.round(max * 10) / 10 });
+        if (_perf.foreground.length > 20) _perf.foreground.shift();
+    }, 3000);
+}
+document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) _startForegroundWatch();
+});
+
+// ── 兜底备份 V2：只存"最近 N 条纯文字 + 少量关键设置"──────────────
+// 为什么不再整段镜像 messages：图片是 base64，一次同步 stringify 就是几 MB，
+// 而 localStorage 配额通常只有几 MB。超了 setItem 直接抛异常，结果是
+// "旧备份还在、新备份没写进来"，比没有备份更容易误导。
+// 现在只保一段文本尾巴（目标 ≤64KB），能救回最近几条消息，也不会撑爆配额。
+const BACKUP_V2_PREFIX = 'BACKUP_V2_';
+const BACKUP_TEXT_LIMIT = 120;          // 备份的消息条数上限
+const BACKUP_TEXT_MIN = 10;             // 缩量后至少保留的条数（再少就没有救急意义了）
+const BACKUP_MAX_BYTES = 64 * 1024;     // UTF-16 保守估算（字符数 × 2）
+const BACKUP_MIN_INTERVAL = 8000;       // 非强制调用最短间隔
+const BACKUP_LEGACY_KEY = 'BACKUP_V1_critical';
+const BACKUP_LEGACY_TS_KEY = 'BACKUP_V1_timestamp';
+
+// 恢复时跟着消息一起回来的设置：只挑小的标量，不含自定义 CSS / 音频 data URL
+const BACKUP_SETTINGS_KEYS = [
+    'partnerName', 'myName', 'myStatus', 'partnerStatus',
+    'colorTheme', 'isDarkMode', 'fontSize', 'messageFontFamily',
+    'messageFontWeight', 'messageLineHeight', 'bubbleStyle', 'timeFormat',
+    'showPartnerNameInChat', 'soundEnabled', 'typingIndicatorEnabled',
+    'readReceiptsEnabled', 'replyEnabled', 'musicPlayerEnabled',
+    'replyDelayMin', 'replyDelayMax', 'autoSendEnabled', 'autoSendInterval',
+    'inChatAvatarEnabled', 'inChatAvatarSize', 'inChatAvatarPosition', 'alwaysShowAvatar',
+    'myAvatarFrame', 'partnerAvatarFrame', 'myAvatarShape', 'partnerAvatarShape',
+    'allowReadNoReply', 'readNoReplyChance', 'combineReplyCards', 'combineReplyMaxCards'
+];
+
+let _lastBackupAt = 0;
+let _backupIdleHandle = 0;
+let _backupIdleIsIdle = false;
+
+function _jsonBytes(str) { return str.length * 2; }
+
+function _backupKeyFor(sid) { return BACKUP_V2_PREFIX + sid + '_critical'; }
+function _backupKey() { return SESSION_ID ? _backupKeyFor(SESSION_ID) : ''; }
+function _preRecoveryKey(sid) { return BACKUP_V2_PREFIX + sid + '_pre_recovery'; }
+
+function _pickBackupSettings() {
+    const out = {};
+    if (!settings || typeof settings !== 'object') return out;
+    for (let i = 0; i < BACKUP_SETTINGS_KEYS.length; i++) {
+        const k = BACKUP_SETTINGS_KEYS[i];
+        const v = settings[k];
+        if (v === undefined || v === null) continue;
+        if (typeof v === 'string' && v.length > 256) continue; // 自定义样式/URL 不进备份
+        out[k] = v;
     }
-    return bytes;
+    try {
+        const colors = settings.customThemeColors;
+        if (colors && typeof colors === 'object' && JSON.stringify(colors).length <= 2048) {
+            out.customThemeColors = colors;
+        }
+    } catch (e) {}
+    return out;
 }
 
-// 同步 localStorage 兜底备份：普通调用最短 8 秒一次。
-// 消息本身已经异步写进 IndexedDB，兜底只防"进程被杀/闪退"，
-// 没必要每发一条消息就把整段 messages JSON.stringify 一次（大图时是几 MB）。
-// 退出/切后台/挂断路径必须立即落盘，所以默认 force = true；
-// saveData 结尾显式传 false，其余调用点保持"立即备份"。
-const BACKUP_MIN_INTERVAL = 8000;
-let _lastBackupAt = 0;
+// 备份里的消息只留"能看懂内容"的字段；图片一律剥离成标记，
+// 避免 base64 撑大备份，也避免恢复出来的占位数据覆盖真实图片。
+function _pickBackupMessages(limit, textCap) {
+    const out = [];
+    const cap = (textCap && textCap > 0) ? textCap : 2000;
+    const total = messages.length;
+    const from = Math.max(0, total - limit);
+    for (let i = from; i < total; i++) {
+        const m = messages[i];
+        if (!m) continue;
+        const item = {
+            id: m.id,
+            sender: m.sender,
+            text: typeof m.text === 'string' ? m.text : '',
+            timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+            type: m.type,
+            status: m.status,
+            isSticker: m.isSticker ? 1 : undefined,
+            // 引用只留"谁说了什么"，引用的图片/语音可能也是 base64，一律不带
+            replyTo: m.replyTo ? {
+                id: m.replyTo.id,
+                sender: m.replyTo.sender,
+                text: typeof m.replyTo.text === 'string' ? m.replyTo.text.slice(0, 200) : ''
+            } : undefined,
+            voice: (m.voice && m.voice.fakeText) ? { fakeText: String(m.voice.fakeText).slice(0, 500) } : undefined
+        };
+        if (m.image) item._imgOmitted = 1;
+        if (m.note) item.note = String(m.note).slice(0, 1000);
+        if (typeof item.text === 'string' && item.text.length > cap) item.text = item.text.slice(0, cap) + '…';
+        for (const k in item) { if (item[k] === undefined) delete item[k]; }
+        out.push(item);
+    }
+    return out;
+}
 
+function _buildBackupPayload(limit, minimal, textCap) {
+    return {
+        v: 2,
+        ts: Date.now(),
+        sessionId: SESSION_ID,
+        messages: _pickBackupMessages(limit, textCap),
+        settings: minimal ? {} : _pickBackupSettings(),
+        anniversaries: (minimal || !Array.isArray(anniversaries)) ? [] : anniversaries.slice(-100)
+    };
+}
+
+function _buildBackupJson() {
+    let limit = BACKUP_TEXT_LIMIT;
+    let payload = _buildBackupPayload(limit, false, 0);
+    let json = JSON.stringify(payload);
+    // 超限就从"最老的"开始丢，尽量保住最近的消息，而不是一刀切清空
+    let guard = 0;
+    while (_jsonBytes(json) > BACKUP_MAX_BYTES && limit > BACKUP_TEXT_MIN && guard++ < 20) {
+        limit = Math.max(BACKUP_TEXT_MIN, Math.floor(limit / 2));
+        payload = _buildBackupPayload(limit, false, 0);
+        payload._truncated = true;
+        json = JSON.stringify(payload);
+    }
+    // 极端情况：最近 10 条单条就超长，才退到"截短每条文字"
+    if (_jsonBytes(json) > BACKUP_MAX_BYTES) {
+        payload = _buildBackupPayload(BACKUP_TEXT_MIN, false, 200);
+        payload._truncated = true;
+        json = JSON.stringify(payload);
+    }
+    return { json: json, count: payload.messages.length };
+}
+
+function _clearLegacyBackupKeys() {
+    try { localStorage.removeItem(BACKUP_LEGACY_KEY); } catch (e) {}
+    try { localStorage.removeItem(BACKUP_LEGACY_TS_KEY); } catch (e) {}
+}
+
+function _writeBackupNow() {
+    if (window._skipBackup || !SESSION_ID) return;
+    const _t0 = _perf.enabled ? _perfNow() : 0;
+    try {
+        const built = _buildBackupJson();
+        localStorage.setItem(_backupKey(), built.json);
+        _lastBackupAt = Date.now();
+        _clearLegacyBackupKeys(); // 旧版全量镜像已无用，尽早释放配额
+        if (_perf.enabled) {
+            const ms = Math.round((_perfNow() - _t0) * 10) / 10;
+            _perf.backups.push({ ms, bytes: built.json.length, count: built.count });
+            if (_perf.backups.length > 20) _perf.backups.shift();
+            console.log(`[perf] backup ${ms}ms / ${(built.json.length / 1024).toFixed(0)}K chars / ${built.count} msgs`);
+        }
+    } catch (e) {
+        // 配额满/隐私模式：先用更小的 payload 再试一次；仍失败就保留上一份并留痕，等下一轮重试
+        _perf.backupFailures++;
+        try {
+            const tiny = JSON.stringify(_buildBackupPayload(20, true));
+            localStorage.setItem(_backupKey(), tiny);
+            _lastBackupAt = Date.now();
+            console.warn('[备份] 完整备份失败，已降级写入最近 20 条文字:', e);
+        } catch (e2) {
+            console.warn('[备份] localStorage 写入失败，保留上一份备份:', e);
+        }
+    }
+}
+
+function _cancelIdleBackup() {
+    if (!_backupIdleHandle) return;
+    try {
+        if (_backupIdleIsIdle && typeof cancelIdleCallback === 'function') cancelIdleCallback(_backupIdleHandle);
+        else clearTimeout(_backupIdleHandle);
+    } catch (e) {}
+    _backupIdleHandle = 0;
+}
+
+// force = true：退出/切后台/挂断路径，必须同步立即落盘
+// force = false：saveData 结尾调用，放到空闲时段写，且最短 8 秒一次
 function _backupCriticalData(force = true) {
-    if (window._skipBackup) return;
-    const now = Date.now();
-    if (!force && now - _lastBackupAt < BACKUP_MIN_INTERVAL) {
+    if (window._skipBackup || !SESSION_ID) return;
+    if (force) {
+        _cancelIdleBackup();
+        _writeBackupNow();
+        return;
+    }
+    if (Date.now() - _lastBackupAt < BACKUP_MIN_INTERVAL) {
         _perf.skippedBackups++;
         return;
     }
-    _lastBackupAt = now;
-    const _t0 = _perf.enabled ? _perfNow() : 0;
-    try {
-        const backupPayload = {
-            ts: Date.now(),
-            messages: messages,
-            settings: settings,
-            sessionId: SESSION_ID,
-            anniversaries: anniversaries
-        };
-
-        let payloadToStore = backupPayload;
-        if (_estimateMessagesBytes(messages) > 3 * 1024 * 1024) {
-            payloadToStore = {
-                ...backupPayload,
-                messages: messages.slice(-200),
-                _truncated: true
-            };
-        }
-
-        const json = JSON.stringify(payloadToStore);
-
-        let storedJson = json;
-        if (json.length > 4.5 * 1024 * 1024) {
-            const smallerPayload = {
-                ...payloadToStore,
-                messages: messages.slice(-50),
-                _truncated: true
-            };
-            storedJson = JSON.stringify(smallerPayload);
-        }
-        localStorage.setItem(_BACKUP_PREFIX + 'critical', storedJson);
-        localStorage.setItem(_BACKUP_PREFIX + 'timestamp', String(Date.now()));
-        if (_perf.enabled) {
-            const ms = Math.round((_perfNow() - _t0) * 10) / 10;
-            _perf.backups.push({ ms, bytes: storedJson.length });
-            if (_perf.backups.length > 20) _perf.backups.shift();
-            console.log(`[perf] backup ${ms}ms / ${(storedJson.length / 1024).toFixed(0)}KB`);
-        }
-    } catch (e) {
-        console.warn('localStorage 备份写入失败（可能存储已满）:', e);
+    if (_backupIdleHandle) return;
+    const run = function () { _backupIdleHandle = 0; _writeBackupNow(); };
+    if (typeof requestIdleCallback === 'function') {
+        _backupIdleIsIdle = true;
+        _backupIdleHandle = requestIdleCallback(run, { timeout: 2000 });
+    } else {
+        _backupIdleIsIdle = false;
+        _backupIdleHandle = setTimeout(run, 200);
     }
 }
 
-function _tryRecoverFromBackup() {
+function _parseBackupRaw(raw) {
     try {
-        const raw = localStorage.getItem(_BACKUP_PREFIX + 'critical');
-        if (!raw) return null;
-        return JSON.parse(raw);
+        const obj = JSON.parse(raw);
+        if (!obj || typeof obj !== 'object') return null;
+        if (!Array.isArray(obj.messages)) return null;
+        // 会话隔离：没有归属信息、或归属不是当前会话，一律不拿来恢复
+        if (!obj.sessionId || String(obj.sessionId) !== String(SESSION_ID)) return null;
+        return obj;
     } catch (e) {
         return null;
     }
 }
+
+// 只用于"主存储为空/读取失败"的冷启动恢复，调用方必须先确认 IndexedDB 里确实没有消息
+function _tryRecoverFromBackup() {
+    if (!SESSION_ID) return null;
+    try {
+        const own = localStorage.getItem(_backupKey());
+        if (own) {
+            const p = _parseBackupRaw(own);
+            if (p) return p;
+        }
+    } catch (e) {}
+    // 老版本的全量镜像：只在首轮升级时读一次，读成功后会被新备份覆盖并删除
+    try {
+        const legacy = localStorage.getItem(BACKUP_LEGACY_KEY);
+        if (legacy) {
+            const p = _parseBackupRaw(legacy);
+            if (p) return p;
+        }
+    } catch (e) {}
+    return null;
+}
+
+function _peekLocalBackup() {
+    const p = _tryRecoverFromBackup();
+    if (!p) return null;
+    return {
+        ts: p.ts || 0,
+        count: p.messages.length,
+        truncated: !!p._truncated || p.messages.some(m => m && m._imgOmitted)
+    };
+}
+
+// 恢复前先把"现场"留一份，避免恢复动作本身把当前状态冲掉
+function _savePreRecoverySnapshot() {
+    if (!SESSION_ID) return;
+    try {
+        localStorage.setItem(_preRecoveryKey(SESSION_ID), JSON.stringify({
+            ts: Date.now(),
+            sessionId: SESSION_ID,
+            messageCount: messages.length,
+            settings: _pickBackupSettings(),
+            messages: _pickBackupMessages(20)
+        }));
+    } catch (e) {}
+}
+
+// 只清当前会话的兜底备份（清空当前会话消息时用）
+function _clearLocalBackup() {
+    if (SESSION_ID) {
+        try { localStorage.removeItem(_backupKey()); } catch (e) {}
+        try { localStorage.removeItem(_preRecoveryKey(SESSION_ID)); } catch (e) {}
+    }
+    _clearLegacyBackupKeys();
+}
+
+// 清掉所有会话的兜底备份（云端整体恢复 / 全量重置时用）
+function _clearAllLocalBackups() {
+    try {
+        const toRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            if (k.indexOf(BACKUP_V2_PREFIX) === 0 || k === BACKUP_LEGACY_KEY || k === BACKUP_LEGACY_TS_KEY) {
+                toRemove.push(k);
+            }
+        }
+        for (let j = 0; j < toRemove.length; j++) localStorage.removeItem(toRemove[j]);
+    } catch (e) {}
+}
+
+window._clearLocalBackup = _clearLocalBackup;
+window._clearAllLocalBackups = _clearAllLocalBackups;
+window._peekLocalBackup = _peekLocalBackup;
+window._backupCriticalData = _backupCriticalData;
 
 let _saveInFlight = null;
 let _saveQueued = false;
@@ -1009,6 +1495,15 @@ const saveData = async () => {
             }, 0);
         }
     }
+};
+
+// 发系统通知前必须先等这个 Promise：saveData 有"在途合并"逻辑，直接 await saveData()
+// 可能只等到上一轮旧快照。这里兜底再写一次 chatMessages，确保通知对应的那条消息
+// 真的已经进了 IndexedDB —— 否则点通知进来就会"查无此消息"。
+window._flushSaveData = async function () {
+    if (!SESSION_ID) throw new Error('SESSION_ID 未初始化');
+    try { await saveData(); } catch (e) { console.warn('[flushSaveData] saveData 失败', e); }
+    return localforage.setItem(getStorageKey('chatMessages'), messages);
 };
 
         function initializeRandomUI() {
@@ -1489,6 +1984,15 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     const messageDiv = document.createElement('div');
     if (isRedPacket) {
         messageDiv.className = `message message-${msg.sender === 'user' ? 'sent' : 'received'} message-redpacket-bubble-wrap`;
+        // 红包样式是延迟注入的：节点进 DOM 前先主动确保样式已就位。
+        // 若这次是首次加载（promise 还没 resolve），先把节点藏起来，样式到位后再显示，
+        // 避免聊天流里出现"无样式红包气泡"的闪烁；已加载时只走一次微任务，不影响首帧。
+        if (typeof window.loadCssOnce === 'function') {
+            messageDiv.style.visibility = 'hidden';
+            window.loadCssOnce('css/redpacket.css').then(function () {
+                messageDiv.style.visibility = '';
+            });
+        }
     } else if (isImageOnly) {
         messageDiv.className = `message message-${msg.sender === 'user' ? 'sent' : 'received'} message-image-bubble-none`;
     } else {
@@ -1610,6 +2114,26 @@ function _updateReadReceiptsDOM() {
     });
 }
 
+// 滚到底部但不读 scrollHeight：直接把 scrollTop 设成超大值，由浏览器自己夹到最大值。
+// behavior:'instant' 是为了绕开 CSS 的 scroll-behavior:smooth——否则赋值会被当成一次平滑滚动，
+// 发完消息要滑好几百毫秒才到底（实测能差 4000 多 px）。
+function _scrollToBottomInstant(container) {
+    if (!container) return;
+    if (typeof container.scrollTo === 'function') {
+        container.scrollTo({ top: 1e9, behavior: 'instant' });
+    } else {
+        container.scrollTop = 1e9;
+    }
+}
+
+// 记录"追加一条消息"的 DOM 构建耗时，供 __PERF__.renderStats 读取
+function _recordAppendCost(t0) {
+    _perf.renderAppend++;
+    if (!_perf.enabled) return;
+    _perf.renderMs.push(Math.round((_perfNow() - t0) * 100) / 100);
+    if (_perf.renderMs.length > 20) _perf.renderMs.shift();
+}
+
 function renderMessages(preserveScroll = false) {
     const container = DOMElements.chatContainer;
     const totalMessages = messages.length;
@@ -1638,10 +2162,14 @@ function renderMessages(preserveScroll = false) {
 
     DOMElements.emptyState.style.display = totalMessages === 0 ? 'flex' : 'none';
 
-    const oldScrollHeight = container.scrollHeight;
-    const oldScrollTop = container.scrollTop;
-    
-    container.innerHTML = '';
+    // 只有"必须保持当前位置"的整表重建（换主题/换字体/导入/切窗口）才需要读高度；
+    // 发消息走 addMessage 的追加路径，不会进这里，也就不会有这两次强制同步布局。
+    let oldScrollHeight = 0, oldScrollTop = 0;
+    if (preserveScroll) {
+        _perf.renderLayoutReads += 2;
+        oldScrollHeight = container.scrollHeight;
+        oldScrollTop = container.scrollTop;
+    }
 
     const fragment = new DocumentFragment();
     
@@ -1657,37 +2185,74 @@ function renderMessages(preserveScroll = false) {
         fragment.appendChild(msgFragment);
     });
 
-    container.appendChild(fragment);
+    // replaceChildren 一次完成"清空 + 插入"，比 innerHTML='' 再 appendChild 少一轮 DOM 变更
+    container.replaceChildren(fragment);
 
     if (preserveScroll) {
+        _perf.renderLayoutReads += 1;
         const newScrollHeight = container.scrollHeight;
         container.scrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight);
     } else if (msgViewMode !== 'window') {
-        requestAnimationFrame(() => {
-            container.scrollTop = container.scrollHeight;
-        });
+        requestAnimationFrame(() => _scrollToBottomInstant(container));
     }
     // window模式下不自动滚动到底部/顶部，滚动位置由调用方（比如跳转定位）自己处理
+    _perf.renderFull++;
     _clampReactionBadges();
 }
 
 // 反应标签默认是居中卡在气泡的左下/右下角的（见 CSS），内容长度正常的话不会跑出屏幕。
 // 但碰上特别长的自定义表情/颜文字，居中之后还是可能有一侧探出屏幕，这里量一下、
-// 超出了就用 --badge-safe-shift 往回拉一点，跟长按工具栏那个安全边距是同一个思路
-function _clampReactionBadges() {
+// 超出了就用 --badge-safe-shift 往回拉一点，跟长按工具栏那个安全边距是同一个思路。
+//
+// 注意：这里必须"先写、再统一读、最后统一写"。原来的写法是每个标签"写属性→读 rect→写位移"，
+// 每读一次都让上一次写入造成的布局失效，N 个标签就是 N 次强制同步布局。
+let _badgeClampQueued = false;
+let _badgeClampFull = false;
+let _badgeClampScope = null;
+
+// scope 传节点时只量该节点里的标签（新增/改动单条消息）；不传则整列表全量量一次
+function _clampReactionBadges(scope) {
+    if (scope && scope.nodeType === 1) {
+        if (!_badgeClampFull) _badgeClampScope = scope;
+    } else {
+        _badgeClampFull = true;
+        _badgeClampScope = null;
+    }
+    if (_badgeClampQueued) return;
+    _badgeClampQueued = true;
     requestAnimationFrame(() => {
+        _badgeClampQueued = false;
+        const full = _badgeClampFull;
+        const scoped = _badgeClampScope;
+        _badgeClampFull = false;
+        _badgeClampScope = null;
+
+        const root = (!full && scoped && scoped.isConnected) ? scoped : document;
+        const badges = root.querySelectorAll('.message-reaction-badge');
+        const n = badges.length;
+        if (!n) return;
         const SAFE_MARGIN = 10;
-        document.querySelectorAll('.message-reaction-badge').forEach(badge => {
-            badge.style.removeProperty('--badge-safe-shift');
-            const rect = badge.getBoundingClientRect();
+
+        // 阶段 1：只写——清掉上一轮的位移，此时不读任何几何信息
+        for (let i = 0; i < n; i++) badges[i].style.removeProperty('--badge-safe-shift');
+
+        // 阶段 2：一次性读完全部 rect，只会触发一次强制布局
+        _perf.renderLayoutReads += 1;
+        const rects = new Array(n);
+        for (let i = 0; i < n; i++) rects[i] = badges[i].getBoundingClientRect();
+
+        // 阶段 3：只写——按刚读到的矩形算位移
+        const vw = window.innerWidth;
+        for (let i = 0; i < n; i++) {
+            const rect = rects[i];
             let shift = 0;
             if (rect.left < SAFE_MARGIN) {
                 shift = SAFE_MARGIN - rect.left;
-            } else if (rect.right > window.innerWidth - SAFE_MARGIN) {
-                shift = (window.innerWidth - SAFE_MARGIN) - rect.right;
+            } else if (rect.right > vw - SAFE_MARGIN) {
+                shift = (vw - SAFE_MARGIN) - rect.right;
             }
-            if (shift !== 0) badge.style.setProperty('--badge-safe-shift', shift + 'px');
-        });
+            if (shift !== 0) badges[i].style.setProperty('--badge-safe-shift', shift + 'px');
+        }
     });
 }
 
@@ -1754,11 +2319,13 @@ window._backToLatestMessages = function() {
     if (typeof window._updateNewMsgIndicator === 'function') window._updateNewMsgIndicator();
 };
 
-// "回到最新消息"悬浮按钮的显示/隐藏——判断标准跟自动滚动是同一套：只要没追上底部就显示
-window._updateBackToLatestBtn = function() {
+// "回到最新消息"悬浮按钮的显示/隐藏——判断标准跟自动滚动是同一套：只要没追上底部就显示。
+// caughtUpOverride 用于调用方已经判断过贴底状态时直接复用，避免同一帧里重复读高度
+window._updateBackToLatestBtn = function(caughtUpOverride) {
     const btn = document.getElementById('back-to-latest-btn');
     if (!btn) return;
-    btn.style.display = _isCaughtUpToLatest() ? 'none' : 'flex';
+    const caughtUp = (typeof caughtUpOverride === 'boolean') ? caughtUpOverride : _isCaughtUpToLatest();
+    btn.style.display = caughtUp ? 'none' : 'flex';
 };
 
 // "有N条新消息"提示——文案套在同一个按钮上，不额外加控件
@@ -1891,7 +2458,8 @@ function _updateReactionBadgeInPlace(messageId, reaction) {
         badge.title = '反应：' + reaction;
         bubbleWrap.appendChild(badge);
     }
-    _clampReactionBadges();
+    // 只量这一条消息里的标签，不做全列表扫描
+    _clampReactionBadges(wrapper);
     return true;
 }
 
@@ -2188,8 +2756,13 @@ const addMessage = (message) => {
     const wasEmpty = messages.length === 0;
 
     const prevMsg = messages.length > 0 ? messages[messages.length - 1] : null;
-    // 追没追上底部，要在"往数组里塞新消息、改动滚动高度"之前就先判断好，不然滚动高度已经变了，判断就不准了
-    const wasCaughtUp = _isCaughtUpToLatest();
+    // 追没追上底部，要在"往数组里塞新消息、改动滚动高度"之前就先判断好，不然滚动高度已经变了，判断就不准了。
+    // 用户自己发的消息永远要滚到底，不需要这次读取——省掉一次强制同步布局。
+    let wasCaughtUp = true;
+    if (message.sender !== 'user') {
+        _perf.renderLayoutReads += 1;
+        wasCaughtUp = _isCaughtUpToLatest();
+    }
     messages.push(message);
     
     if (wasEmpty) {
@@ -2231,6 +2804,7 @@ const addMessage = (message) => {
                 const prevGroupMember = (prevMsg.sender !== 'user' && typeof getGroupMemberForMessage === 'function') ? getGroupMemberForMessage(prevMsg.id) : null;
                 lastSenderRef.current = prevGroupMember ? ('group_' + prevGroupMember.name) : prevMsg.sender;
             }
+            const _tAppend = _perfNow();
             const newMsgFragment = createMessageFragment(message, prevMsg, null, lastSenderRef);
             const spacer = container.querySelector('div[style*="flex: 1"]');
             if (spacer && spacer === container.lastElementChild) {
@@ -2238,13 +2812,15 @@ const addMessage = (message) => {
             } else {
                 container.appendChild(newMsgFragment);
             }
+            _recordAppendCost(_tAppend);
             // 修复消息重复bug：这里直接把新消息插入了DOM，displayedMessageCount 必须同步+1，
             // 否则这个计数器会跟实际显示的消息数量脱节，导致下次往上翻页时把已显示过的消息误判成"还没显示"而重复插入
             if (msgViewMode !== 'window') displayedMessageCount++;
         }
         newMsgCountWhileBrowsing++;
         if (typeof window._updateNewMsgIndicator === 'function') window._updateNewMsgIndicator();
-        if (typeof window._updateBackToLatestBtn === 'function') window._updateBackToLatestBtn();
+        // 这里本来就已经确定"没停在底部"，把结果传进去，省掉悬浮按钮再读一次高度
+        if (typeof window._updateBackToLatestBtn === 'function') window._updateBackToLatestBtn(false);
         throttledSaveData();
         if (message.type === 'normal' && typeof window._onPartnerMessage === 'function') {
             try { window._onPartnerMessage(message); } catch (e) { console.warn('[onPartnerMessage]', e); }
@@ -2280,6 +2856,7 @@ const addMessage = (message) => {
         lastSenderRef.current = prevGroupMember ? ('group_' + prevGroupMember.name) : prevMsg.sender;
     }
     
+    const _tAppend = _perfNow();
     const newMsgFragment = createMessageFragment(message, prevMsg, null, lastSenderRef);
     
     const spacer = container.querySelector('div[style*="flex: 1"]');
@@ -2288,12 +2865,12 @@ const addMessage = (message) => {
     } else {
         container.appendChild(newMsgFragment);
     }
+    _recordAppendCost(_tAppend);
     // 修复消息重复bug：同上，正常追加到底部时也要同步+1，理由同前面那处注释
     if (msgViewMode !== 'window') displayedMessageCount++;
 
-    requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight;
-    });
+    // 滚到底但不读 scrollHeight（详见 _scrollToBottomInstant 的注释）
+    requestAnimationFrame(() => _scrollToBottomInstant(container));
 
     throttledSaveData();
 
@@ -2448,10 +3025,108 @@ const addMessage = (message) => {
         // 42px/更小屏幕≤480px是38px），写死一个数字在窄屏上就会跟正确值对不上，
         // 表现出来就是"空的时候"（走写死值）比"有文字的时候"（走这里的scrollHeight动态测量）更高或更矮。
         // 用 scrollHeight 量出来的高度，天然就是当前断点下 CSS 实际生效的那个值，不用关心断点数字本身。
+        //
+        // 性能：原来每敲一个字都"写 height:auto → 读 scrollHeight"，等于每键一次强制同步布局。
+        // 现在先按估算的视觉行数做一次便宜的比较，行数没变就直接跳过；
+        // 真要测的时候合并到一帧 rAF 里，写完 auto 只读一次，再统一写像素高度，
+        // 不再和 ResizeObserver 各跑一轮读写。
+        const _inputSync = {
+            rafId: 0,
+            lastLines: -1,      // 上次测量时的估算行数，相同就跳过测量
+            charsPerLine: 0,    // 按当前宽度折算的"每行几个字"，宽度变化时失效重算
+            width: 0,           // 上次测量时输入框自身的宽度
+            areaW: 0,           // 上次观察到的输入区宽度（RO 用，和上面区分开）
+            appliedH: 0,        // 上次写进 style.height 的像素值
+            areaH: 0,
+            maxH: 0,            // CSS 生效的 max-height（懒读一次），JS 写入不得超过它
+            selfWrite: false,   // 标记"这次尺寸变化是我们自己写的"，避免 RO 再排一轮
+            skipped: 0,
+            samples: []         // __PERF__：最近 100 次测量的耗时（ms）
+        };
+
+        // 估算视觉行数：显式换行 + 每段按 charsPerLine 折算的折行数。
+        // charsPerLine 是实测「内容宽度/字号」得出的，中文（全角）一个字正好 1em，估算和浏览器换行一致；
+        // 一旦出现 ASCII 半角字符或 emoji（宽度≠字号、代理对算 2 个字符），估算就不再可靠，
+        // 这时返回 -2 强制测量，宁可多测一次，也不让"文字已经换行但输入框没长高"。
+        const INPUT_LINES_UNKNOWN = -2;
+        function _estimateInputVisualLines(value) {
+            if (!value) return 1;
+            if (/[ -~]/.test(value) || /[\uD800-\uDFFF]/.test(value)) return INPUT_LINES_UNKNOWN;
+            const perLine = _inputSync.charsPerLine > 0 ? _inputSync.charsPerLine : 12;
+            const parts = value.split('\n');
+            let lines = 0;
+            for (let i = 0; i < parts.length; i++) {
+                lines += Math.max(1, Math.ceil(parts[i].length / perLine));
+            }
+            return lines;
+        }
+
+        function _flushInputHeight() {
+            _inputSync.rafId = 0;
+            const ta = DOMElements.messageInput;
+            if (!ta) return;
+            const t0 = _perf.enabled ? _perfNow() : 0;
+
+            // 读阶段：只写一次 auto，然后把要读的值一次读完，避免写-读-写交错
+            ta.style.height = 'auto';
+            const sh = ta.scrollHeight;
+            const w = ta.clientWidth;
+            if (w > 0 && _inputSync.charsPerLine <= 0) {
+                const cs = window.getComputedStyle(ta);
+                const fsPx = parseFloat(cs.fontSize) || 16;
+                const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+                _inputSync.charsPerLine = Math.max(1, Math.floor((w - padX) / fsPx));
+                _inputSync.width = w;
+            }
+
+            // 写阶段：像素高度，"正在输入"提示跟着输入区高度走。
+            // 上限以 CSS 的 max-height 为准（只读一次并缓存）：写死 120 而 CSS 是别的值时，
+            // 内联 height 会大于样式上限，部分 WebView 上文字会画到输入框外面。
+            if (!_inputSync.maxH) {
+                const mh = parseFloat(window.getComputedStyle(ta).maxHeight);
+                _inputSync.maxH = (isFinite(mh) && mh > 0) ? mh : 120;
+            }
+            const targetH = Math.min(sh, _inputSync.maxH);
+            _inputSync.selfWrite = true;
+            ta.style.height = targetH + 'px';
+            _inputSync.appliedH = targetH;
+
+            const area = document.querySelector('.input-area-wrapper');
+            const tiW = document.getElementById('typing-indicator-wrapper');
+            if (area) {
+                const areaH = area.offsetHeight;
+                _inputSync.areaH = areaH;
+                if (tiW && tiW.style.display !== 'none') tiW.style.bottom = areaH + 'px';
+            }
+
+            // 这一帧的尺寸变化是我们自己造成的，别让 RO 再补一轮
+            requestAnimationFrame(() => { _inputSync.selfWrite = false; });
+
+            if (_perf.enabled) {
+                const ms = _perfNow() - t0;
+                _inputSync.samples.push(ms);
+                if (_inputSync.samples.length > 100) _inputSync.samples.shift();
+                if (_perf.inputSync) {
+                    _perf.inputSync.push(Math.round(ms * 10) / 10);
+                    if (_perf.inputSync.length > 100) _perf.inputSync.shift();
+                }
+            }
+        }
+
         function _syncMessageInputHeight() {
-            if (!DOMElements.messageInput) return;
-            DOMElements.messageInput.style.height = 'auto';
-            DOMElements.messageInput.style.height = `${Math.min(DOMElements.messageInput.scrollHeight, 120)}px`;
+            const ta = DOMElements.messageInput;
+            if (!ta) return;
+            const lines = _estimateInputVisualLines(ta.value);
+            const unknown = lines === INPUT_LINES_UNKNOWN;
+            if (!unknown && lines === _inputSync.lastLines) {   // 行数没变：不用测量，省掉这次强制布局
+                _inputSync.skipped++;
+                return;
+            }
+            // 估算不可靠时把签名置为 NaN：下一次（包括清空/粘贴）一定会重新测量，
+            // 避免半角/emoji 文本之后残留一个旧的"行数"把该缩回的高度挡掉
+            _inputSync.lastLines = unknown ? NaN : lines;
+            if (_inputSync.rafId) return;
+            _inputSync.rafId = requestAnimationFrame(_flushInputHeight);
         }
         window._syncMessageInputHeight = _syncMessageInputHeight;
 
@@ -2638,12 +3313,33 @@ if (!isBatchMode && type === 'normal') {
             if (!inputArea) return;
             if (typeof ResizeObserver === 'undefined') {
                 window.addEventListener('resize', function() {
-                    var tiW = document.getElementById('typing-indicator-wrapper');
-                    if (tiW && tiW.style.display !== 'none') positionTypingIndicator();
+                    // 宽度变了，每行字符数失效，需要重新折算并重测一次
+                    _inputSync.charsPerLine = 0;
+                    _inputSync.width = 0;
+                    _inputSync.lastLines = -1;
+                    _syncMessageInputHeight();
                 });
                 return;
             }
-            var ro = new ResizeObserver(function() {
+            var ro = new ResizeObserver(function(entries) {
+                var entry = entries[entries.length - 1];
+                // 宽度变化（横竖屏、面板伸缩）→ 每行字符数要重新折算
+                if (entry && entry.contentRect && Math.abs(entry.contentRect.width - _inputSync.areaW) > 0.5) {
+                    _inputSync.areaW = entry.contentRect.width;
+                    _inputSync.charsPerLine = 0;
+                    _inputSync.lastLines = -1;
+                }
+                // 这次高度变化是我们自己在 _flushInputHeight 里写出来的，已经处理过，不再排一轮
+                if (_inputSync.selfWrite) {
+                    _inputSync.selfWrite = false;
+                    if (_inputSync.lastLines === -1) _syncMessageInputHeight();
+                    return;
+                }
+                // 宽度变了（行数估算失效）：重测一次高度，不再额外走一轮读写
+                if (_inputSync.lastLines === -1) {
+                    _syncMessageInputHeight();
+                    return;
+                }
                 var tiW = document.getElementById('typing-indicator-wrapper');
                 if (tiW && tiW.style.display !== 'none') positionTypingIndicator();
             });
@@ -2884,8 +3580,9 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         }
                     }
 
+                    const replyMsgId = Date.now() + i;
                     addMessage({
-                        id: Date.now() + i,
+                        id: replyMsgId,
                         sender: settings.partnerName || '对方',
                         text: finalText,
                         timestamp: new Date(),
@@ -2898,15 +3595,17 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                         type: 'normal'
                     });
                     if (typeof window._sendPartnerNotification === 'function') {
-                        window._sendPartnerNotification(settings.partnerName || '对方', finalText);
+                        // 带上 messageId：通知会等这条消息落库完成后再发，点击才能定位到它
+                        window._sendPartnerNotification(settings.partnerName || '对方', finalText, { messageId: replyMsgId });
                     }
                     playSound('message');
 
                     if (shouldSendSticker) {
                         const randomSticker = enabledStickerPool[Math.floor(Math.random() * enabledStickerPool.length)];
                         setTimeout(() => {
+                            const stickerMsgId = Date.now() + i + 2000;
                             addMessage({
-                                id: Date.now() + i + 2000,
+                                id: stickerMsgId,
                                 sender: settings.partnerName || '对方',
                                 text: '',
                                 timestamp: new Date(),
@@ -2919,7 +3618,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                             });
                             playSound('message');
                             if (typeof window._sendPartnerNotification === 'function') {
-                                window._sendPartnerNotification(settings.partnerName || '对方', '[表情]');
+                                window._sendPartnerNotification(settings.partnerName || '对方', '[表情]', { messageId: stickerMsgId });
                             }
                         }, 400 + Math.random() * 600);
                     }
@@ -2979,11 +3678,16 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
         }
 
 function showModal(modalElement, focusElement = null) {
+            const _openT0 = _perfNow();
+            const _deferredCss = modalElement && _deferredCssByModal[modalElement.id];
+            if (_deferredCss) loadCssOnce(_deferredCss);
             if (modalElement._hideTimeout) {
                 clearTimeout(modalElement._hideTimeout);
                 modalElement._hideTimeout = null;
             }
             modalElement.style.display = 'flex';
+            // 有懒加载/按需渲染的弹窗可监听此事件补渲染（如字卡列表关闭后已释放 DOM）
+            try { modalElement.dispatchEvent(new CustomEvent('modal:shown')); } catch (e) {}
             requestAnimationFrame(() => {
                 const content = modalElement.querySelector('.modal-content');
                 if (content) {
@@ -2993,6 +3697,7 @@ function showModal(modalElement, focusElement = null) {
                 if (focusElement) {
                     setTimeout(() => focusElement.focus(), 100);
                 }
+                if (window.__PERF__) window.__PERF__.recordModalOpen(_perfNow() - _openT0);
             });
         }
 
@@ -3005,6 +3710,8 @@ function showModal(modalElement, focusElement = null) {
             if (modalElement._hideTimeout) clearTimeout(modalElement._hideTimeout);
             modalElement._hideTimeout = setTimeout(() => {
                 modalElement.style.display = 'none';
+                // 通知订阅者做资源释放（如字卡列表清空 DOM）
+                try { modalElement.dispatchEvent(new CustomEvent('modal:hidden')); } catch (e) {}
             }, 300);
         }
 

@@ -790,6 +790,20 @@
             el.style.display = 'none';
             return true;
         }
+
+        // 通话进行中：第一次按返回把通话收成小浮标；已经收起时返回 "background"，
+        // 原生层收到后只把任务退到后台（不销毁 WebView），通话不中断。
+        try {
+            var cf = window.callFeature;
+            if (cf && typeof cf.isActive === 'function' && cf.isActive()) {
+                var pill = document.getElementById('call-mini-pill');
+                if (pill && pill.classList.contains('visible')) return 'background';
+                if (typeof cf.minimizeWindow === 'function') {
+                    cf.minimizeWindow();
+                    return true;
+                }
+            }
+        } catch (e) {}
         return false;
     };
 
