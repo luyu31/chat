@@ -1079,7 +1079,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getVersion() {
-            return "1.4.0";
+            return BuildConfig.VERSION_NAME;
         }
 
         @JavascriptInterface
