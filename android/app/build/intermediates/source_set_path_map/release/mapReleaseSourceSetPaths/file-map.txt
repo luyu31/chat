@@ -23,6 +23,7 @@ com.applediary.app-pngs-21 /workspace/android/app/build/generated/res/pngs/relea
 com.applediary.app-resValues-22 /workspace/android/app/build/generated/res/resValues/release
 com.applediary.app-packageReleaseResources-23 /workspace/android/app/build/intermediates/incremental/release/packageReleaseResources/merged.dir
 com.applediary.app-packageReleaseResources-24 /workspace/android/app/build/intermediates/incremental/release/packageReleaseResources/stripped.dir
-com.applediary.app-release-25 /workspace/android/app/build/intermediates/merged_res/release/mergeReleaseResources
-com.applediary.app-main-26 /workspace/android/app/src/main/res
-com.applediary.app-release-27 /workspace/android/app/src/release/res
+com.applediary.app-merged-not-compiled-resources-25 /workspace/android/app/build/intermediates/merged-not-compiled-resources/release
+com.applediary.app-release-26 /workspace/android/app/build/intermediates/merged_res/release/mergeReleaseResources
+com.applediary.app-main-27 /workspace/android/app/src/main/res
+com.applediary.app-release-28 /workspace/android/app/src/release/res
