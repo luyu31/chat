@@ -754,9 +754,11 @@ function _createGroupSection(group, items, isUngrouped = false) {
 const _RL_BATCH = 50;
 const _RL_CAP = 300;
 const _RL_RECLAIM = 100;
+const _RL_RESTORE_CHUNK = 24; // 每帧恢复数量：100 张同步插回会导致 400 个 SVG 一次性重绘，滑回顶部会卡
 let _rlState = null;
 let _rlScrollRaf = 0;
 let _rlAutoLoadTimer = 0;
+let _rlRestoreRaf = 0;
 
 function _rlTotal(sections) {
     return sections.reduce((n, s) => n + s.items.length, 0);
@@ -788,6 +790,7 @@ function _rlStart(list, sections, disabledSet) {
     };
     list.scrollTop = 0;
     if (_rlAutoLoadTimer) { clearTimeout(_rlAutoLoadTimer); _rlAutoLoadTimer = 0; }
+    if (_rlRestoreRaf) { cancelAnimationFrame(_rlRestoreRaf); _rlRestoreRaf = 0; }
     _rlEnsureSentinel();
     _rlLoad(_RL_BATCH);
     _rlAutoFill();
@@ -915,6 +918,22 @@ function _rlMaybeReclaim() {
     }
 }
 
+// 异步分帧恢复：把回收掉的卡片按每帧 _RL_RESTORE_CHUNK 张插回，
+// 不在滚动的那帧里同步插 100 张（含 400 个内联 SVG），避免滑回顶部时图标卡一下。
+function _rlKickRestore() {
+    const st = _rlState;
+    if (!st || !st.reclaimed.length || _rlRestoreRaf) return;
+    _rlRestoreRaf = requestAnimationFrame(() => {
+        _rlRestoreRaf = 0;
+        const s = _rlState;
+        if (!s || !s.list || !s.reclaimed.length) return;
+        // 已经滑离顶部就不再恢复，避免刚插回又被回收
+        if (s.list.scrollTop > s.spacerH + 300) return;
+        _rlRestore(_RL_RESTORE_CHUNK);
+        if (s.reclaimed.length) _rlKickRestore();
+    });
+}
+
 function _rlRestore(n) {
     const st = _rlState;
     if (!st || !st.reclaimed.length) return;
@@ -1020,7 +1039,7 @@ function _rlOnListScroll() {
         const t0 = performance.now();
         const list = st.list;
         if (st.reclaimed.length && st.spacerH > 0 && list.scrollTop < st.spacerH + 300) {
-            _rlRestore(_RL_RECLAIM);
+            _rlKickRestore();
         } else if (_rlRemaining() > 0 && st.sentinel &&
                    list.scrollTop + list.clientHeight >= list.scrollHeight - 500) {
             _rlAutoLoad();
@@ -1111,6 +1130,7 @@ function _rlBindInteractions(list) {
 function _rlRelease() {
     if (_rlScrollRaf) { cancelAnimationFrame(_rlScrollRaf); _rlScrollRaf = 0; }
     if (_rlAutoLoadTimer) { clearTimeout(_rlAutoLoadTimer); _rlAutoLoadTimer = 0; }
+    if (_rlRestoreRaf) { cancelAnimationFrame(_rlRestoreRaf); _rlRestoreRaf = 0; }
     const list = document.getElementById('custom-replies-list');
     _rlState = null;
     if (list) {
